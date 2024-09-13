@@ -12,7 +12,7 @@ import {useActiveTrack} from "react-native-track-player";
 import {PlayerProgressBar} from "@/components/PlayerProgressbar";
 import {PlayerVolumeBar} from "@/components/PlayerVolumeBar";
 import {PlayerRepeatToggle} from "@/components/PlayerRepeatToggle";
-import {usePlayerBackground} from "@/hooks/usePlayerBackground";
+//import {usePlayerBackground} from "@/hooks/usePlayerBackground";
 import PlayerEqualizerBar from "@/components/PlayerEqualizerBar";
 import PlayerTrackListBar from "@/components/PlayerTrackListBar";
 import React from "react";
@@ -21,7 +21,7 @@ import PlayerEditInfoBar from "@/components/PlayerEditInfoBar";
 
 const PlayerScreen = () => {
   const activeTrack = useActiveTrack()
-  const {imageColors} = usePlayerBackground(activeTrack?.artwork ?? unknownTrackImageUri)
+  //const {imageColors} = usePlayerBackground(activeTrack?.artwork ?? unknownTrackImageUri)
 
   const {top, bottom} = useSafeAreaInsets()
 
@@ -42,10 +42,9 @@ const PlayerScreen = () => {
       </View>
     )
   }
-  const [background, primary] = !imageColors ? [colors.background, colors.primary] : imageColors.platform === 'ios' ? [imageColors.background, imageColors.primary] : [imageColors.dominant, imageColors.vibrant]
-  //const [background, primary] = [colors.background, colors.primary]
+  //const [background, primary] = !imageColors ? [colors.background, colors.primary] : imageColors.platform === 'ios' ? [imageColors.background, imageColors.primary] : [imageColors.dominant, imageColors.vibrant]
+  const [background, primary] = [colors.background, colors.primary]
   const handleClosePlayer = () => {
-    console.log('close player')
     router.dismiss()
   }
   return (

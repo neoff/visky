@@ -1,5 +1,5 @@
 import {MovingText} from "@/components/MovingText";
-import {PlayPauseButton, SkipToNextButton} from "@/components/PlayerControls";
+import {PlayerButtonType, PlayPauseButton, SkipToNextButton} from "@/components/PlayerControls";
 import {unknownTrackImageUri} from "@/constants/images";
 import {useLastActiveTrack} from "@/hooks/useLastActiveTrack";
 import {defaultStyles} from "@/styles";
@@ -39,8 +39,8 @@ export const FloatingPlayer = ({style}: ViewProps) => {
         </View>
 
         <View style={styles.trackControlsContainer}>
-          <PlayPauseButton iconSize={24}/>
-          <SkipToNextButton iconSize={22}/>
+          <PlayPauseButton iconSize={24} type={PlayerButtonType.SMALL}/>
+          <SkipToNextButton iconSize={22} type={PlayerButtonType.SMALL}/>
         </View>
       </>
     </TouchableOpacity>

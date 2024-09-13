@@ -2,7 +2,7 @@ import { unknownTrackImageUri } from "@/constants/images";
 import { utilsStyles } from '@/styles';
 import {ActivityIndicator, FlatList, FlatListProps, Text, View} from "react-native";
 import FastImage from "react-native-fast-image";
-import TrackPlayer, { Track } from 'react-native-track-player';
+import TrackPlayer, {Track, TrackType} from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
 import {useRef} from "react";
@@ -46,7 +46,7 @@ export const TrackList = ({
       await TrackPlayer.reset()
 
       // we construct the new queue
-      await TrackPlayer.add(selectedTrack)
+      await TrackPlayer.add({...selectedTrack, type: TrackType.HLS})
       await TrackPlayer.add(afterTracks)
       await TrackPlayer.add(beforeTracks)
 

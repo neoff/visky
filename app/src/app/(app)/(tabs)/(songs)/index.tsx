@@ -5,7 +5,7 @@ import {storage} from '@/store/library'
 import {defaultStyles} from '@/styles'
 import {useEffect, useMemo, useRef, useState} from 'react'
 import {ActivityIndicator, NativeScrollEvent, RefreshControl, ScrollView, View} from 'react-native'
-import {Track} from 'react-native-track-player'
+import {Track, TrackType} from 'react-native-track-player'
 import {screenPadding} from "@/constants";
 import {TrackList} from "@/components/TrackList";
 import {loadPlaylistData} from "@/helpers/network";
@@ -27,19 +27,20 @@ const SongsScreen = () => {
 
   const mergeTracks = async (data: any) => {
     console.debug(`Merging tracks ${data?.items.length} with ${tracks.length}`)
-    const items =  data?.items.map((item:TrackWithPlaylist ) => ({
-        ...item,
-        date: item?.date?.toString(),
-        album: item?.album?.title ?? 'Unknown Album',
-        artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
-      }))
+    const items = data?.items.map((item: TrackWithPlaylist) => ({
+      ...item,
+      date: item?.date?.toString(),
+      type: TrackType.HLS,
+      album: item?.album?.title ?? 'Unknown Album',
+      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+    }))
     setCachedTrack(items)
     const result = reducer([...items, ...tracks])
     console.debug(`Result ${result.length}`)
     setTracks(result);
     return result;
   }
-  const loadError = (error:any) => {
+  const loadError = (error: any) => {
     console.log('Load playlist error:', error)
 
     console.error('Playlist error', error);
@@ -49,11 +50,11 @@ const SongsScreen = () => {
 
   const handleRefresh = () => {
     console.log('refreshing')
-    loadPlaylistData(mergeTracks, loadError, 0).finally(() => setRefreshing(false) )
+    loadPlaylistData(mergeTracks, loadError, 0).finally(() => setRefreshing(false))
   }
 
   useEffect(() => {
-    if(tracks.length < 100){
+    if (tracks.length < 100) {
       setRefreshing(true)
       handleRefresh();
     }
@@ -81,11 +82,11 @@ const SongsScreen = () => {
         style={{paddingHorizontal: screenPadding.horizontal}}
         onScroll={({nativeEvent}) => {
           //console.log('End of list ->> refresh:', updateOffset.current)
-          if(updateOffset.current) return
+          if (updateOffset.current) return
           if (isCloseToBottom(nativeEvent)) {
             updateOffset.current = true
             //console.log('Set refresh:', updateOffset.current)
-            loadPlaylistData((data:any) => data, loadError, tracks.length)
+            loadPlaylistData((data: any) => data, loadError, tracks.length)
               .then((data) => {
                 //console.debug(`Merging tracks ${data?.items.length} with ${tracks.length}`)
                 const result = reducer([...tracks, ...data?.items])
@@ -94,7 +95,7 @@ const SongsScreen = () => {
                 updateOffset.current = false
               })
               .finally(() => {
-              //setRefreshing(false)
+                //setRefreshing(false)
               })
           }
         }}

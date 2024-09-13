@@ -1,4 +1,4 @@
-import {Button, Text} from 'react-native';
+import {Button, Text, View} from 'react-native';
 import {Redirect, router, SplashScreen, Stack, useRouter} from 'expo-router';
 import {apiUrls, authPage} from "@/constants";
 import React, {useCallback, useRef, useState} from "react";
@@ -7,26 +7,13 @@ import {useLogTrackPlayerState} from "@/hooks/useLogTrackPlayerState";
 import {useSession} from "@/components/SessionProvider";
 
 export default function AppLayout() {
-  const [isPlayerInitialized, setIsPlayerInitialized] = useState(false);
-  const handleTrackPlayerLoaded = useCallback(() => {
-    setIsPlayerInitialized(true)
-    SplashScreen.hideAsync()
-  }, [])
-
-  useSetupTrackPlayer({
-    onLoad: handleTrackPlayerLoaded,
-    init: isPlayerInitialized,
-  })
-  useLogTrackPlayerState()
   const { getSession, isLoading } = useSession();
   const userSession = getSession();
 
-  // You can keep the splash screen open, or render a loading screen like we do here.
   if (isLoading) {
     console.log("--AppLayout=Loading...");
     return null
   }
-  console.log("===AppLayout");
 
   // Only require authentication within the (app) group's layout as users
   // need to be able to access the (auth) group and sign in again.
@@ -36,11 +23,12 @@ export default function AppLayout() {
     console.log("--AppLayout=Redirect to ", authPage);
     return <Redirect href={authPage} />;
   }
-
+  SplashScreen.hideAsync()
   console.log("--AppLayout=Stack session: ", userSession);
   const handleDismiss = () => {
     router.dismiss()
   };
+  console.log("===AppLayout return");
   // This layout can be deferred because it's not the root layout.
   return (
     <Stack>
@@ -58,4 +46,8 @@ export default function AppLayout() {
       />
     </Stack>
   )
+
+  /*return (
+    <View><Text style={{color:'#fff'}}>asdfasfd</Text></View>
+  )*/
 }

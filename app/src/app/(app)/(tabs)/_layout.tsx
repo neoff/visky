@@ -1,14 +1,23 @@
 import {colors, fontSize} from "@/constants"
 import {SplashScreen, Tabs} from "expo-router"
-import React from "react"
+import React, {useCallback, useEffect, useState} from "react"
 import {BlurView} from "expo-blur";
 import {StyleSheet} from "react-native";
 import {FontAwesome, FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {FloatingPlayer} from "@/components/FloatingPlayer";
+import {setupPlayer, useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 
 const TabsLayout = () => {
   console.log("===TabsLayout");
-  SplashScreen.hideAsync()
+  const [isPlayerInitialized, setIsPlayerInitialized] = useState(false);
+  const handleTrackPlayerLoaded = useCallback(() => {
+    setIsPlayerInitialized(true)
+    SplashScreen.hideAsync()
+  }, [])
+  useSetupTrackPlayer({
+    onLoad: handleTrackPlayerLoaded,
+    init: isPlayerInitialized,
+  })
   return (
     <>
       <Tabs

@@ -1,8 +1,8 @@
-import {View} from "react-native";
+import {Platform, View} from "react-native";
 import {WebView} from "react-native-webview";
 import React from "react";
 import {useRouter} from "expo-router";
-import {apiUrls} from "@/constants";
+import {__DEV, apiUrls} from "@/constants";
 import {WebViewNavigation} from "react-native-webview/src/WebViewTypes";
 import {useSession} from "@/components/SessionProvider";
 
@@ -31,6 +31,8 @@ const LoginPage = () => {
   }
   alert(apiUrls.authAdminAppUrl)
   console.info("===LoginPage", apiUrls.authAdminAppUrl);
+  let urls  = apiUrls.authAdminAppUrl
+  console.log('baseHost:', apiUrls.baseUrl, urls, __DEV, Platform.OS)
   return (
     <View style={{flex: 1}}>
       <WebView

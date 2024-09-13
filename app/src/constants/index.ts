@@ -1,5 +1,7 @@
 import * as Linking from 'expo-linking';
 import {Href} from "expo-router";
+import {Platform} from "react-native";
+import {boolean} from "ts-pattern/dist/patterns";
 
 export const colors = {
   primary: '#fc3c44',
@@ -35,8 +37,20 @@ export const headers = {
   "accept": "*/*",
   "Content-Type": "application/json",
 }
+const _envDev = process.env.EXPO_PUBLIC_DEV || ''
+export const __DEV = _envDev==="true" || false
+let baseHost: string = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000";
 
-const baseHost: string = (__DEV__?process.env.EXPO_LOCAL_API_URL:process.env.EXPO_PUBLIC_API_URL) || "http://localhost:3000";
+if(__DEV) {
+  switch (Platform.OS) {
+    case "android":
+      baseHost = process.env.EXPO_PUBLIC_LPI_ANDROID_URL || "http://10.0.2.2:3000";
+      break;
+    default:
+      baseHost = process.env.EXPO_PUBLIC_LPI_URL || "http://localhost:3000";
+  }
+}
+const redirectUrl: string = '?redirect=' + baseHost;
 
 const baseUrl: string =  `${baseHost}/api`
 const authUrl: string =  `${baseUrl}/auth`
@@ -48,7 +62,8 @@ export const apiUrls = {
   playlistUrl: playlistUrl,
   playerUrl: playerUrl,
   oAuthUrl: `${authUrl}/vk-oauth`,
-  authAdminAppUrl: __DEV__?`${authUrl}/local`:`${authUrl}/vk`,
+  authAdminAppUrl: (__DEV)?`${authUrl}/local${redirectUrl}`:`${authUrl}/vk`,
+  authAdminAppUrl_: `${authUrl}/vk`,
   tokenUrl: `${authUrl}/token`,
   refreshUrl: `${authUrl}/refresh`,
   profileUrl: `${authUrl}/profile`,

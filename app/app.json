@@ -45,6 +45,7 @@
       }
     },
     "android": {
+      "ndkVersion": "26.3.11579264",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000"

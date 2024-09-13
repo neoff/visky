@@ -1,26 +1,44 @@
 {
+	"cli": {
+		"appVersionSource": "remote"
+	},
 	"build": {
 		"development": {
 			"developmentClient": true,
 			"distribution": "internal",
+			"autoIncrement": true,
 			"android": {
-				"buildType": "apk"
+				"buildType": "apk",
+				"ndk": "26.3.11579264"
+			},
+			"ios": {
+				"simulator": true
+			},
+			"env": {
+				"EXPO_PUBLIC_LPI_URL": "http://localhost:3000",
+				"EXPO_PUBLIC_LPI_ANDROID_URL": "http://10.0.2.2:3000",
+				"EXPO_PUBLIC_DEV": "false"
 			}
 		},
 		"preview": {
 			"developmentClient": false,
 			"distribution": "internal",
+			"autoIncrement": true,
 			"android": {
-				"buildType": "apk"
+				"buildType": "apk",
+				"ndk": "26.3.11579264"
+			},
+			"ios": {
+				"simulator": true
+			},
+			"env": {
+				"EXPO_PUBLIC_LPI_URL": "http://localhost:3000",
+				"EXPO_PUBLIC_LPI_ANDROID_URL": "http://10.0.2.2:3000",
+				"EXPO_PUBLIC_DEV": "false"
 			}
 		},
-		"preview2": {
-			"android": {
-				"distribution": "internal",
-				"gradleCommand": ":app:assembleRelease",
-				"buildType": "apk"
-			}
-		},
-		"production": {}
+		"production": {
+			"autoIncrement": true
+		}
 	}
 }

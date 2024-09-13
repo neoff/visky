@@ -375,3 +375,4 @@ expo-env.d.ts
 ios/**
 android/**
 
+app.config.js

@@ -4,6 +4,7 @@ import {Stack} from "expo-router"
 import {View} from "react-native"
 
 const SongsScreenLayout = () => {
+  console.log("===SongsScreenLayout");
   return (
     <View style={defaultStyles.container}>
       <Stack>
