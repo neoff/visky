@@ -13,34 +13,33 @@ import {useSession} from "@/components/SessionProvider";
 import {useMMKVStorage} from "react-native-mmkv-storage";
 import {TrackWithPlaylist} from "@/helpers/types";
 import {unknownTrackImageUri} from "@/constants/images";
+import {usePlaylistState} from "@/hooks/usePlaylistState";
 
 const FavoriteScreen = () => {
-    const [refreshing, setRefreshing] = useState(false);
+    const {refreshing, search, tracks, filteredTracks, handleRefresh} = usePlaylistState('favorites')
+
+    //const [refreshing, setRefreshing] = useState(false);
     const updateOffset = useRef<boolean>(false)
     //const [tracks, setTracks] = useState<Track[]>(useFavorites().favorites as Track[]);
-    const [cachedTrack, setCachedTrack] = useMMKVStorage<Track[]>('favorites', storage, []);
-    const [tracks, setTracks] = useState<Track[]>(cachedTrack);
-    const { getSession } = useSession();
-    const search = useNavigationSearch({
+
+
+    //const [cachedTrack, setCachedTrack] = useMMKVStorage<Track[]>('favorites', storage, []);
+   // const [tracks, setTracks] = useState<Track[]>(cachedTrack);
+
+    /*const search = useNavigationSearch({
         searchBarOptions: {
             placeholder: 'Find in songs',
         },
-    })
+    })*/
     //const favoritesTracks = useFavorites().favorites
-    const mergeTracks = async (data: any) => {
-        console.debug(`Merging tracks ${data?.items.length} with ${tracks.length}`)
-        const items =  data?.items.map((item:TrackWithPlaylist ) => ({
-            ...item,
-            date: item?.date?.toString(),
-            album: item?.album?.title ?? 'Unknown Album',
-            artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
-        }))
-        setCachedTrack(items)
-        const result = reducer([...items, ...tracks])
+    /*const mergeTracks = async (data: any) => {
+        console.debug(`Merging tracks ${data?.items.length} with ${tracks?.length}`)
+        setCachedTrack(data?.items)
+        const result = reducer([...data?.items, ...tracks])
         console.debug(`Result ${result.length}`)
         setTracks(result);
         return result;
-    }
+    }*/
     const loadError = (error:any) => {
         console.log('Load playlist error:', error)
 
@@ -48,20 +47,22 @@ const FavoriteScreen = () => {
         alert(error.response.data.errData);
     }
 
-    const handleRefresh = () => {
+    /*const handleRefresh = () => {
         console.log('refreshing')
         loadFavoriveData(getSession().user_id, mergeTracks, loadError).finally(() => setRefreshing(false))
-    }
+    }*/
 
-    const filteredFavoritesTracks: Track[]  = useMemo(() => {
+    /*const filteredFavoritesTracks: Track[]  = useMemo(() => {
         if (!search) return tracks
 
         return tracks.filter(trackTitleFilter(search))
-    }, [search, tracks])
-
+    }, [search, tracks])*/
+    const refreshFn = () => {
+        handleRefresh(loadFavoriveData);
+    }
     useEffect(() => {
         if(!tracks.length)
-            handleRefresh();
+            refreshFn();
     }, []);
 
     return <View style={defaultStyles.container}>
@@ -72,13 +73,13 @@ const FavoriteScreen = () => {
           refreshControl={
               <RefreshControl
                 refreshing={refreshing}
-                onRefresh={handleRefresh} // exl in function : this.yourWebview.reload();
+                onRefresh={refreshFn} // exl in function : this.yourWebview.reload();
               />
           }
         >
             <TrackList
               id={generateTracksListId('favorites', tracks.length, search)}
-              tracks={filteredFavoritesTracks}
+              tracks={filteredTracks}
               scrollEnabled={false}
             />
         </ScrollView>

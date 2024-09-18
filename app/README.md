@@ -5,19 +5,23 @@ Based on [Music Player](https://github.com/gionathas/music-player)
 A native music player application built with Expo, React Native, Typescript and Zustand. 
 Design is inspired by Apple Music app
 
-implemented features:
+Milestone and features:
+- [ ] Zustand added [MMKV](https://github.com/mrousavy/react-native-mmkv) for state management
+- [ ] Android version
 - [x] Oauth Authorization
 - [x] Fetching remote playlist tracks
 - [x] Fetching user favorites stored on the backend
 - [x] Caching playlist
-- [x] Merge cached playlist with new compilation
+- [x] Merge cached playlist with new sound compilation
+- [ ] Remove unused volume control bar
+- [ ] Filters for playlist
+- [ ] Download music for offline listening
 - [ ] Edit part of song (for long compilation), add point for quick navigation
 - [ ] Synchronise player state from multiple devices
-- [ ] Equalizer for a song or part of song
-- [ ] Remove unused volume control bar
 - [ ] Shared session with friends (like [Spotify](https://www.spotify.com) party mode)
 - [ ] Connection to [Spotify](https://www.spotify.com) or [Apple Music](https://www.apple.com/apple-music)
 - [ ] Add music link from [Youtube](https://www.youtube.com) or [Soundcloud](https://soundcloud.com)
+- [ ] Equalizer for a song or part of song
 
 ## Screenshots
 ## Installation

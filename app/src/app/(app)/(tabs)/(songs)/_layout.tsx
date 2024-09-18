@@ -1,8 +1,9 @@
 import {StackScreenWithSearchBar} from "@/constants/layout"
 import {defaultStyles} from "@/styles"
 import {Stack} from "expo-router"
-import {View} from "react-native"
-
+import {Text, View} from "react-native"
+import {colors} from "@/constants";
+import _ from "lodash";
 const SongsScreenLayout = () => {
   console.log("===SongsScreenLayout");
   return (

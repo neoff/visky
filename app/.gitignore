@@ -368,10 +368,24 @@ npm-debug.log
 yarn-error.log
 
 
+# dependencies
+/node_modules
+/.pnp
+
+**/*.code-workspace
+**/.vscode
+**/.idea
+
 env.d.ts
 expo-env.d.ts
 # @end expo-cli!/expo-env.d.ts
 .env
+
+# misc
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 ios/**
 android/**
 

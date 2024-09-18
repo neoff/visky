@@ -3,13 +3,13 @@
 		"appVersionSource": "remote"
 	},
 	"build": {
-		"development": {
-			"developmentClient": true,
+		"base": {
 			"distribution": "internal",
 			"autoIncrement": true,
 			"android": {
 				"buildType": "apk",
-				"ndk": "26.3.11579264"
+				"ndk": "26.3.11579264",
+				"image": "ubuntu-22.04-jdk-17-ndk-r26b"
 			},
 			"ios": {
 				"simulator": true
@@ -17,28 +17,19 @@
 			"env": {
 				"EXPO_PUBLIC_LPI_URL": "http://localhost:3000",
 				"EXPO_PUBLIC_LPI_ANDROID_URL": "http://10.0.2.2:3000",
+				"EXPO_PUBLIC_API_URL": "https://frisky.envarg.com",
 				"EXPO_PUBLIC_DEV": "false"
 			}
+		},
+		"development": {
+			"extends": "base",
+			"developmentClient": true
 		},
 		"preview": {
-			"developmentClient": false,
-			"distribution": "internal",
-			"autoIncrement": true,
-			"android": {
-				"buildType": "apk",
-				"ndk": "26.3.11579264"
-			},
-			"ios": {
-				"simulator": true
-			},
-			"env": {
-				"EXPO_PUBLIC_LPI_URL": "http://localhost:3000",
-				"EXPO_PUBLIC_LPI_ANDROID_URL": "http://10.0.2.2:3000",
-				"EXPO_PUBLIC_DEV": "false"
-			}
+			"extends": "base"
 		},
 		"production": {
-			"autoIncrement": true
+			"extends": "base"
 		}
 	}
 }

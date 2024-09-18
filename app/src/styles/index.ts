@@ -1,4 +1,4 @@
-import {colors, fontSize} from '@/constants'
+import {colors, fonts, modifiers, screenPadding, size} from '@/constants'
 import {StyleSheet} from 'react-native'
 
 export const defaultStyles = StyleSheet.create({
@@ -7,7 +7,7 @@ export const defaultStyles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   text: {
-    fontSize: fontSize.base,
+    fontSize: fonts.base,
     color: colors.text,
   },
 })
@@ -68,7 +68,7 @@ export const trackListStyles = StyleSheet.create({
   },
   trackTitleText: {
     ...defaultStyles.text,
-    fontSize: fontSize.sm,
+    fontSize: fonts.sm,
     fontWeight: '600',
     maxWidth: '90%',
   },
@@ -79,7 +79,22 @@ export const trackListStyles = StyleSheet.create({
     marginTop: 4,
   },
 })
-
+export const progressBarStyles = StyleSheet.create({
+  timeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginTop: 20,
+  },
+  timeText: {
+    ...defaultStyles.text,
+    color: colors.text,
+    opacity: 0.75,
+    fontSize: fonts.xs,
+    letterSpacing: 0.7,
+    fontWeight: '500',
+  },
+})
 export const playerControlStyle = StyleSheet.create({
   container: {
     width: '100%',
@@ -92,8 +107,11 @@ export const playerControlStyle = StyleSheet.create({
 })
 
 export const iconStyles = {
-  borderRadius: 10,
-  iconStyle: { paddingVertical: 5 },
+  borderRadius: 10 + modifiers.padding,
+  paddingHorizontal: 10 + modifiers.padding,
+  iconStyle: {
+    paddingVertical: 5 + modifiers.padding,
+  },
 }
 export const welcomeStyles = StyleSheet.create({
   container: {
@@ -102,35 +120,78 @@ export const welcomeStyles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    fontSize: fonts.base,
     justifyContent: 'center',
     alignItems: 'center',
   },
   header: {
-    fontSize: 20,
+    fontSize: fonts.lg,
     textAlign: 'center',
     color: '#fff',
     margin: 10,
   },
   text: {
     textAlign: 'center',
+    fontSize: fonts.sm,
     color: '#ddd',
-    marginBottom: 5,
+    marginBottom: 5 + modifiers.padding,
   },
   avatar: {
-    margin: 20,
+    margin: 20 + modifiers.padding,
   },
   avatarImage: {
-    borderRadius: 50,
-    height: 100,
-    width: 100,
+    borderRadius: 50 + modifiers.padding,
+    height: 200 + size.image,
+    width: 200 + size.image,
   },
   buttons: {
     justifyContent: 'space-between',
     flexDirection: 'column',
-    margin: 20,
-    marginBottom: 30,
+    margin: 20 + modifiers.padding,
+    marginBottom: 30 + modifiers.padding,
   },
   login_button: {
-    margin: 10,
+    margin: 10 + modifiers.padding,
+    fontSize: fonts.lg,
+  },
+})
+
+export const playerStyle = StyleSheet.create({
+  overlayContainer: {
+    ...defaultStyles.container,
+    paddingHorizontal: screenPadding.horizontal,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  artworkImageContainer: {
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.44,
+    shadowRadius: 11.0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    height: '45%',
+  },
+  artworkImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+    borderRadius: 12,
+  },
+  trackTitleContainer: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+  trackTitleText: {
+    ...defaultStyles.text,
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  trackArtistText: {
+    ...defaultStyles.text,
+    fontSize: fonts.base,
+    opacity: 0.8,
+    maxWidth: '90%',
   },
 })

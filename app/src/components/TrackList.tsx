@@ -6,8 +6,9 @@ import TrackPlayer, {Track, TrackType} from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
 import {useRef} from "react";
+import {FlashList, FlashListProps} from "@shopify/flash-list";
 
-export type TrackListProps = Partial<FlatListProps<unknown>> & {
+export type TrackListProps = Partial<FlashListProps<unknown>> & {
   id: string
   tracks: Track[]
   refresh?: boolean
@@ -65,8 +66,9 @@ export const TrackList = ({
     }
   }
   return (
-    <FlatList
+    <FlashList
       data={tracks}
+      estimatedItemSize={tracks.length}
       contentContainerStyle={{paddingTop: 10, paddingBottom: 128}}
       /*ListHeaderComponent={
         !hideQueueControls ? (

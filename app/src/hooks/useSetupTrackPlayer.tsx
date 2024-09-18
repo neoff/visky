@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
-import TrackPlayer, {AppKilledPlaybackBehavior, Capability, RatingType, RepeatMode} from 'react-native-track-player'
+import PlayerRegisterService from "@/components/PlayerRegisterService";
+import { useEffect } from 'react';
+import TrackPlayer, { Capability, RatingType, RepeatMode } from 'react-native-track-player';
 
-export const setupPlayer = async () => {
+/*export const setupPlayer = async () => {
   await TrackPlayer.setupPlayer({
     maxCacheSize: 1024 * 10,
   })
@@ -31,6 +32,28 @@ export const setupPlayer = async () => {
 
   //await TrackPlayer.setVolume(1.0)
   await TrackPlayer.setRepeatMode(RepeatMode.Off)
+}*/
+const setupPlayer = async () => {
+  //const [cachedState, setCachedState] = useMMKVStorage<IPlayerState>('player', storage, PlayerState);
+  //const cachedState: IPlayerState = await storage.getItem('player')
+  const repeatMode = /*cachedState?.repeatMode || */RepeatMode.Off
+  await TrackPlayer.setupPlayer({
+    maxCacheSize: 1024 * 10,
+  })
+
+  await TrackPlayer.updateOptions({
+    ratingType: RatingType.Heart,
+    capabilities: [
+      Capability.Play,
+      Capability.Pause,
+      Capability.SkipToNext,
+      Capability.SkipToPrevious,
+      Capability.Stop,
+    ],
+  })
+
+  await TrackPlayer.setVolume(1.0) // not too loud
+  await TrackPlayer.setRepeatMode(repeatMode)
 }
 
 export const useSetupTrackPlayer = ({onLoad, init}: { onLoad: () => void, init:boolean }) => {
@@ -38,6 +61,7 @@ export const useSetupTrackPlayer = ({onLoad, init}: { onLoad: () => void, init:b
     console.log('-TRY->useSetupTrackPlayer')
     if (init) return
     console.log('-->useSetupTrackPlayer')
+    TrackPlayer.registerPlaybackService(() => PlayerRegisterService);
     setupPlayer()
       .then(() => {
         onLoad?.()

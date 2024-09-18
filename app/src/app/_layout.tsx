@@ -11,6 +11,15 @@ import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 SplashScreen.preventAutoHideAsync();
 
 export default function Root() {
+  const [isPlayerInitialized, setIsPlayerInitialized] = useState(false);
+  const handleTrackPlayerLoaded = useCallback(() => {
+    setIsPlayerInitialized(true)
+    SplashScreen.hideAsync()
+  }, [])
+  useSetupTrackPlayer({
+    onLoad: handleTrackPlayerLoaded,
+    init: isPlayerInitialized,
+  })
   useLogTrackPlayerState()
 
   console.log("--Root= return Slot");

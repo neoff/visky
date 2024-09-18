@@ -1,31 +1,25 @@
-import {colors, fontSize} from "@/constants"
+import {colors, fonts, modifiers, size} from "@/constants"
 import {SplashScreen, Tabs} from "expo-router"
 import React, {useCallback, useEffect, useState} from "react"
 import {BlurView} from "expo-blur";
 import {StyleSheet} from "react-native";
 import {FontAwesome, FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {FloatingPlayer} from "@/components/FloatingPlayer";
-import {setupPlayer, useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
+import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 const TabsLayout = () => {
+  const {top, bottom} = useSafeAreaInsets()
   console.log("===TabsLayout");
-  const [isPlayerInitialized, setIsPlayerInitialized] = useState(false);
-  const handleTrackPlayerLoaded = useCallback(() => {
-    setIsPlayerInitialized(true)
-    SplashScreen.hideAsync()
-  }, [])
-  useSetupTrackPlayer({
-    onLoad: handleTrackPlayerLoaded,
-    init: isPlayerInitialized,
-  })
+
   return (
     <>
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarLabelStyle: {
-            fontSize: fontSize.xs,
-            fontWeight: '500',
+            fontSize: fonts.xs,
+            fontWeight: fonts.weight as 500 | 600,
           },
           headerShown: false,
           tabBarStyle: {
@@ -34,10 +28,14 @@ const TabsLayout = () => {
             borderTopRightRadius: 20,
             borderTopWidth: 0,
             paddingTop: 8,
+            paddingBottom: 30,
+            height: size.base + 78,
           },
           tabBarBackground: () => (
             <BlurView
               intensity={95}
+              tint={'dark'}
+              experimentalBlurMethod={'dimezisBlurView'}
               style={{
                 ...StyleSheet.absoluteFillObject,
                 overflow: 'hidden',
@@ -54,7 +52,7 @@ const TabsLayout = () => {
           options={{
             title: 'Favorites',
             tabBarIcon: ({color}) => (
-              <FontAwesome name="heart" size={20} color={color}/>
+              <FontAwesome name="heart" size={20 + modifiers.icons} color={color}/>
             ),
           }}
         />
@@ -63,7 +61,7 @@ const TabsLayout = () => {
           options={{
             title: 'Songs',
             tabBarIcon: ({color}) => (
-              <Ionicons name="musical-notes-sharp" size={24} color={color}/>
+              <Ionicons name="musical-notes-sharp" size={24 + modifiers.icons} color={color}/>
             ),
           }}
         />
@@ -71,7 +69,7 @@ const TabsLayout = () => {
           name="artists"
           options={{
             title: 'Artists',
-            tabBarIcon: ({color}) => <FontAwesome6 name="users-line" size={20} color={color}/>,
+            tabBarIcon: ({color}) => <FontAwesome6 name="users-line" size={20 + modifiers.icons} color={color}/>,
           }}
         />
         <Tabs.Screen
@@ -79,7 +77,7 @@ const TabsLayout = () => {
           options={{
             title: 'Settings',
             tabBarIcon: ({color}) => (
-              <MaterialCommunityIcons name="account" size={28} color={color}/>
+              <MaterialCommunityIcons name="account" size={28 + modifiers.icons} color={color}/>
             ),
           }}
         />
@@ -90,7 +88,7 @@ const TabsLayout = () => {
           position: 'absolute',
           left: 8,
           right: 8,
-          bottom: 78,
+          bottom: bottom+78,
         }}
       />
     </>

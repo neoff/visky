@@ -1,8 +1,8 @@
 import {MovingText} from "@/components/MovingText";
 import {PlayerControls} from "@/components/PlayerControls";
-import {colors, fontSize, screenPadding} from "@/constants";
+import {colors, fonts, screenPadding} from "@/constants";
 import {unknownTrackImageUri} from "@/constants/images";
-import {defaultStyles, utilsStyles} from "@/styles";
+import {defaultStyles, playerStyle, utilsStyles} from "@/styles";
 import {Entypo, FontAwesome, MaterialCommunityIcons, MaterialIcons, Octicons} from "@expo/vector-icons";
 import {LinearGradient} from "expo-linear-gradient";
 import {ActivityIndicator, StyleSheet, Text, View} from "react-native";
@@ -52,18 +52,18 @@ const PlayerScreen = () => {
       style={{flex: 1}}
       colors={[background, primary]}
     >
-      <View style={styles.overlayContainer}>
+      <View style={playerStyle.overlayContainer}>
         <DismissPlayerSymbol handleClick={handleClosePlayer}/>
 
         <View style={{flex: 1, marginTop: top + 70, marginBottom: bottom}}>
-          <View style={styles.artworkImageContainer}>
+          <View style={playerStyle.artworkImageContainer}>
             <FastImage
               source={{
                 uri: activeTrack.artwork ?? unknownTrackImageUri,
                 priority: FastImage.priority.high,
               }}
               resizeMode="cover"
-              style={styles.artworkImage}
+              style={playerStyle.artworkImage}
             />
           </View>
 
@@ -78,11 +78,11 @@ const PlayerScreen = () => {
                   }}
                 >
                   {/* Track title */}
-                  <View style={styles.trackTitleContainer}>
+                  <View style={playerStyle.trackTitleContainer}>
                     <MovingText
                       text={activeTrack.title ?? ''}
                       animationThreshold={30}
-                      style={styles.trackTitleText}
+                      style={playerStyle.trackTitleText}
                     />
                   </View>
                   {/* Hide button icon */}
@@ -105,7 +105,7 @@ const PlayerScreen = () => {
 
                 {/* Track artist */}
                 {activeTrack.artist && (
-                  <Text numberOfLines={1} style={[styles.trackArtistText, {marginTop: 6}]}>
+                  <Text numberOfLines={1} style={[playerStyle.trackArtistText, {marginTop: 6}]}>
                     {activeTrack.artist}
                   </Text>
                 )}
@@ -180,43 +180,5 @@ const DismissPlayerSymbol = ({handleClick}: { handleClick?: () => void }) => {
   )
 }
 
-const styles = StyleSheet.create({
-  overlayContainer: {
-    ...defaultStyles.container,
-    paddingHorizontal: screenPadding.horizontal,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  artworkImageContainer: {
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.44,
-    shadowRadius: 11.0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    height: '45%',
-  },
-  artworkImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-    borderRadius: 12,
-  },
-  trackTitleContainer: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-  trackTitleText: {
-    ...defaultStyles.text,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  trackArtistText: {
-    ...defaultStyles.text,
-    fontSize: fontSize.base,
-    opacity: 0.8,
-    maxWidth: '90%',
-  },
-})
+
 export default PlayerScreen

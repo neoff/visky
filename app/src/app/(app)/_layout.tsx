@@ -33,7 +33,7 @@ export default function AppLayout() {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
+      {/*<Stack.Screen
         name="player"
         options={{
           presentation: 'card',
@@ -43,7 +43,7 @@ export default function AppLayout() {
           headerShown: false,
           headerLeft: () => <Button onPress={handleDismiss} title="Close" />,
         }}
-      />
+      />*/}
     </Stack>
   )
 

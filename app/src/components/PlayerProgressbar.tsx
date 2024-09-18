@@ -3,8 +3,8 @@ import TrackPlayer, {useProgress} from "react-native-track-player";
 import {useSharedValue} from "react-native-reanimated";
 import {formatSecondsToMinutes} from "@/helpers/miscellaneous";
 import {Slider} from "react-native-awesome-slider";
-import {defaultStyles, utilsStyles} from "@/styles";
-import {colors, fontSize} from "@/constants";
+import {defaultStyles, progressBarStyles, utilsStyles} from "@/styles";
+import {colors, fonts} from "@/constants";
 
 export const PlayerProgressBar = ({ style }: ViewProps) => {
   const { duration, position, buffered } = useProgress(250)
@@ -53,10 +53,10 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
         }}
       />
 
-      <View style={styles.timeRow}>
-        <Text style={styles.timeText}>{trackElapsedTime}</Text>
+      <View style={progressBarStyles.timeRow}>
+        <Text style={progressBarStyles.timeText}>{trackElapsedTime}</Text>
 
-        <Text style={styles.timeText}>
+        <Text style={progressBarStyles.timeText}>
           {'-'} {trackRemainingTime}
         </Text>
       </View>
@@ -64,19 +64,3 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
   )
 }
 
-const styles = StyleSheet.create({
-  timeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginTop: 20,
-  },
-  timeText: {
-    ...defaultStyles.text,
-    color: colors.text,
-    opacity: 0.75,
-    fontSize: fontSize.xs,
-    letterSpacing: 0.7,
-    fontWeight: '500',
-  },
-})
