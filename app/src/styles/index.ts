@@ -10,6 +10,20 @@ export const defaultStyles = StyleSheet.create({
     fontSize: fonts.base,
     color: colors.text,
   },
+
+  screenContainer: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  stretch: {
+    alignSelf: 'stretch',
+  },
+  stretchContainer: {
+    alignSelf: 'stretch',
+    flex: 1,
+  },
 })
 
 export const utilsStyles = StyleSheet.create({
@@ -26,18 +40,20 @@ export const utilsStyles = StyleSheet.create({
     borderColor: colors.textMuted,
     borderWidth: StyleSheet.hairlineWidth,
     opacity: 0.3,
+    marginVertical: 10 + modifiers.padding,
+    marginLeft: 60 + modifiers.margin,
   },
   emptyContentText: {
     ...defaultStyles.text,
     color: colors.textMuted,
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 20 + modifiers.padding,
   },
   emptyContentImage: {
     width: 200,
     height: 200,
     alignSelf: 'center',
-    marginTop: 40,
+    marginTop: 40 + modifiers.padding,
     opacity: 0.3,
   },
 })
@@ -45,9 +61,9 @@ export const utilsStyles = StyleSheet.create({
 export const trackListStyles = StyleSheet.create({
   trackItemContainer: {
     flexDirection: 'row',
-    columnGap: 14,
+    columnGap: 14 + modifiers.padding,
     alignItems: 'center',
-    paddingRight: 20,
+    paddingRight: 20 + modifiers.padding,
   },
   trackPlayingIconIndicator: {
     position: 'absolute',
@@ -63,8 +79,9 @@ export const trackListStyles = StyleSheet.create({
   },
   trackArtworkImage: {
     borderRadius: 8,
-    width: 50,
-    height: 50,
+    marginLeft: 10 + modifiers.padding,
+    width: 50 + modifiers.image,
+    height: 50 + modifiers.image,
   },
   trackTitleText: {
     ...defaultStyles.text,
@@ -75,8 +92,8 @@ export const trackListStyles = StyleSheet.create({
   trackArtistText: {
     ...defaultStyles.text,
     color: colors.textMuted,
-    fontSize: 14,
-    marginTop: 4,
+    fontSize: 14 + modifiers.text,
+    marginTop: 4  + modifiers.padding,
   },
 })
 export const progressBarStyles = StyleSheet.create({

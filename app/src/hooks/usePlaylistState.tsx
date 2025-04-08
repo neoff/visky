@@ -5,14 +5,16 @@ import {storage} from "@/store/library";
 import {Track} from "react-native-track-player";
 import {useNavigationSearch} from "@/hooks/useNavigationSearch";
 import {reducer} from "@/helpers/miscellaneous";
-import {loadPlaylistData, refreshToken} from "@/helpers/network";
+import {loadFriskyListData, refreshToken} from "@/helpers/network";
 import {useSession} from "@/components/SessionProvider";
 import {NativeScrollEvent} from "react-native";
 import {trackTitleFilter} from "@/helpers/filter";
 import {AxiosError} from "axios";
+import {AuthFragments} from "@/types/auth";
 
 export const usePlaylistState = (name: string) => {
-  const { getSession , signIn} = useSession();
+  const {getSession, signIn} = useSession();
+  const userSession: AuthFragments = getSession() as AuthFragments;
   const [refreshing, setRefreshing] = useState(false);
   const [cachedTrack, setCachedTrack] = useMMKVStorage<TrackWithPlaylist[]>(name, storage, []);
   const [tracks, setTracks] = useState<Track[]>(cachedTrack);
@@ -21,15 +23,19 @@ export const usePlaylistState = (name: string) => {
       placeholder: 'Find in songs',
     },
   })
-  const mergeTracks = async (data: any) => {
-    console.debug(`Merging tracks ${data.length} with ${tracks.length}`)
+
+  const mergeTracks: (data: any) => Promise<any[]> = async (data: any): Promise<any[]> => {
+    //console.debug(`Merging ->>>`, data)
+    console.debug(`Merging tracks ${data?.length} with ${tracks?.length}`)
     setCachedTrack(data)
     const result = reducer([...data, ...tracks])
     console.debug(`-->SongsScreen Result ${result.length}`)
     setTracks(result);
     return result;
   }
-  const handleRefresh = (refreshFunction: (owner:string, mergeTracks: any, loadError: any, offset: number) => Promise<any>) => {
+
+  const handleRefresh = (refreshFn: (owner: string | null, mergeTracks: any, loadError: any, offset: number) => Promise<any>): void => {
+    setRefreshing(true);
     console.log('-->SongsScreen refreshing')
     /*loadPlaylistData({
       onLoad: mergeTracks,
@@ -39,10 +45,10 @@ export const usePlaylistState = (name: string) => {
       updateSession: signIn,
       offset: 0
     })*/
-    refreshFunction(getSession().user_id, mergeTracks, loadError, 0)
+    refreshFn(userSession.user_id, mergeTracks, loadError, 0)
       .finally(() => setRefreshing(false))
   }
-  const logRefresh = (data: any) => {
+  const logRefresh = (data: any): any => {
     console.debug('-->!!!!logRefresh refreshing')
     signIn(data)
     return data
@@ -50,19 +56,17 @@ export const usePlaylistState = (name: string) => {
   const loadError = (error: AxiosError) => {
     console.error(`-->Tab ${name} Playlist error`, error.message, error);
 
-    if(error.status === 403){
+    if (error.status === 403) {
       console.error("==ERROR loadError REDIRECT: 403 error:", error);
       const resp = refreshToken({onLoad: logRefresh, onError: loadError,}, getSession());
       console.log("==ERROR loadError REDIRECT: 403 resp:", resp);
       //TODO: check if all fine remove null and call handleRefresh()
-      return handleRefresh(loadPlaylistData);
+      return handleRefresh(loadFriskyListData);
     }
     const errorMessage = (error.response?.data as { message?: string })?.message || error.message;
     alert(errorMessage);
     return error;
   }
-
-
 
   const filteredTracks: Track[] = useMemo(() => {
     if (!search) return tracks
@@ -78,5 +82,5 @@ export const usePlaylistState = (name: string) => {
   };
 
 
-  return {refreshing, tracks, search, filteredTracks,  handleRefresh, isCloseToBottom}
+  return {refreshing, tracks, search, filteredTracks, handleRefresh, isCloseToBottom, setRefreshing}
 }

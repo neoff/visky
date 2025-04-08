@@ -15,9 +15,14 @@ export const colors = {
 }
 
 export const modifiers = {
-  text:(Platform.OS === "ios") ? 0 : 6,
+  text:(Platform.OS === "ios") ? 0 : 8,
   icons:(Platform.OS === "ios") ? 0 : 8,
   padding:(Platform.OS === "ios") ? 0 : 5,
+  margin:(Platform.OS === "ios") ? 0 : 25,
+  width:(Platform.OS === "ios") ? 0 : 10,
+  height:(Platform.OS === "ios") ? 0 : 10,
+  image:(Platform.OS === "ios") ? 0 : 20,
+  scroll:(Platform.OS === "ios") ? 0 : 60,
 }
 
 export const size = {
@@ -56,9 +61,9 @@ export const PlayerState: IPlayerState = {
 
 
 // Routing
-export const rootPage: Href<string> = Linking.createURL('/(tabs)') as `${string}:${string}`;
-export const authPage: Href<string> = Linking.createURL('/(auth)/welcome') as `${string}:${string}`;
-export const appPage: Href<string> = Linking.createURL('/(app)') as `${string}:${string}`;
+export const rootPage: Href = Linking.createURL('/(tabs)') as `${string}:${string}`;
+export const authPage: Href = Linking.createURL('/(auth)/welcome') as `${string}:${string}`;
+export const appPage: Href = Linking.createURL('/(app)') as `${string}:${string}`;
 
 // Application headers
 export const headers = {
@@ -66,7 +71,7 @@ export const headers = {
   "accept": "*/*",
   "Content-Type": "application/json",
 }
-const _envDev = process.env.EXPO_PUBLIC_DEV || ''
+const _envDev = process.env.EXPO_PUBLIC_DEV || __DEV__
 export const __DEV = _envDev === "true" || false
 let baseHost: string = process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:3000";
 
@@ -81,7 +86,7 @@ if (__DEV) {
 }
 const redirectUrl: string = '?redirect=' + baseHost;
 
-const baseUrl: string = `${baseHost}/api`
+export const baseUrl: string = `${baseHost}/api`
 const authUrl: string = `${baseUrl}/auth`
 const playlistUrl: string = `${baseUrl}/playlist`
 const playerUrl: string = `${baseUrl}/player`
@@ -91,14 +96,13 @@ export const apiUrls = {
   playlistUrl: playlistUrl,
   playerUrl: playerUrl,
   oAuthUrl: `${authUrl}/vk-oauth`,
-  authAdminAppUrl: (__DEV) ? `${authUrl}/local${redirectUrl}` : `${authUrl}/vk`,
+  authAppUrl: (__DEV) ? `${authUrl}/local${redirectUrl}` : `${authUrl}/vk`,
   authAdminAppUrl_: `${authUrl}/vk`,
   tokenUrl: `${authUrl}/token`,
   refreshUrl: `${authUrl}/refresh`,
   profileUrl: `${authUrl}/profile`,
   friskyListUrl: `${playlistUrl}/frisky`,
-  favoritesListUrl: `${playlistUrl}/favorites`,
-  songsListUrl: `${playlistUrl}/playlist`,
+  playListUrl: `${playlistUrl}/playlist`,
   eqUrl: `${playerUrl}/equaliser`,
   statusUrl: `${playerUrl}`,
 }

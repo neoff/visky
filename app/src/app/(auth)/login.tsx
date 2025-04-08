@@ -1,10 +1,10 @@
-import {Platform, View} from "react-native";
-import {WebView} from "react-native-webview";
+import { useSession } from "@/components/SessionProvider";
+import { __DEV, apiUrls } from "@/constants";
+import { useRouter } from "expo-router";
 import React from "react";
-import {useRouter} from "expo-router";
-import {__DEV, apiUrls} from "@/constants";
-import {WebViewNavigation} from "react-native-webview/src/WebViewTypes";
-import {useSession} from "@/components/SessionProvider";
+import { Platform, View } from "react-native";
+import { WebView } from "react-native-webview";
+import { WebViewNavigation } from "react-native-webview/src/WebViewTypes";
 
 
 const LoginPage = () => {
@@ -26,23 +26,22 @@ const LoginPage = () => {
       alert("Wrong auth url, no 'token' or 'secret'")
       throw new Error("Wrong auth url, no 'token' or 'secret'");
     }
-    signIn({auth_url: redirectUrl});
+    signIn({user_id: null, auth_url: redirectUrl});
     router.dismiss()
   }
-  alert(apiUrls.authAdminAppUrl)
-  console.info("===LoginPage", apiUrls.authAdminAppUrl);
-  let urls  = apiUrls.authAdminAppUrl
+  console.info("===LoginPage", apiUrls.authAppUrl);
+  let urls  = apiUrls.authAppUrl
   console.log('baseHost:', apiUrls.baseUrl, urls, __DEV, Platform.OS)
   return (
     <View style={{flex: 1}}>
       <WebView
         originWhitelist={['*']}
-        source={{uri: apiUrls.authAdminAppUrl}}
+        source={{uri: apiUrls.authAppUrl}}
         //source={{html: html}}
         onNavigationStateChange={_onNavigationStateChange}
         //injectedJavaScript={_jsCode}
         injectedJavaScript="window.postMessage(document.title)"
-        ref={(webView) => webView}
+        //ref={(webView) => webView}
         style={{marginTop: 20}}
       />
     </View>

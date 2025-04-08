@@ -32,7 +32,7 @@
               "NSIncludesSubdomains": true,
               "NSExceptionAllowsInsecureHTTPLoads": true
             },
-            "vpn.envarg.com": {
+            "frisky.envarg.com": {
               "NSIncludesSubdomains": true,
               "NSExceptionAllowsInsecureHTTPLoads": true
             },

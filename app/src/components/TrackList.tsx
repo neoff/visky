@@ -7,6 +7,7 @@ import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
 import {useRef} from "react";
 import {FlashList, FlashListProps} from "@shopify/flash-list";
+import unknownTrackImage from '@/assets/unknown_track.png'
 
 export type TrackListProps = Partial<FlashListProps<unknown>> & {
   id: string
@@ -65,6 +66,7 @@ export const TrackList = ({
       await TrackPlayer.play()
     }
   }
+  console.log('TrackList', unknownTrackImageUri, unknownTrackImage)
   return (
     <FlashList
       data={tracks}
@@ -97,5 +99,5 @@ export const TrackList = ({
 
 
 const ItemDivider = () => {
-  return <View style={{...utilsStyles.itemSeparator, marginVertical: 9, marginLeft: 60}}/>
+  return <View style={{...utilsStyles.itemSeparator}}/>
 }

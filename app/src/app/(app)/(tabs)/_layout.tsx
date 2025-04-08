@@ -8,7 +8,7 @@ import {FloatingPlayer} from "@/components/FloatingPlayer";
 import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
-const TabsLayout = () => {
+export default function TabsLayout(){
   const {top, bottom} = useSafeAreaInsets()
   console.log("===TabsLayout");
 
@@ -51,7 +51,7 @@ const TabsLayout = () => {
           name="favorites"
           options={{
             title: 'Favorites',
-            tabBarIcon: ({color}) => (
+            tabBarIcon: ({color}: {color: string}) => (
               <FontAwesome name="heart" size={20 + modifiers.icons} color={color}/>
             ),
           }}
@@ -60,7 +60,7 @@ const TabsLayout = () => {
           name="(songs)"
           options={{
             title: 'Songs',
-            tabBarIcon: ({color}) => (
+            tabBarIcon: ({color}: {color: string}) => (
               <Ionicons name="musical-notes-sharp" size={24 + modifiers.icons} color={color}/>
             ),
           }}
@@ -69,14 +69,14 @@ const TabsLayout = () => {
           name="artists"
           options={{
             title: 'Artists',
-            tabBarIcon: ({color}) => <FontAwesome6 name="users-line" size={20 + modifiers.icons} color={color}/>,
+            tabBarIcon: ({color}: {color: string}) => <FontAwesome6 name="users-line" size={20 + modifiers.icons} color={color}/>,
           }}
         />
         <Tabs.Screen
           name="settings"
           options={{
             title: 'Settings',
-            tabBarIcon: ({color}) => (
+            tabBarIcon: ({color}: {color: string}) => (
               <MaterialCommunityIcons name="account" size={28 + modifiers.icons} color={color}/>
             ),
           }}
@@ -88,11 +88,9 @@ const TabsLayout = () => {
           position: 'absolute',
           left: 8,
           right: 8,
-          bottom: bottom+78,
+          bottom: bottom+96,
         }}
       />
     </>
   )
 }
-
-export default TabsLayout

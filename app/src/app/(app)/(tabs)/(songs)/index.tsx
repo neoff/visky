@@ -1,18 +1,21 @@
 import {TrackList} from "@/components/TrackList"
-import {screenPadding} from "@/constants"
+import {modifiers, screenPadding} from "@/constants"
 import {trackTitleFilter} from '@/helpers/filter'
 import {generateTracksListId, reducer} from '@/helpers/miscellaneous'
-import {loadFavoriveData, loadPlaylistData} from "@/helpers/network"
+import {loadPlayListData, loadFriskyListData} from "@/helpers/network"
 import {TrackWithPlaylist} from "@/helpers/types"
 import {useNavigationSearch} from '@/hooks/useNavigationSearch'
 import {storage} from '@/store/library'
 import {defaultStyles} from '@/styles'
 import {useEffect, useMemo, useRef, useState} from 'react'
-import {ActivityIndicator, NativeScrollEvent, RefreshControl, ScrollView, View} from 'react-native'
+import {ActivityIndicator, NativeScrollEvent, RefreshControl, ScrollView, StatusBar, View} from 'react-native'
 import {useMMKVStorage} from "react-native-mmkv-storage"
 import {Track} from 'react-native-track-player'
 import {useSession} from "@/components/SessionProvider";
 import {usePlaylistState} from "@/hooks/usePlaylistState";
+import {useSearchStore} from "@/hooks/useSearchStore";
+import Animated, {useAnimatedRef, useSharedValue, useAnimatedScrollHandler} from "react-native-reanimated";
+import {AnimatedSearchHeader} from "@/components/AnimatedSearchHeader";
 
 
 const SongsScreen = () => {
@@ -103,7 +106,7 @@ const SongsScreen = () => {
 
 
   const refreshFn = () => {
-    handleRefresh(loadPlaylistData);
+    handleRefresh(loadFriskyListData);
   }
 
   useEffect(() => {
@@ -114,28 +117,67 @@ const SongsScreen = () => {
 
   }, []);
 
-  return (
-    <View style={defaultStyles.container}>
-      {refreshing ? <ActivityIndicator/> : null}
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={{paddingHorizontal: screenPadding.horizontal}}
+  const searchs = useNavigationSearch({
+    searchBarOptions: {
+      placeholder: 'Find in songs',
+    },
+  })
+  const filteredTrack: Track[] = useMemo(() => {
+    if (!searchs) return tracks
+    return tracks.filter(trackTitleFilter(searchs))
+  }, [searchs, tracks])
 
-        scrollEventThrottle={500}
+  const query = useSearchStore((s) => s.query)
+  const filteredSongs = tracks.filter(() =>{
+    if (!searchs) return tracks
+    return tracks.filter(trackTitleFilter(query.toLowerCase()))
+  })
+
+  //const scrollRef = useAnimatedRef<ScrollView>();
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+  const HEADER_HEIGHT = 130 + modifiers.scroll;
+
+
+  const isFetchingMore = useRef(false);
+
+  return (
+    <View style={{...defaultStyles.container}}>
+      <StatusBar translucent barStyle="light-content" backgroundColor="rgba(0, 0, 0, 0.251)"/>
+      <AnimatedSearchHeader
+        title="Songs"
+        placeholder="Find in songs"
+        onSearchChange={(text) => useSearchStore.getState().setQuery(text)}
+        scrollY={scrollY}
+      />
+      <Animated.ScrollView
+        ref={scrollRef}
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentInsetAdjustmentBehavior="automatic"
+        style={{ paddingHorizontal: screenPadding.horizontal, flex: 1, backgroundColor: 'transparent' }}
+        contentContainerStyle={{ paddingTop: HEADER_HEIGHT, minHeight: '100%', }}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refreshFn} // exl in function : this.yourWebview.reload();
-          />
-        }
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={refreshFn}
+          tintColor="white"
+          progressViewOffset={HEADER_HEIGHT}
+          colors={['white']} />
+      }
       >
         <TrackList
-          id={generateTracksListId('songs', tracks.length, search)}
-          tracks={filteredTracks}
+          id={generateTracksListId('songs', tracks.length, searchs)}
+          tracks={filteredSongs}
           scrollEnabled={false}
           refresh={!refreshing}
         />
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   )
 }

@@ -5,10 +5,11 @@ import React, {useCallback, useRef, useState} from "react";
 import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 import {useLogTrackPlayerState} from "@/hooks/useLogTrackPlayerState";
 import {useSession} from "@/components/SessionProvider";
+import {AuthFragments} from "@/types/auth";
 
 export default function AppLayout() {
   const { getSession, isLoading } = useSession();
-  const userSession = getSession();
+  const userSession: AuthFragments = getSession() as AuthFragments;
 
   if (isLoading) {
     console.log("--AppLayout=Loading...");
@@ -17,7 +18,7 @@ export default function AppLayout() {
 
   // Only require authentication within the (app) group's layout as users
   // need to be able to access the (auth) group and sign in again.
-  if ( !userSession ) {
+  if (!userSession || !userSession.access_token || !userSession.secret || !userSession.user_id) {
     // On web, static rendering will stop here as the user is not authenticated
     // in the headless Node process that the pages are rendered in.
     console.log("--AppLayout=Redirect to ", authPage);
@@ -33,7 +34,7 @@ export default function AppLayout() {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      {/*<Stack.Screen
+      <Stack.Screen
         name="player"
         options={{
           presentation: 'card',
@@ -43,7 +44,7 @@ export default function AppLayout() {
           headerShown: false,
           headerLeft: () => <Button onPress={handleDismiss} title="Close" />,
         }}
-      />*/}
+      />
     </Stack>
   )
 

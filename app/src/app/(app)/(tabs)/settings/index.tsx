@@ -4,6 +4,7 @@ import React from "react";
 import Icon from "react-native-vector-icons/FontAwesome";
 import {router} from "expo-router";
 import {useSession} from "@/components/SessionProvider";
+import {apiUrls} from "@/constants";
 
 
 const SettingsScreen = (
@@ -36,6 +37,11 @@ const SettingsScreen = (
         <View style={welcomeStyles.avatar}>
           <Image source={{uri: state.user?.avatar}} style={welcomeStyles.avatarImage}/>
         </View>
+
+        <Text style={welcomeStyles.text}>
+
+          App url, {apiUrls.baseUrl}
+        </Text>
       </View>
     </View>
   )
