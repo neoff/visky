@@ -1,14 +1,16 @@
-import {Redirect, Stack, useRouter} from "expo-router";
-import React, {useState} from "react";
-import {Button} from "react-native";
-import {getAuth} from "@/helpers/network";
-import {AuthFragments, useSession} from "@/components/SessionProvider";
+import { useSession } from "@/components/SessionProvider";
+import { getAuth } from "@/helpers/network";
+import { AuthFragments } from "@/types/auth";
+import { Redirect, Stack, useRouter } from "expo-router";
+import React, { useState } from "react";
+import { Button } from "react-native";
+import {apiUrls} from "@/constants";
 
 const AuthLayout = () => {
   const { signIn, signOut, getSession, auth_url, isLoading } = useSession();
   const [authorized, setAuthorized] = useState<AuthFragments|boolean>(false);
   const router = useRouter();
-  const userSession = getSession();
+  const userSession: AuthFragments = getSession() as AuthFragments;
   if (isLoading) {
     console.log("--AuthLayout=Loading...");
     return null;
@@ -25,7 +27,7 @@ const AuthLayout = () => {
     setAuthorized(true)
     //signOut();
     console.warn("=======LOADED getAnswer=========", fragments)
-    if(fragments.session) {
+    if (fragments?.access_token && fragments?.secret && fragments?.user_id) {
       //signIn({session:fragments, auth_url: null});
       signIn(fragments);
     }
@@ -40,6 +42,7 @@ const AuthLayout = () => {
   const handleDismiss = () => {
     router.dismiss()
   };
+  const titleUrl = apiUrls.baseUrl
 
   return (
     <Stack>
@@ -48,6 +51,7 @@ const AuthLayout = () => {
         name="login"
         options={{
           presentation: 'modal',
+          title: titleUrl,
           headerLeft: () => <Button onPress={handleDismiss} title="Close" />,
         }}
       />

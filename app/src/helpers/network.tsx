@@ -1,4 +1,3 @@
-import {AuthFragments} from "@/components/SessionProvider";
 import {apiUrls, headers} from "@/constants";
 import {unknownTrackImageUri} from "@/constants/images";
 import {TrackWithPlaylist} from "@/helpers/types";
@@ -81,72 +80,44 @@ export const refreshToken = ({onLoad, onError}: {onLoad?: (res: any) => void, on
     });
 }
 
-export const loadPlaylistData = (owner:string, onLoad?: (res: any) => any, onError?: (error: any) => void, offset: number = 0) => {
+export const loadFriskyListData = async (owner: string | null, onLoad?: (res: any) => any, onError?: (error: any) => void, offset: number = 0) : Promise<any> => {
   console.info(`GET ${apiUrls.friskyListUrl}?count=100&offset=0`);
-  return apiRequest(`${apiUrls.friskyListUrl}?count=100&offset=${offset}`, 'GET', {})
-    .then((data) => {
-      //console.log("--->loadPlaylistData-response:", data);
-      const items = data?.items.map((item: TrackWithPlaylist) => ({
-        ...item,
-        date: item?.date?.toString(),
-        type: TrackType.HLS,
-        album: item?.album?.title ?? 'Unknown Album',
-        artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
-      }))
-      return onLoad?.(items);
-      //return data;
-    })
-    .catch((error: AxiosError)  => {
-      console.error(`===ERROR! loadPlaylistData:${error}`);
-      throw onError?.(error);
-    });
+  try {
+    const data = await apiRequest(`${apiUrls.friskyListUrl}?count=100&offset=${offset}`, 'GET', {});
+    console.log("--->loadPlaylistData-response:", data);
+    const items = data?.items?.map((item: TrackWithPlaylist) => ({
+      ...item,
+      date: item?.date?.toString(),
+      type: TrackType.HLS,
+      album: item?.album?.title ?? 'Unknown Album',
+      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+    }))
+    return onLoad?.(items);
+    //return data;
+  } catch (error) {
+    console.error(`===ERROR! loadPlaylistData:${error}`);
+    throw onError?.(error);
+  }
 };
 
-export const loadFavoriveData = (owner:string, onLoad?: (fragments: any) => any, onError?: (error: any) => void, offset: number = 0) => {
-  const url = `${apiUrls.favoritesListUrl}?count=100&offset=${offset}&owner=${owner}`;
+export const loadPlayListData = async (owner: string, onLoad?: (fragments: any) => any, onError?: (error: any) => void, offset: number = 0) => {
+  const url = `${apiUrls.playListUrl}?count=100&offset=${offset}&owner=${owner}`;
   console.info(`GET ${url}`);
-  return apiRequest(url, 'GET', {})
-    .then((data) => {
-      //console.log("--->loadFavoriveData-response:", data);
-      const items = data?.items.map((item: TrackWithPlaylist) => ({
-        ...item,
-        date: item?.date?.toString(),
-        type: TrackType.HLS,
-        album: item?.album?.title ?? 'Unknown Album',
-        artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
-      }))
-      return onLoad?.(items);
-      //return data;
-    })
-    .catch((error: AxiosError)  => {
-      console.error(`===ERROR! loadFavoriveData:${error}`);
-      onError?.(error);
-      throw error;
-    });
+  try {
+    let data = await apiRequest(url, 'GET', {});
+    //console.log("--->loadFavoriteData-response:", data);
+    const items = data?.items?.map((item: TrackWithPlaylist) => ({
+      ...item,
+      date: item?.date?.toString(),
+      type: TrackType.HLS,
+      album: item?.album?.title ?? 'Unknown Album',
+      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+    }))
+    return onLoad?.(items);
+    //return data;
+  } catch (error) {
+    console.error(`===ERROR! loadFavoriteData:${error}`);
+    onError?.(error);
+    throw error;
+  }
 };
-
-
-
-/*
-const authOf = async (url: string) => {
-  return await axios
-    .get(url, {headers: headers})
-    .then(response => {
-      return response.data;
-    })
-    .catch(error => {
-      throw error;
-    })
-
-}
-export const getAuthOfficial = ({onLoad}: {onLoad?: (fragments: any) => void}) => {
-  authOf(apiUrls.authFormUrl)
-    .then((data) => {
-      //console.log("======HAVE RESPONSE!", data);
-      onLoad?.(data);
-    })
-    .catch((error) => {
-      console.error("auth error", error);
-      //signOut();
-    })
-}*/

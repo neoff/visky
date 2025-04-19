@@ -1,21 +1,21 @@
-import {useContext, createContext, type PropsWithChildren} from 'react';
-import {useStorageState} from "@/hooks/useStorageState";
+import { useStorageState } from "@/hooks/useStorageState";
+import { AuthFragments } from "@/types/auth";
+import { createContext, useContext, type PropsWithChildren } from 'react';
 
-export type AuthFragments = {
-  session?: string | null;
-  [key: string]: any;
-};
 
-const AuthContext = createContext<AuthFragments & {
+const AuthContext = createContext<{
   auth_url?: string | null;
+  session: string | null;
   isLoading: boolean;
-  signIn: (param: AuthFragments) => void;
+  signIn: (param: AuthFragments & {auth_url?: string | null}) => void;
   signOut: () => void;
+  getSession: () => AuthFragments | null;
 }>({
   isLoading: false,
+  session: null,
   signIn: (param: AuthFragments) => null,
   signOut: () => null,
-  getSession: (): {} | null => null,
+  getSession: () : AuthFragments | null => null,
 });
 
 // This hook can be used to access the user info.
@@ -34,17 +34,17 @@ export function SessionProvider({children}: PropsWithChildren) {
   return (
     <AuthContext.Provider
       value={{
-        signIn: (param: AuthFragments) => {
+        signIn: (param: AuthFragments & {auth_url?: string | null;}) => {
           // Perform sign-in logic here
-          param.session?setSession(JSON.stringify(param.session)):null;
-          setAuthUrl(param.auth_url);
+          (param?.access_token && param?.secret && param?.user_id)?setSession(JSON.stringify(param)):null;
+          setAuthUrl(param.auth_url??null);
         },
         signOut: () => {
           setSession(null);
           setAuthUrl(null);
 
         },
-        getSession: (): {} => {
+        getSession: (): AuthFragments => {
           return  session?JSON.parse(session):null;
         },
         auth_url,

@@ -8,7 +8,7 @@ import {Track} from "react-native-track-player";
 import {trackTitleFilter} from "@/helpers/filter";
 import {storage} from "@/store/library";
 import {useNavigationSearch} from "@/hooks/useNavigationSearch";
-import {loadFavoriveData} from "@/helpers/network";
+import {loadPlayListData} from "@/helpers/network";
 import {useSession} from "@/components/SessionProvider";
 import {useMMKVStorage} from "react-native-mmkv-storage";
 import {TrackWithPlaylist} from "@/helpers/types";
@@ -58,7 +58,7 @@ const FavoriteScreen = () => {
         return tracks.filter(trackTitleFilter(search))
     }, [search, tracks])*/
     const refreshFn = () => {
-        handleRefresh(loadFavoriveData);
+        handleRefresh(loadPlayListData);
     }
     useEffect(() => {
         if(!tracks.length)

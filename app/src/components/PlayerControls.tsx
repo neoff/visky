@@ -1,6 +1,6 @@
 import {TouchableOpacity, View, ViewStyle} from "react-native";
 import TrackPlayer, {useIsPlaying} from "react-native-track-player";
-import {FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
+import {AntDesign, FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {colors} from "@/constants";
 import {playerControlStyle} from "@/styles";
 
@@ -77,6 +77,17 @@ export const SkipToPreviousButton = ({ iconSize = 40 }: PlayerButtonProps) => {
   return (
     <TouchableOpacity activeOpacity={0.7} onPress={() => TrackPlayer.skipToPrevious()}>
       <Ionicons name={'play-skip-back'} size={iconSize} color={colors.text} />
+    </TouchableOpacity>
+  )
+}
+
+export const FavoritesButton = ({ type, iconSize = 40 }: PlayerButtonProps) => {
+  return (
+    <TouchableOpacity activeOpacity={0.7} onPress={() => TrackPlayer.skipToNext()}>
+      {type === PlayerButtonType.SMALL
+        ? <AntDesign name="hearto" size={iconSize} color={colors.text} />
+        : <AntDesign name="heart" size={iconSize} color={colors.text} />
+      }
     </TouchableOpacity>
   )
 }

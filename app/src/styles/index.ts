@@ -10,6 +10,20 @@ export const defaultStyles = StyleSheet.create({
     fontSize: fonts.base,
     color: colors.text,
   },
+
+  screenContainer: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  stretch: {
+    alignSelf: 'stretch',
+  },
+  stretchContainer: {
+    alignSelf: 'stretch',
+    flex: 1,
+  },
 })
 
 export const utilsStyles = StyleSheet.create({
@@ -26,59 +40,24 @@ export const utilsStyles = StyleSheet.create({
     borderColor: colors.textMuted,
     borderWidth: StyleSheet.hairlineWidth,
     opacity: 0.3,
+    marginVertical: 10 + modifiers.padding,
+    marginLeft: 60 + modifiers.margin,
   },
   emptyContentText: {
     ...defaultStyles.text,
     color: colors.textMuted,
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 20 + modifiers.padding,
   },
   emptyContentImage: {
     width: 200,
     height: 200,
     alignSelf: 'center',
-    marginTop: 40,
+    marginTop: 40 + modifiers.padding,
     opacity: 0.3,
   },
 })
 
-export const trackListStyles = StyleSheet.create({
-  trackItemContainer: {
-    flexDirection: 'row',
-    columnGap: 14,
-    alignItems: 'center',
-    paddingRight: 20,
-  },
-  trackPlayingIconIndicator: {
-    position: 'absolute',
-    top: 18,
-    left: 16,
-    width: 16,
-    height: 16,
-  },
-  trackPausedIndicator: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-  },
-  trackArtworkImage: {
-    borderRadius: 8,
-    width: 50,
-    height: 50,
-  },
-  trackTitleText: {
-    ...defaultStyles.text,
-    fontSize: fonts.sm,
-    fontWeight: '600',
-    maxWidth: '90%',
-  },
-  trackArtistText: {
-    ...defaultStyles.text,
-    color: colors.textMuted,
-    fontSize: 14,
-    marginTop: 4,
-  },
-})
 export const progressBarStyles = StyleSheet.create({
   timeRow: {
     flexDirection: 'row',

@@ -1,11 +1,12 @@
 import {unknownTrackImageUri} from "@/constants/images"
-import {colors} from "@/constants"
-import {trackListStyles} from "@/styles"
-import {Text, TouchableHighlight, View} from "react-native"
+import {colors, fonts, modifiers} from "@/constants"
+import {defaultStyles} from "@/styles"
+import {StyleSheet, Text, TouchableHighlight, View} from "react-native"
 import FastImage from "react-native-fast-image"
 import LoaderKit from 'react-native-loader-kit'
 import {Track, useActiveTrack, useIsPlaying} from "react-native-track-player";
 import {Entypo, Ionicons} from "@expo/vector-icons";
+import dayjs from "dayjs";
 
 export type TracksListItemProps = {
   track: Track
@@ -16,12 +17,12 @@ export const TrackListItem = ({
                                 track,
                                 onTrackSelect: handleTrackSelect,
                               }: TracksListItemProps) => {
-  const { playing } = useIsPlaying()
+  const {playing} = useIsPlaying()
   const isActiveTrack = useActiveTrack()?.url === track.url
 
   return (
     <TouchableHighlight onPress={() => handleTrackSelect(track)}>
-      <View style={trackListStyles.trackItemContainer}>
+      <View style={styles.trackItemContainer}>
         <View>
           <FastImage
             source={{
@@ -29,21 +30,21 @@ export const TrackListItem = ({
               priority: FastImage.priority.normal,
             }}
             style={{
-              ...trackListStyles.trackArtworkImage,
-              opacity: !track.url?0.4:isActiveTrack ? 0.6 : 1,
+              ...styles.trackArtworkImage,
+              opacity: !track.url ? 0.4 : isActiveTrack ? 0.6 : 1,
             }}
           />
 
           {isActiveTrack &&
             (playing ? (
               <LoaderKit
-                style={trackListStyles.trackPlayingIconIndicator}
+                style={styles.trackPlayingIconIndicator}
                 name="LineScaleParty"
                 color={colors.icon}
               />
             ) : (
               <Ionicons
-                style={trackListStyles.trackPausedIndicator}
+                style={styles.trackPausedIndicator}
                 name="play"
                 size={24}
                 color={colors.icon}
@@ -60,24 +61,79 @@ export const TrackListItem = ({
           {/* Track title + artist */}
           <View style={{width: '100%'}}>
             <Text numberOfLines={1} style={{
-              ...trackListStyles.trackTitleText,
-              color: !track.url?colors.textMuted:isActiveTrack ? colors.primary : colors.text,
-              textDecorationLine: !track.url?'line-through':'none',
+              ...styles.trackTitleText,
+              color: !track.url ? colors.textMuted : isActiveTrack ? colors.primary : colors.text,
+              textDecorationLine: !track.url ? 'line-through' : 'none',
             }}>
               {track.title}
             </Text>
-            {track.artist && (
-              <Text numberOfLines={1} style={{
-                ...trackListStyles.trackArtistText,
-                color: !track.url?colors.textMutedDarker:colors.textMuted,
-              }}>
-                {track.artist}
-              </Text>
-            )}
+
+            <View style={{
+              flex: 1,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              {track.artist && (
+                <Text numberOfLines={1} style={{
+                  ...styles.trackArtistText,
+                  color: !track.url ? colors.textMutedDarker : colors.textMuted,
+                }}>
+                  {track.artist}
+                </Text>
+              )}
+              <View style={{alignItems: 'flex-end'}}>
+                <Text numberOfLines={1} style={{
+                  ...styles.trackArtistText,
+                  color: !track.url ? colors.textMutedDarker : colors.textMuted,
+                }}>
+                  {dayjs.unix(Number(track.date)).format('DD.MM.YYYY')}
+                </Text>
+              </View>
+            </View>
           </View>
           <Entypo name="dots-three-horizontal" size={18} color={colors.icon}/>
         </View>
       </View>
     </TouchableHighlight>
   )
-}
+};
+
+const styles = StyleSheet.create({
+  trackItemContainer: {
+    flexDirection: 'row',
+    columnGap: 14 + modifiers.padding,
+    alignItems: 'center',
+    paddingRight: 20 + modifiers.padding,
+  },
+  trackPlayingIconIndicator: {
+    position: 'absolute',
+    top: 18,
+    left: 28,
+    width: 16,
+    height: 16,
+  },
+  trackPausedIndicator: {
+    position: 'absolute',
+    top: 14,
+    left: 24,
+  },
+  trackArtworkImage: {
+    borderRadius: 8,
+    marginLeft: 10 + modifiers.padding,
+    width: 50 + modifiers.image,
+    height: 50 + modifiers.image,
+  },
+  trackTitleText: {
+    ...defaultStyles.text,
+    fontSize: fonts.sm,
+    fontWeight: '600',
+    maxWidth: '90%',
+  },
+  trackArtistText: {
+    ...defaultStyles.text,
+    color: colors.textMuted,
+    fontSize: 14 + modifiers.text,
+    marginTop: 4  + modifiers.padding,
+  },
+})

@@ -32,7 +32,7 @@
               "NSIncludesSubdomains": true,
               "NSExceptionAllowsInsecureHTTPLoads": true
             },
-            "vpn.envarg.com": {
+            "frisky.envarg.com": {
               "NSIncludesSubdomains": true,
               "NSExceptionAllowsInsecureHTTPLoads": true
             },
@@ -42,7 +42,8 @@
             }
           }
         }
-      }
+      },
+      "appleTeamId": "N853W9Q344"
     },
     "android": {
       "ndkVersion": "26.3.11579264",
