@@ -9,11 +9,12 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated'
+import {TextStyle} from "react-native";
 
 export type MovingTextProps = {
   text: string
   animationThreshold: number
-  style?: StyleProps
+  style: TextStyle
 }
 
 export const MovingText = ({ text, animationThreshold, style }: MovingTextProps) => {

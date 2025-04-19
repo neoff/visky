@@ -58,44 +58,6 @@ export const utilsStyles = StyleSheet.create({
   },
 })
 
-export const trackListStyles = StyleSheet.create({
-  trackItemContainer: {
-    flexDirection: 'row',
-    columnGap: 14 + modifiers.padding,
-    alignItems: 'center',
-    paddingRight: 20 + modifiers.padding,
-  },
-  trackPlayingIconIndicator: {
-    position: 'absolute',
-    top: 18,
-    left: 16,
-    width: 16,
-    height: 16,
-  },
-  trackPausedIndicator: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-  },
-  trackArtworkImage: {
-    borderRadius: 8,
-    marginLeft: 10 + modifiers.padding,
-    width: 50 + modifiers.image,
-    height: 50 + modifiers.image,
-  },
-  trackTitleText: {
-    ...defaultStyles.text,
-    fontSize: fonts.sm,
-    fontWeight: '600',
-    maxWidth: '90%',
-  },
-  trackArtistText: {
-    ...defaultStyles.text,
-    color: colors.textMuted,
-    fontSize: 14 + modifiers.text,
-    marginTop: 4  + modifiers.padding,
-  },
-})
 export const progressBarStyles = StyleSheet.create({
   timeRow: {
     flexDirection: 'row',

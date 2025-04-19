@@ -16,9 +16,14 @@ import {usePlaylistState} from "@/hooks/usePlaylistState";
 import {useSearchStore} from "@/hooks/useSearchStore";
 import Animated, {useAnimatedRef, useSharedValue, useAnimatedScrollHandler} from "react-native-reanimated";
 import {AnimatedSearchHeader} from "@/components/AnimatedSearchHeader";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 
 const SongsScreen = () => {
+  const { top, bottom } = (() => {
+    const insets = useSafeAreaInsets()
+    return { top: insets.top + modifiers.safe, bottom: insets.bottom + modifiers.safe }
+  })()
   const {refreshing, search, tracks, filteredTracks, handleRefresh} = usePlaylistState('tracks')
   //const updateOffset = useRef<boolean>(false)
 
@@ -141,7 +146,7 @@ const SongsScreen = () => {
       scrollY.value = event.contentOffset.y;
     },
   });
-  const HEADER_HEIGHT = 130 + modifiers.scroll;
+  const HEADER_HEIGHT = top + 110 + modifiers.scroll;
 
 
   const isFetchingMore = useRef(false);
@@ -158,9 +163,9 @@ const SongsScreen = () => {
       <Animated.ScrollView
         ref={scrollRef}
         onScroll={scrollHandler}
-        scrollEventThrottle={16}
+        scrollEventThrottle={1}
         contentInsetAdjustmentBehavior="automatic"
-        style={{ paddingHorizontal: screenPadding.horizontal, flex: 1, backgroundColor: 'transparent' }}
+        style={{ flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ paddingTop: HEADER_HEIGHT, minHeight: '100%', }}
         refreshControl={
         <RefreshControl

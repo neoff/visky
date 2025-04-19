@@ -9,7 +9,10 @@ import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 export default function TabsLayout(){
-  const {top, bottom} = useSafeAreaInsets()
+  const { top, bottom } = (() => {
+    const insets = useSafeAreaInsets()
+    return { top: insets.top, bottom: insets.bottom + modifiers.safe }
+  })()
   console.log("===TabsLayout");
 
   return (
@@ -19,7 +22,7 @@ export default function TabsLayout(){
           tabBarActiveTintColor: colors.primary,
           tabBarLabelStyle: {
             fontSize: fonts.xs,
-            fontWeight: fonts.weight as 500 | 600,
+            fontWeight: fonts.weight,
           },
           headerShown: false,
           tabBarStyle: {
@@ -88,7 +91,7 @@ export default function TabsLayout(){
           position: 'absolute',
           left: 8,
           right: 8,
-          bottom: bottom+96,
+          bottom: bottom+44,
         }}
       />
     </>

@@ -15,14 +15,15 @@ export const colors = {
 }
 
 export const modifiers = {
-  text:(Platform.OS === "ios") ? 0 : 8,
-  icons:(Platform.OS === "ios") ? 0 : 8,
+  text:(Platform.OS === "ios") ? 0 : 5,
+  icons:(Platform.OS === "ios") ? 0 : 5,
   padding:(Platform.OS === "ios") ? 0 : 5,
   margin:(Platform.OS === "ios") ? 0 : 25,
   width:(Platform.OS === "ios") ? 0 : 10,
   height:(Platform.OS === "ios") ? 0 : 10,
   image:(Platform.OS === "ios") ? 0 : 20,
   scroll:(Platform.OS === "ios") ? 0 : 60,
+  safe:(Platform.OS === "ios") ? 0 : 52,
 }
 
 export const size = {
@@ -35,7 +36,7 @@ export const fonts = {
   sm: 16 + modifiers.text,
   base: 20 + modifiers.text,
   lg: 24 + modifiers.text,
-  weight: (Platform.OS === "ios") ? 500 : 600,
+  weight: 600,
 }
 
 
@@ -48,7 +49,7 @@ export const screen = {
 }*/
 
 export const screenPadding = {
-  horizontal: 24,
+  horizontal: 24 + modifiers.padding,
 }
 
 export interface IPlayerState {

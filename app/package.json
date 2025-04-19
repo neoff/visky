@@ -5,6 +5,7 @@
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "ios:release": "expo run:ios --device --configuration Release",
     "macos": "expo run:macos",
     "lint": "eslint .",
     "postinstall": "patch-package"

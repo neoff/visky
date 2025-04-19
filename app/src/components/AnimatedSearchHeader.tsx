@@ -1,15 +1,25 @@
 // AnimatedSearchHeader.tsx
-import {TextInput, View, Text, Platform, Pressable, StyleSheet, TouchableOpacity} from 'react-native';
+import {
+  TextInput,
+  View,
+  Text,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  LayoutChangeEvent
+} from 'react-native';
 import {BlurView} from 'expo-blur';
 import Animated, {
   Extrapolation,
   SharedValue,
   interpolate,
   useAnimatedStyle,
-  useSharedValue,
+  useSharedValue, runOnUI,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Ionicons';
-import {colors} from "@/constants";
+import {colors, modifiers} from "@/constants";
 import {Ionicons} from "@expo/vector-icons";
 import {useCallback, useRef, useState} from "react";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
@@ -21,33 +31,79 @@ interface AnimatedSearchHeaderProps {
   scrollY: SharedValue<number>;
 }
 
+
 export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
                                                                             title,
                                                                             placeholder,
                                                                             onSearchChange,
                                                                             scrollY,
                                                                           }) => {
+
+
+  const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
   const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState('');
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
   const inputRef = useRef<TextInput>(null)
+  const [titleWidth, setTitleWidth] = useState(0);
 
+  const handleTitleLayout = (event: LayoutChangeEvent) => {
+    const {width} = event.nativeEvent.layout;
+    setTitleWidth(width);
+  };
+  const screenWidth = Dimensions.get('window').width - insets.left - insets.right;
+
+  const header = {
+    paddingTop: insets.top + 1 + modifiers.padding,
+    paddingBottom: 12 + modifiers.padding
+  }
+  const titleBox = {
+    marginBottom: 12 + modifiers.margin,
+  }
+  const searchBox = {
+    height: 48 + modifiers.height,
+  }
+  const paddingWidth = styles.header.paddingHorizontal;
+  const headerHeight = header.paddingTop
+    + header.paddingBottom
+    + styles.title.fontSize
+    + titleBox.marginBottom
+    + searchBox.height
+    + styles.searchBox.paddingVertical
+    + styles.input.paddingVertical;
+  const headerHeightSmall = header.paddingTop
+    + header.paddingBottom
+    + styles.input.paddingVertical;
+  //insets.top +
+  //ANIMATION
   const headerAnimatedStyle = useAnimatedStyle(() => {
-    const translateY = interpolate(scrollY.value, [0, 80], [0, -20], Extrapolation.CLAMP);
-    const scale = interpolate(scrollY.value, [0, 80], [1, 0.75], Extrapolation.CLAMP);
-    const translateX = interpolate(scrollY.value, [0, 80], [0, -20], Extrapolation.CLAMP);
+    const scale = interpolate(scrollY.value, [0, 80], [1, 0.50], Extrapolation.CLAMP);
+    const translateY = interpolate(scrollY.value, [0, 80], [0, -15], Extrapolation.CLAMP);
+    const centerOffsetX = (screenWidth - titleWidth * scale) / 4 - paddingWidth;
+    const translateX = interpolate(scrollY.value, [0, 80], [0, centerOffsetX], Extrapolation.CLAMP);
 
     return {
       transform: [{translateY}, {translateX}, {scale}],
+      marginBottom: interpolate(scrollY.value, [0, 30], [titleBox.marginBottom, 0], Extrapolation.CLAMP),
     };
   });
 
+  const containerAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      height: interpolate(scrollY.value, [0, 80], [headerHeight, headerHeightSmall], Extrapolation.CLAMP),
+      paddingTop: interpolate(scrollY.value, [0, 80], [header.paddingTop, insets.top], Extrapolation.CLAMP),
+      paddingHorizontal: styles.header.paddingHorizontal,
+      paddingBottom: interpolate(scrollY.value, [0, 80], [header.paddingBottom, 0], Extrapolation.CLAMP),
+    };
+
+  });
   const searchAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 40], [1, 0], Extrapolation.CLAMP),
-    height: interpolate(scrollY.value, [0, 40], [48, 0], Extrapolation.CLAMP),
-    marginTop: interpolate(scrollY.value, [0, 40], [12, 0], Extrapolation.CLAMP),
+    opacity: interpolate(scrollY.value, [0, 30], [1, 0], Extrapolation.CLAMP),
+    height: interpolate(scrollY.value, [0, 30], [searchBox.height, 0], Extrapolation.CLAMP),
+    marginBottom: interpolate(scrollY.value, [0, 30], [titleBox.marginBottom, 0], Extrapolation.CLAMP),
   }));
+
   const handleChangeText = useCallback(
     (text: string) => {
       setSearchText(text);
@@ -62,18 +118,20 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
   };
 
   return (
-    <BlurView
+    <AnimatedBlurView
       intensity={95}
       tint={'dark'}
       experimentalBlurMethod={'dimezisBlurView'}
-      style={styles.header}
+      style={[{
+        ...styles.header,
+      },containerAnimatedStyle]}
     >
       <Animated.View style={[{alignItems: 'flex-start'}, headerAnimatedStyle]}>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} onLayout={handleTitleLayout}>{title}</Text>
       </Animated.View>
 
       <Animated.View style={[searchAnimatedStyle]}>
-        <View style={styles.searchBox} >
+        <View style={styles.searchBox}>
           <Ionicons name="search" size={20} color={colors.textMutedDarker}/>
           <TextInput
             placeholder={placeholder || 'Search'}
@@ -91,7 +149,7 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
           )}
         </View>
       </Animated.View>
-    </BlurView>
+    </AnimatedBlurView>
   );
 };
 
@@ -101,22 +159,17 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    paddingTop: 60,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
     zIndex: 10,
-
+    paddingHorizontal: 16 + modifiers.padding
   },
   title: {
-    fontSize: 32,
+    fontSize: 32 + modifiers.text,
     fontWeight: "bold",
     color: colors.text,
-    marginBottom: 12,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 48,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -126,10 +179,10 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.background,
     color: colors.text,
-    paddingHorizontal: 16,
+    paddingHorizontal: 16 + modifiers.padding,
     paddingVertical: 10,
     borderRadius: 12,
-    fontSize: 16,
+    fontSize: 16 + modifiers.text,
     flex: 1,
   },
 });

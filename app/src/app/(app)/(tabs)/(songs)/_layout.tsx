@@ -1,7 +1,6 @@
 import {defaultStyles} from "@/styles"
 import {Stack} from "expo-router"
 import {View} from "react-native"
-import {withSearchHeader} from "@/hooks/withSearchHeader";
 
 const SongsScreenLayout = () => {
   console.log("===SongsScreenLayout");

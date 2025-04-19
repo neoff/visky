@@ -1,5 +1,5 @@
 import {MovingText} from "@/components/MovingText";
-import {PlayerButtonType, PlayPauseButton, SkipToNextButton} from "@/components/PlayerControls";
+import {FavoritesButton, PlayerButtonType, PlayPauseButton, SkipToNextButton} from "@/components/PlayerControls";
 import {unknownTrackImageUri} from "@/constants/images";
 import {useLastActiveTrack} from "@/hooks/useLastActiveTrack";
 import {defaultStyles} from "@/styles";
@@ -7,6 +7,9 @@ import {useRouter} from "expo-router";
 import {StyleSheet, TouchableOpacity, View, ViewProps} from "react-native";
 import FastImage from "react-native-fast-image";
 import {useActiveTrack} from "react-native-track-player";
+import {modifiers} from "@/constants";
+import {FontAwesome} from "@expo/vector-icons";
+import React from "react";
 
 export const FloatingPlayer = ({style}: ViewProps) => {
   const router = useRouter()
@@ -39,8 +42,9 @@ export const FloatingPlayer = ({style}: ViewProps) => {
         </View>
 
         <View style={styles.trackControlsContainer}>
-          <PlayPauseButton iconSize={24} type={PlayerButtonType.SMALL}/>
-          <SkipToNextButton iconSize={22} type={PlayerButtonType.SMALL}/>
+          <FavoritesButton iconSize={24 + modifiers.icons} type={PlayerButtonType.SMALL}/>
+          <PlayPauseButton iconSize={24 + modifiers.icons} type={PlayerButtonType.SMALL}/>
+          <SkipToNextButton iconSize={22 + modifiers.icons} type={PlayerButtonType.SMALL}/>
         </View>
       </>
     </TouchableOpacity>
@@ -54,11 +58,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#252525',
     padding: 8,
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingVertical: 10 + modifiers.padding,
   },
   trackArtworkImage: {
-    width: 40,
-    height: 40,
+    width: 40 + modifiers.icons + modifiers.width,
+    height: 40 + modifiers.icons + modifiers.height,
     borderRadius: 8,
   },
   trackTitleContainer: {
@@ -68,7 +72,7 @@ const styles = StyleSheet.create({
   },
   trackTitle: {
     ...defaultStyles.text,
-    fontSize: 18,
+    fontSize: 18 + modifiers.text,
     fontWeight: '600',
     paddingLeft: 10,
   },
