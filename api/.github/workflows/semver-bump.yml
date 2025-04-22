@@ -1,13 +1,17 @@
 name: Bump version on merge to master
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
+      - 'main'
+      - 'release/**'
 
 jobs:
   bump-version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
