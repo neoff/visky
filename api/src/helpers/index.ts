@@ -1,8 +1,7 @@
-// helpers/index.ts
 import * as crypto from 'crypto';
 import { wrapper } from 'axios-cookiejar-support';
 import axios, { AxiosError } from "axios";
-import {PlaylistItem, PlaylistResponse, type TrackContent, TrackItem, Tracklist} from "@/types/response/vk";
+import {Item, Request, Response} from "@/types"
 
 
 export const TokenUrl = "https://oauth.vk.com/token"
@@ -53,99 +52,16 @@ export const deviceIDgen = () => {
     return result;
 }
 
-export const cleanupData = (data: PlaylistResponse): PlaylistResponse => {
+export const cleanupData = (data: any) => {
     //remove from items.artist "FRISKY | " and from items.title  [vk.com/feelin_frisky]"
-    data.items = data?.items?.map((item: PlaylistItem): PlaylistItem => {
-        item.artist = item.artist?.replace("FRISKY | ", "");
-        item.title = item.title?.replace(/\w+? \d{4} - /g, "");
-        item.title = item.title?.replace(/ \[vk\.com\/feelin_frisky]/g, "");
+    data?.items?.map((item: Item) => {
+        item.artist = item.artist.replace("FRISKY | ", "");
+        item.type = "hls";
+        item.title = item.title.replace("/ \[vk\.com\/feelin_frisky\]/g", "");
+        item.title = item.title.replace("/w\+ \d{4} - /g", "");
         return item;
     });
     return data;
-}
-
-export const  sortLocalPartTracks = (data: PlaylistResponse): PlaylistResponse =>{
-    const partRegex = /^(.*)\s+\(Part (\d+)\)$/i
-
-    const sortedItems: PlaylistItem[] = [];
-    let i = 0;
-
-    while (i < data.items.length) {
-        const match = data.items[i].title?.match(partRegex);
-
-        if (match) {
-            const baseTitle = match[1]
-            const group: PlaylistItem[] = [];
-
-            while (i < data.items.length) {
-                const m = data.items[i].title?.match(partRegex);
-                if (!m || m[1] !== baseTitle) break;
-                group.push(data.items[i]);
-                i++
-            }
-
-            // отсортировать Part N по номеру
-            group.sort((a, b) => {
-                const aNum = Number(a.title?.match(partRegex)![2]);
-                const bNum = Number(b.title?.match(partRegex)![2]);
-                return aNum - bNum;
-            })
-
-            sortedItems.push(...group);
-        } else {
-            sortedItems.push(data.items[i]);
-            i++
-        }
-    }
-    data.items = sortedItems;
-    return data
-}
-
-export const cleanupDataAndSortPart = (data: PlaylistResponse): PlaylistResponse => {
-    const cleanedData = cleanupData(data);
-    return sortLocalPartTracks(cleanedData);
-}
-
-export const formatPlaylist = (data: PlaylistResponse): Tracklist => {
-    return  {
-        count: data.items.length || 0,
-        //offset: data.offset || 0,
-        total: data.count || 0,
-        items: data.items.map((item: PlaylistItem): TrackItem => {
-            return {
-                id: item.id,
-                url: item.url,
-                title: item.title,
-                artist: item.artist,
-                duration: item.duration,
-                date: item.date,
-                artwork: item.album?.thumb?.photo_300 ?? undefined,
-                type: TrackItem.type.HLS,
-                favorite:  item.like?? false, //TODO: hardcoded
-                hidden:  false, //TODO: hardcoded
-                multipart: false, //TODO: hardcoded
-                genre_list: [{ //TODO: hardcoded
-                    id: 0,
-                    name: "Unknown Genre",
-                }],//item.genre_list?.map((genre) => ({
-                track_list: [{  //TODO: hardcoded
-                    id: 0,
-                    title: "string",
-                    artist: "string",
-                    duration: 0,
-                    time_code: "00:00:00",
-                    spotify: "string",
-                    youtube: "string",
-                    apple_music: "string",
-                }],//item.track_list?.map((track: TrackContent) => ({
-                part_list: [{ //TODO: hardcoded
-                    url: item.url,
-                    part: 1,
-                    duration: item.duration,
-                }]//item.part_list?.map((part) => ({
-            } as TrackItem;
-        })
-    } as Tracklist
 }
 
 export const md5 = (contents: string) => crypto.createHash('md5').update(contents).digest("hex");
