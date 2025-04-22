@@ -4,32 +4,61 @@
 	},
 	"build": {
 		"base": {
-			"distribution": "internal",
 			"autoIncrement": true,
-			"android": {
-				"buildType": "apk",
-				"ndk": "26.3.11579264",
-				"image": "ubuntu-22.04-jdk-17-ndk-r26b"
-			},
-			"ios": {
-				"simulator": true
-			},
+			"developmentClient": false,
+			"distribution": "internal",
 			"env": {
 				"EXPO_PUBLIC_LPI_URL": "http://localhost:3000",
 				"EXPO_PUBLIC_LPI_ANDROID_URL": "http://10.0.2.2:3000",
 				"EXPO_PUBLIC_API_URL": "https://frisky.envarg.com",
 				"EXPO_PUBLIC_DEV": "false"
+			},
+			"android": {
+				"image": "ubuntu-22.04-jdk-17-ndk-r26b",
+				"resourceClass": "medium",
+				"ndk": "26.3.11579264",
+				"buildType": "apk",
+				"gradleCommand": ":app:assembleRelease",
+				"env": {
+					"PLATFORM": "android"
+				}
+			},
+			"ios": {
+				"image": "latest",
+				"resourceClass": "large",
+				"simulator": true,
+				"buildConfiguration": "Release",
+				"env": {
+					"PLATFORM": "ios"
+				}
 			}
 		},
 		"development": {
 			"extends": "base",
-			"developmentClient": true
+			"developmentClient": true,
+			"android": {
+				"withoutCredentials": true,
+				"gradleCommand": ":app:assembleDebug"
+			},
+			"ios": {
+				"simulator": true,
+				"buildConfiguration": "Debug"
+			},
+			"env": {
+				"EXPO_PUBLIC_DEV": "true"
+			}
 		},
 		"preview": {
-			"extends": "base"
+			"extends": "base",
+			"ios": {
+				"enterpriseProvisioning": "universal"
+			}
 		},
 		"production": {
-			"extends": "base"
+			"extends": "base",
+			"ios": {
+				"simulator": false
+			}
 		}
 	}
 }

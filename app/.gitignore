@@ -252,16 +252,16 @@ Temporary Items
 # Xcode
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
-DerivedData/
+**/DerivedData/
 *.moved-aside
 *.pbxuser
-!default.pbxuser
+!ios/default.pbxuser
 *.mode1v3
-!default.mode1v3
+!ios/default.mode1v3
 *.mode2v3
-!default.mode2v3
+!ios/default.mode2v3
 *.perspectivev3
-!default.perspectivev3
+!ios/default.perspectivev3
 
 ## Obj-C/Swift specific
 *.hmap
@@ -282,6 +282,35 @@ DerivedData/
 # Add this line if you want to avoid checking in source code from the Xcode workspace
 # *.xcworkspace
 
+# Xcode
+#
+**/build/
+**/xcuserdata
+**/DerivedData
+*.xcuserstate
+*.xcworkspace
+**/.xcode.env.local
+
+# Bundle artifacts
+*.jsbundle
+
+# CocoaPods
+**/Pods/*
+**/Podfile.lock
+# OSX
+#
+.DS_Store
+
+# Android/IntelliJ
+#
+build/
+.idea
+.gradle
+*.hprof
+.cxx/
+
+# Bundle artifacts
+*.jsbundle
 # Carthage
 #
 # Add this line if you want to avoid checking in source code from Carthage dependencies.
@@ -386,7 +415,5 @@ expo-env.d.ts
 .env.development.local
 .env.test.local
 .env.production.local
-ios/**
-android/**
 
-app.config.js
+
