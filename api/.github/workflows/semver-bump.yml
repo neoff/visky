@@ -1,10 +1,9 @@
-name: Bump version on merge to master
+name: Bump version on merge to release branch
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - 'main'
       - 'release/**'
 
 jobs:
@@ -31,4 +30,27 @@ jobs:
       - name: Push changes and tags
         run: |
           git push origin HEAD:master --follow-tags
+
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        run: |
+          repo_full=${{ github.repository }}
+          repo_name=$(basename $repo_full)
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:latest \
+            --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:${{ steps.version.outputs.version }} \
+            --push .
 

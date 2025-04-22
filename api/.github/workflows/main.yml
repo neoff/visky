@@ -3,39 +3,66 @@ name: Main Workflow
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'main'
-      - 'release/**'
+    inputs:
+      release_type:
+        description: 'Release type (minor or major)'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - minor
 
 jobs:
+
+  start-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
   deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
+
     steps:
-      - name: Checkout Code
+      - name: Checkout repo
         uses: actions/checkout@v4
-    
+        with:
+          fetch-depth: 0
+
       - name: Set up Git
         run: |
-            git config user.name "GitHub Actions"
-            git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-      - name: Get Next Version
-        id: semver
-        uses: ietf-tools/semver-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+      - name: Get current version
+        id: version
+        run: |
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
+          echo "current=$current_version" >> $GITHUB_OUTPUT
 
-      - name: Create Release
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          allowUpdates: true
-          draft: false
-          makeLatest: true
-          name: ${{ steps.semver.outputs.next }}
-          body: Changelog Contents
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Bump version in master
+        id: bump
+        run: |
+          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
+            new_version=$(npm version minor -m "chore(release): %s [skip ci]")
+            branch_prefix="release/"
+          elif [[ "${{ github.event.inputs.release_type }}" == "major" ]]; then
+            new_version=$(npm version major -m "chore(release): %s [skip ci]")
+            branch_prefix="release/"
+          fi
+
+          echo "New version: $new_version"
+          echo "new=$new_version" >> $GITHUB_OUTPUT
+          echo "branch=${branch_prefix}${new_version}" >> $GITHUB_OUTPUT
+
+      - name: Push version bump to master
+        run: |
+          git push origin HEAD:master --follow-tags
+
+      - name: Create release branch
+        run: |
+          git checkout -b ${{ steps.bump.outputs.branch }}
+          git push origin ${{ steps.bump.outputs.branch }}
