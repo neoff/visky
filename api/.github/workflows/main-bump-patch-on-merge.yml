@@ -5,6 +5,7 @@ on:
     branches:
       - master
 
+
 jobs:
   maybe-bump-patch:
     runs-on: ubuntu-latest
