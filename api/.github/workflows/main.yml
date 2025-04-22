@@ -1,66 +1,48 @@
-name: Main Workflow
-# .github/workflows/semver.yml
+name: Bump patch on master merge
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_type:
-        description: 'Release type (minor or major)'
-        required: true
-        default: 'minor'
-        type: choice
-        options:
-          - minor
-          - major
+  push:
+    branches:
+      - main
+      - master
+
 
 jobs:
-  deploy:
+  bump-patch:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.DEFAULT_BRANCH }}
 
       - name: Set up Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      - name: Get current version
-        id: version
+      - name: Check if this push follows a release branch creation
+        id: release_check
         run: |
-          current_version=$(node -p "require('./package.json').version")
-          echo "Current version: $current_version"
-          echo "current=$current_version" >> $GITHUB_OUTPUT
+          latest_commit=$(git log -1 --pretty=%B)
+          echo "Latest commit: $latest_commit"
 
-      - name: Create release branch
-        run: |
-          git checkout -b ${{ steps.bump.outputs.branch }}
-          git push origin ${{ steps.bump.outputs.branch }}  --follow-tags
-
-      - name: Bump version in master to next development version
-        run: |
-          git checkout master
-          
-          current="${{ steps.get_version.outputs.current }}"
-          IFS='.' read -r major minor patch <<< "$current"
-          
-          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
-            minor=$((minor + 1))
-            patch=0
+          if echo "$latest_commit" | grep -q "bump to next dev version"; then
+            echo "skip_bump=true" >> $GITHUB_OUTPUT
           else
-            major=$((major + 1))
-            minor=0
-            patch=0
+            echo "skip_bump=false" >> $GITHUB_OUTPUT
           fi
-          
-          next_version="$major.$minor.$patch"
-          echo "Next development version: $next_version"
-          npm version "$next_version" --no-git-tag-version
-          git add package.json package-lock.json
-          git commit -m "chore: bump to next dev version $next_version [skip ci]"
-          git push origin master
+
+      - name: Bump patch version if not release-related
+        if: steps.release_check.outputs.skip_bump == 'false'
+        run: |
+          npm version patch --no-git-tag-version
+          git add package.json
+          git commit -m "chore: bump patch version [skip ci]"
+          git push origin ${{ env.DEFAULT_BRANCH }}

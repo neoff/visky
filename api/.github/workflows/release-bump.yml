@@ -23,9 +23,9 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      - name: Bump patch version
-        run: |
-          npm version patch -m "chore(release): %s [skip ci]"
+      #- name: Bump patch version
+      #  run: |
+      #    npm version patch -m "chore(release): %s [skip ci]"
 
       - name: Push changes and tags
         run: |
