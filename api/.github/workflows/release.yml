@@ -1,4 +1,4 @@
-name: Bump version on merge to release branch
+name: Release Docker image
 
 on:
   workflow_dispatch:
@@ -16,25 +16,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Чтобы видеть теги
+          fetch-depth: 0
 
       - name: Set up Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      #- name: Bump patch version
-      #  run: |
-      #    npm version patch -m "chore(release): %s [skip ci]"
+      - name: Check if this is manual release
+        id: check_manual
+        run: |
+          latest_commit=$(git log -1 --pretty=%B)
+          echo "Last commit message: $latest_commit"
+          
+          if echo "$latest_commit" | grep -q "release: initial"; then
+            echo "skip_patch=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_patch=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump patch version
+        run: |
+          npm version patch -m "chore(release): %s [skip ci]"
 
       - name: Push changes and tags
+        if: steps.check_manual.outputs.skip_patch == 'false'
         run: |
           branch=${{ github.ref_name }}
           tag=$(node -p "require('./package.json').version")
-          
+      
           git push origin "$branch"
           git push origin "refs/tags/$tag"
-
 
       - name: Log in to DockerHub
         uses: docker/login-action@v3

@@ -1,4 +1,4 @@
-name: Main Workflow
+name: Release
 # .github/workflows/semver.yml
 
 on:
@@ -42,8 +42,12 @@ jobs:
 
       - name: Create release branch
         run: |
-          git checkout -b ${{ steps.bump.outputs.branch }}
-          git push origin ${{ steps.bump.outputs.branch }}  --follow-tags
+          tag=${{ steps.version.outputs.current }}
+          release_branch="release/$tag"
+          git checkout -b "$release_branch"
+          git commit --allow-empty -m "release: initial"
+          git push origin "$release_branch"
+          git push origin "refs/tags/$tag"
 
       - name: Bump version in master to next development version
         run: |
@@ -64,6 +68,6 @@ jobs:
           next_version="$major.$minor.$patch"
           echo "Next development version: $next_version"
           npm version "$next_version" --no-git-tag-version
-          git add package.json package-lock.json
+          git add package.json
           git commit -m "chore: bump to next dev version $next_version [skip ci]"
           git push origin ${{ env.DEFAULT_BRANCH }}
