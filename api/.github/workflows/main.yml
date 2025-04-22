@@ -3,39 +3,69 @@ name: Main Workflow
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'main'
-      - 'release/**'
+    inputs:
+      release_type:
+        description: 'Release type (minor or major)'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - minor
+          - major
 
 jobs:
+  start-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
   deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout Code
+      - name: Checkout repo
         uses: actions/checkout@v4
-    
+        with:
+          fetch-depth: 0
+
       - name: Set up Git
         run: |
-            git config user.name "GitHub Actions"
-            git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-      - name: Get Next Version
-        id: semver
-        uses: ietf-tools/semver-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+      - name: Get current version
+        id: version
+        run: |
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
+          echo "current=$current_version" >> $GITHUB_OUTPUT
 
-      - name: Create Release
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          allowUpdates: true
-          draft: false
-          makeLatest: true
-          name: ${{ steps.semver.outputs.next }}
-          body: Changelog Contents
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create release branch
+        run: |
+          git checkout -b ${{ steps.bump.outputs.branch }}
+          git push origin ${{ steps.bump.outputs.branch }}  --follow-tags
+
+      - name: Bump version in master to next development version
+        run: |
+          git checkout master
+          
+          current="${{ steps.get_version.outputs.current }}"
+          IFS='.' read -r major minor patch <<< "$current"
+          
+          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            major=$((major + 1))
+            minor=0
+            patch=0
+          fi
+          
+          next_version="$major.$minor.$patch"
+          echo "Next development version: $next_version"
+          npm version "$next_version" --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "chore: bump to next dev version $next_version [skip ci]"
+          git push origin master
