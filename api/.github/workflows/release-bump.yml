@@ -29,7 +29,11 @@ jobs:
 
       - name: Push changes and tags
         run: |
-          git push origin HEAD:master --follow-tags
+          branch=${{ github.ref_name }}
+          tag=$(node -p "require('./package.json').version")
+          
+          git push origin "$branch"
+          git push origin "refs/tags/$tag"
 
 
       - name: Log in to DockerHub
