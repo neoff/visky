@@ -1,55 +1,52 @@
-name: ci
+name: Merge or push to default_branch
 
 on:
   push:
     branches:
       - main
+      - master
 
 jobs:
-  build:
+  bump-patch:
+    if: |
+      ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) 
+          && (startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')) }}
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
-      - name: Get Next Version
-        id: semver
-        uses: ietf-tools/semver-action@v1
+    steps:
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config init.defaultBranch ${{ env.DEFAULT_BRANCH }}
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          token: ${{ github.token }}
-          branch: main
-      - name: Create Release
-        uses: ncipollo/release-action@v1.12.0
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ env.DEFAULT_BRANCH }}
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "current=$version"
+          echo "current=$version" >> $GITHUB_OUTPUT
+
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
         with:
-          allowUpdates: true
-          draft: false
-          makeLatest: true
-          name: ${{ steps.semver.outputs.nextStrict }}
-          body: Changelog Contents
-          token: ${{ github.token }}
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      -
-        name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-#      -
-#        name: Build and test
-#        uses: docker/build-push-action@v6
-#        with:
-#          target: test
-#          load: true
-      -
-        name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          platforms: linux/amd64,linux/arm64/v8
-          push: true
-          target: prod
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:latest
+          current-version: ${{ steps.version.outputs.current }}
+          bump-level: patch
+
+      - name: Bump patch version if not release-related
+        run: |
+          npm version "${{ steps.bump.outputs.new_version }}" --no-git-tag-version
+          git add package.json
+          git commit -m "chore: bump patch version [skip ci]"
+          git push origin ${{ env.DEFAULT_BRANCH }}

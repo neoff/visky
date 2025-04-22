@@ -1,0 +1,130 @@
+name: Create release branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type (minor or major)'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - minor
+          - major
+  push:
+    branches:
+      - 'release/**'
+  pull_request:
+    types: [closed]
+    branches:
+      - 'release/**'
+
+jobs:
+  relese:
+    if: |
+      ((github.event_name == 'push' 
+            || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) 
+        && startsWith(github.ref, 'refs/heads/release/')) 
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Set up bump type
+        run: |
+          echo "RELEASE_TYPE=${{ github.event.inputs.release_type }}" >> $GITHUB_ENV
+      - name: Set up bump type patch
+        if: |
+          (github.event_name == 'push' 
+                || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) 
+            && startsWith(github.ref, 'refs/heads/release/')
+        run: |
+          echo "RELEASE_TYPE=patch" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.ref_name }}
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config init.defaultBranch ${{ github.event.repository.default_branch }}
+
+      - name: Get current version
+        id: version
+        run: |
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
+          echo "current=$current_version" >> $GITHUB_OUTPUT
+
+      #https://github.com/marketplace/actions/semver-bump-action
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.version.outputs.current }}
+          bump-level: ${{ env.RELEASE_TYPE }}
+
+      - name: Push changes and tags
+        run: |
+          current="${{ steps.version.outputs.current }}"
+          IFS='.' read -r old_major old_minor old_patch <<< "$current"
+          
+          next_version=${{ steps.bump.outputs.new_version }}
+          IFS='.' read -r major minor patch <<< "$next_version"
+          tag="${next_version}"
+          echo "Release: $tag"
+          release_branch="release/$major.$minor"
+          git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
+          
+          if [ $current != $tag ]; then
+            npm version "$tag" --no-git-tag-version
+            git add package.json
+          fi
+          
+          git commit --allow-empty -m "release: initial"
+          git tag -a "$tag" -m "release $tag"
+          git push origin "$release_branch"
+          git push origin "refs/tags/$tag"
+          
+          echo "release/$major.$minor" > branch.txt
+
+      - name: Upload branch name
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-name
+          path: branch.txt
+
+      - name: Get Latest Tag
+        id: latest_tag
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.latest_tag.outputs.tag }}
+          body: "Release.txt"
+
+      - name: Bump version in master to next development version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git checkout ${{ env.DEFAULT_BRANCH }}
+          
+          next_version=${{ steps.bump.outputs.new_version }}
+          echo "Next development version: $next_version"
+          
+          npm version "$next_version" --no-git-tag-version
+          git add package.json
+          
+          git commit -m "chore: bump to next dev version $next_version [skip ci]"
+          git push origin ${{ env.DEFAULT_BRANCH }}
