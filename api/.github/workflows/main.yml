@@ -14,7 +14,7 @@ on:
           - major
 
 jobs:
-  start-release:
+  deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -7,6 +7,21 @@ on:
 
 
 jobs:
+  bump-patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump patch version unconditionally
+        run: |
+          npm version patch --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "test bump patch [skip ci]" || echo "Nothing to commit"
+          git push origin master
+
   maybe-bump-patch:
     runs-on: ubuntu-latest
     permissions:
