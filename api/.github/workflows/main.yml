@@ -11,9 +11,9 @@ on:
         type: choice
         options:
           - minor
+          - major
 
 jobs:
-
   start-release:
     runs-on: ubuntu-latest
     permissions:
@@ -23,7 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
 
     steps:
       - name: Checkout repo
@@ -43,26 +42,30 @@ jobs:
           echo "Current version: $current_version"
           echo "current=$current_version" >> $GITHUB_OUTPUT
 
-      - name: Bump version in master
-        id: bump
-        run: |
-          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
-            new_version=$(npm version minor -m "chore(release): %s [skip ci]")
-            branch_prefix="release/"
-          elif [[ "${{ github.event.inputs.release_type }}" == "major" ]]; then
-            new_version=$(npm version major -m "chore(release): %s [skip ci]")
-            branch_prefix="release/"
-          fi
-
-          echo "New version: $new_version"
-          echo "new=$new_version" >> $GITHUB_OUTPUT
-          echo "branch=${branch_prefix}${new_version}" >> $GITHUB_OUTPUT
-
-      - name: Push version bump to master
-        run: |
-          git push origin HEAD:master --follow-tags
-
       - name: Create release branch
         run: |
           git checkout -b ${{ steps.bump.outputs.branch }}
-          git push origin ${{ steps.bump.outputs.branch }}
+          git push origin ${{ steps.bump.outputs.branch }}  --follow-tags
+
+      - name: Bump version in master to next development version
+        run: |
+          git checkout master
+          
+          current="${{ steps.get_version.outputs.current }}"
+          IFS='.' read -r major minor patch <<< "$current"
+          
+          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            major=$((major + 1))
+            minor=0
+            patch=0
+          fi
+          
+          next_version="$major.$minor.$patch"
+          echo "Next development version: $next_version"
+          npm version "$next_version" --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "chore: bump to next dev version $next_version [skip ci]"
+          git push origin master

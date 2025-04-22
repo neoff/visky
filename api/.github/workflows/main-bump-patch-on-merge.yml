@@ -1,0 +1,43 @@
+name: Bump patch on master merge
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  maybe-bump-patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Check if this push follows a release branch creation
+        id: release_check
+        run: |
+          latest_commit=$(git log -1 --pretty=%B)
+          echo "Latest commit: $latest_commit"
+
+          if echo "$latest_commit" | grep -q "bump to next dev version"; then
+            echo "skip_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_bump=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump patch version if not release-related
+        if: steps.release_check.outputs.skip_bump == 'false'
+        run: |
+          npm version patch --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "chore: bump patch version [skip ci]"
+          git push origin master
