@@ -1,4 +1,4 @@
-name: Megre to ${{ github.event.repository.default_branch }}
+name: Merge to default_branch
 
 on:
   push:
