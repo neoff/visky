@@ -1,72 +1,103 @@
-name: Release Docker image
+name: Create release branch
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'release/**'
+    inputs:
+      release_type:
+        description: 'Release type (minor or major)'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - minor
+          - major
 
 jobs:
-  bump-version:
+  relese:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.DEFAULT_BRANCH }}
 
       - name: Set up Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      - name: Check if this is manual release
-        id: check_manual
-        run: |
-          latest_commit=$(git log -1 --pretty=%B)
-          echo "Last commit message: $latest_commit"
-          
-          if echo "$latest_commit" | grep -q "release: initial"; then
-            echo "skip_patch=true" >> $GITHUB_OUTPUT
-          else
-            echo "skip_patch=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Bump patch version
-        run: |
-          npm version patch -m "chore(release): %s [skip ci]"
-
-      - name: Push changes and tags
-        if: steps.check_manual.outputs.skip_patch == 'false'
-        run: |
-          branch=${{ github.ref_name }}
-          tag=$(node -p "require('./package.json').version")
-      
-          git push origin "$branch"
-          git push origin "refs/tags/$tag"
-
-      - name: Log in to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract version
+      - name: Get current version
         id: version
         run: |
-          version=$(node -p "require('./package.json').version")
-          echo "version=$version" >> $GITHUB_OUTPUT
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
+          echo "current=$current_version" >> $GITHUB_OUTPUT
 
-      - name: Build and push Docker image
+      #https://github.com/marketplace/actions/semver-bump-action
+      - name: Bump Minor Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.version.outputs.current }}
+          bump-level: ${{ github.event.inputs.release_type }}
+
+      - name: Create new version
         run: |
-          repo_full=${{ github.repository }}
-          repo_name=$(basename $repo_full)
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:latest \
-            --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:${{ steps.version.outputs.version }} \
-            --push .
+          new_tag=${{ steps.bump.outputs.new_version }}
+          echo $new_tag
 
+      - name: Create release branch
+        run: |
+          current="${{ steps.version.outputs.current }}"
+          IFS='.' read -r major minor patch <<< "$current"
+          tag="$major.$minor.0"
+          echo "Release: $tag"
+          release_branch="release/$tag"
+          git checkout -b "$release_branch"
+          
+          npm version "$tag" --no-git-tag-version
+          git add package.json
+          
+          git commit --allow-empty -m "release: initial"
+          git tag -a "$tag" -m "release $tag"
+          git push origin "$release_branch"
+          git push origin "refs/tags/$tag"
+
+      - name: Get Latest Tag
+        id: latest_tag
+        #tag=$(git tag --sort=-v:refname | head -n 1)
+        #tag=$(git tag --sort=-creatordate | head -n 1)
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Release
+        #if: steps.check_manual.outputs.skip == 'false'
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        #if: github.ref_type == 'tag'
+        with:
+          tag_name: ${{ steps.latest_tag.outputs.tag }}
+          body: "Release.txt"
+
+      - name: Bump version in master to next development version
+        run: |
+          git checkout ${{ env.DEFAULT_BRANCH }}
+          
+          next_version=${{ steps.bump.outputs.new_version }}
+          echo "Next development version: $next_version"
+          
+          npm version "$next_version" --no-git-tag-version
+          git add package.json
+          
+          git commit -m "chore: bump to next dev version $next_version [skip ci]"
+          git push origin ${{ env.DEFAULT_BRANCH }}

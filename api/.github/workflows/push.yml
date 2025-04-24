@@ -1,0 +1,131 @@
+name: Release and deploy docker image
+
+on:
+  workflow_run:
+    workflows: ["Create release branch"]
+    types:
+      - completed
+  push:
+    branches:
+      - 'release/**'
+
+jobs:
+  build-publish-docker:
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) ||
+      github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if this is manual release
+        id: check_manual
+        run: |
+          latest_commit=$(git log -1 --pretty=%B)
+          echo "Last commit message: $latest_commit"
+          
+          if echo "$latest_commit" | grep -q "release: initial"; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Git
+        #if: steps.check_manual.outputs.skip == 'false'
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+
+      - name: Get current version
+        #if: steps.check_manual.outputs.skip == 'false'
+        if: github.event_name == 'push'
+        id: current_version
+        run: |
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
+          echo "current=$current_version" >> $GITHUB_OUTPUT
+
+      #https://github.com/marketplace/actions/semver-bump-action
+      - name: Bump Minor Version
+        #if: steps.check_manual.outputs.skip == 'false'
+        if: github.event_name == 'push'
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.current_version.outputs.current }}
+          bump-level: patch
+
+      - name: Create new version
+        #if: steps.check_manual.outputs.skip == 'false'
+        if: github.event_name == 'push'
+        run: |
+          new_tag=${{ steps.bump.outputs.new_version }}
+          echo $new_tag
+
+      - name: Push changes and tags
+        #if: steps.check_manual.outputs.skip == 'false'
+        if: github.event_name == 'push'
+        run: |
+          next_version=${{ steps.bump.outputs.new_version }}
+          tag="$next_version"
+          echo "Next development version: $next_version"
+          npm version "$next_version" --no-git-tag-version
+          git add package.json
+          
+          git tag -a "$tag" -m "release $tag"
+          git push origin "$branch"
+          git push origin "refs/tags/$tag"
+
+      - name: Get Latest Tag
+        id: latest_tag
+        #tag=$(git tag --sort=-v:refname | head -n 1)
+        #tag=$(git tag --sort=-creatordate | head -n 1)
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Release
+        #if: steps.check_manual.outputs.skip == 'false'
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        #if: github.ref_type == 'tag'
+        with:
+          tag_name: ${{ steps.latest_tag.outputs.tag }}
+          body: "Release.txt"
+
+      #-
+        # Add support for more platforms with QEMU (optional)
+        # https://github.com/docker/setup-qemu-action
+      #  name: Set up QEMU
+      #  uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        run: |
+          release_tag=${{ steps.latest_tag.outputs.tag }}
+          repo_full=${{ github.repository }}
+          repo_name=$(basename $repo_full)
+          echo "Repository name: $repo_name from $repo_full tag $release_tag"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:latest \
+            --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:$release_tag \
+            --push .
