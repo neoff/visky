@@ -1,0 +1,91 @@
+name: Deploy to kubernetes
+
+on:
+  workflow_run:
+    workflows: ["Push docker image"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to deploy (example: main, 1.4.0)'
+        required: true
+        type: string
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: List available branches and tags
+        run: |
+          echo "=== Available branches ==="
+          git ls-remote --heads origin | awk '{print $2}' | sed 's/refs\/heads\///'
+          echo ""
+          echo "=== Available tags ==="
+          git ls-remote --tags origin | awk '{print $2}' | sed 's/refs\/tags\///'
+
+
+      - name: Get Latest Tag
+        id: latest_tag
+        #tag=$(git tag --sort=-v:refname | head -n 1)
+        #tag=$(git tag --sort=-creatordate | head -n 1)
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 --decode > ~/.kube/config
+
+      - name: Set up Helmfile
+        run: |
+          curl -L https://github.com/helmfile/helmfile/releases/download/v0.171.0/helmfile_0.171.0_linux_amd64.tar.gz | tar xz
+          sudo mv helmfile /usr/local/bin/
+
+      - name: Install Helm Diff Plugin
+        run: |
+          helm plugin install https://github.com/databus23/helm-diff
+          echo "HELM_DIFF_IGNORE_UNKNOWN_FLAGS=true" >> $GITHUB_ENV
+
+      - name: Deploy via Helmfile with auto-rollback and healthcheck
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          
+          echo "🚀 Deploying ${REPO_NAME} with image tag: ${{ steps.latest_tag.outputs.tag }}"
+
+          helmfile --file .helm/helmfile.yaml \
+            --environment production \
+            --set releaseName=${REPO_NAME} \
+            --set release.name=${REPO_NAME} \
+            --set imageRepository=${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME} \
+            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }} \
+            --set imageTag=${{ steps.latest_tag.outputs.tag }} \
+            --set image.tag=${{ steps.latest_tag.outputs.tag }} \
+            --set ingressHost=${REPO_NAME}.${{ vars.DOMAIN }} \
+            --set ingress.hosts[0].host=${REPO_NAME}.${{ vars.DOMAIN }} \
+            --set ingress.tls[0].hosts[0]=${REPO_NAME}.${{ vars.DOMAIN }} \
+            apply
+
+          echo "✅ Helm deployment completed. Checking rollout status..."
+
+          # Validate rollout status
+          kubectl rollout status deployment/${REPO_NAME} --namespace=default --timeout=300s
+
+          echo "🎉 Successfully deployed ${REPO_NAME}:$tag"
+
+      - name: Print deployment info
+        run: |
+          echo "🚀 Deploying ${REPO_NAME}.${{ vars.DOMAIN }} with image tag: ${{ steps.latest_tag.outputs.tag }}"

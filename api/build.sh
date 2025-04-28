@@ -27,6 +27,8 @@ echo "Next   : -${VERSION_NEW}-"
 ## Hand made Semver tool :)
 #source ./version.sh
 #VERSION_NEW=$(get_next_version patch)
+#kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.2/cert-manager.yaml
+#helm upgrade frisky-api ./helm --set image.tag=${VERSION_NEW}
 
 git stash
 
@@ -40,3 +42,5 @@ git stash pop
 docker build -t varg/vk-frisky-parser:latest -t varg/vk-frisky-parser:${VERSION_NEW} .
 
 docker push varg/vk-frisky-parser:latest && docker push varg/vk-frisky-parser:${VERSION_NEW}
+
+#helm upgrade frisky-api ./helm --set image.tag=${VERSION_NEW}

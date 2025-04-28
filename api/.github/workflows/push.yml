@@ -1,4 +1,4 @@
-name: Release and deploy docker image
+name: Push docker image
 
 on:
   workflow_run:

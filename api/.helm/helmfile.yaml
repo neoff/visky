@@ -1,0 +1,19 @@
+repositories:
+  - name: stable
+    url: https://charts.helm.sh/stable
+
+helmDefaults:
+  atomic: true
+  timeout: 300
+
+environments:
+  production:
+    values:
+      []
+
+releases:
+  - name: sandbox
+    namespace: default
+    chart: ./
+    values:
+      - values.yaml

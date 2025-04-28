@@ -1,0 +1,30 @@
+replicaCount: 1
+
+image:
+  repository: ""
+  tag: "latest"
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: regcred
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+  hosts:
+    - host: envarg.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: frisky-api-tls
+      hosts:
+        - envarg.com
