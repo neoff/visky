@@ -63,20 +63,26 @@ jobs:
         env:
           REPO_NAME: ${{ github.event.repository.name }}
         run: |
-          
+          if [ -n "${SUB_DOMAIN}" ]; then
+            HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
+          else
+            HOSTNAME="${REPO_NAME}.${DOMAIN}"
+          fi
           echo "🚀 Deploying ${REPO_NAME} with image tag: ${{ steps.latest_tag.outputs.tag }}"
 
           helmfile --file .helm/helmfile.yaml \
             --environment production \
+            --set name=${REPO_NAME} \
             --set releaseName=${REPO_NAME} \
             --set release.name=${REPO_NAME} \
             --set imageRepository=${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME} \
             --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }} \
             --set imageTag=${{ steps.latest_tag.outputs.tag }} \
             --set image.tag=${{ steps.latest_tag.outputs.tag }} \
-            --set ingressHost=${REPO_NAME}.${{ vars.DOMAIN }} \
-            --set ingress.hosts[0].host=${REPO_NAME}.${{ vars.DOMAIN }} \
-            --set ingress.tls[0].hosts[0]=${REPO_NAME}.${{ vars.DOMAIN }} \
+            --set ingressHost=${HOSTNAME} \
+            --set ingress.hosts[0].host=${HOSTNAME} \
+            --set ingress.tls[0].hosts[0]=${HOSTNAME} \
+            --set ingress.tls[0].secretName=${REPO_NAME}-tls \
             apply
 
           echo "✅ Helm deployment completed. Checking rollout status..."
