@@ -20,20 +20,12 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout repository workflow_dispatch
-        if: github.event_name == 'workflow_dispatch'
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ github.event.inputs.ref }}
-      - name: Checkout repository workflow_run
-        if: github.event_name == 'workflow_run'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          ref: ${{ github.event.workflow_run.head_branch }}
+          ref: ${{ github.event.inputs.ref || github.ref_name }}
 
       - name: Get current version
         id: version
