@@ -1,16 +1,16 @@
-name: Merge
+name: Merge or push to default_branch
 
 on:
   push:
     branches:
       - main
       - master
-      - 'release/**'
-
 
 jobs:
   bump-patch:
-    if: ${{ github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master') || startsWith(github.ref, 'refs/heads/release/')) }}
+    if: |
+      ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) 
+          && (startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -22,36 +22,30 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          #ref: ${{ env.DEFAULT_BRANCH }}
+          ref: ${{ env.DEFAULT_BRANCH }}
 
       - name: Set up Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-      - name: Check if this push follows a release branch creation
-        id: release_check
-        run: |
-          latest_commit=$(git log -1 --pretty=%B)
-          echo "Latest commit: $latest_commit"
-
-          if echo "$latest_commit" | grep -q "bump to next dev version"; then
-            echo "skip_bump=true" >> $GITHUB_OUTPUT
-          else
-            echo "skip_bump=false" >> $GITHUB_OUTPUT
-          fi
-          
       - name: Get version from package.json
         id: version
         run: |
           version=$(node -p "require('./package.json').version")
-          echo "version=$version"
-          echo "version=$version" >> $GITHUB_OUTPUT
-          
+          echo "current=$version"
+          echo "current=$version" >> $GITHUB_OUTPUT
+
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.version.outputs.current }}
+          bump-level: patch
+
       - name: Bump patch version if not release-related
-        if: steps.release_check.outputs.skip_bump == 'false'
         run: |
-          npm version patch --no-git-tag-version
+          npm version "${{ steps.bump.outputs.new_version }}" --no-git-tag-version
           git add package.json
           git commit -m "chore: bump patch version [skip ci]"
           git push origin ${{ env.DEFAULT_BRANCH }}
