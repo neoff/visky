@@ -62,8 +62,10 @@ jobs:
           release_branch="release/$major.$minor"
           git checkout -b "$release_branch"
           
-          npm version "$tag" --no-git-tag-version
-          git add package.json
+          if [ $patch != 0 ]; then
+            npm version "$tag" --no-git-tag-version
+            git add package.json
+          fi
           
           git commit --allow-empty -m "release: initial"
           git tag -a "$tag" -m "release $tag"
