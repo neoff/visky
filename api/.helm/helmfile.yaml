@@ -12,7 +12,7 @@ environments:
       []
 ---
 releases:
-  - name: {{ .Environment.Values.releaseName }}
+  - name: {{ .Values.releaseName }}
     namespace: default
     chart: ./
     values:
