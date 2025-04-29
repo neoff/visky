@@ -25,6 +25,6 @@ ingress:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: frisky-api-tls
+    - secretName: sandbox-tls
       hosts:
         - envarg.com
