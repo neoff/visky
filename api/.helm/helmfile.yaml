@@ -10,7 +10,7 @@ environments:
   production:
     values:
       []
-
+---
 releases:
   - name: {{ .Environment.Values.releaseName }}
     namespace: default
