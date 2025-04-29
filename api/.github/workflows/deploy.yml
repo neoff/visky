@@ -81,6 +81,7 @@ jobs:
 
           helmfile --file .helm/helmfile.yaml \
             --environment production \
+            --set releaseName=${REPO_NAME} \
             --set name=${REPO_NAME} \
             --set releases.name=${REPO_NAME} \
             --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME} \

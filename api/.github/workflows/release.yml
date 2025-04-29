@@ -79,7 +79,6 @@ jobs:
           echo "Release: $tag"
           release_branch="release/$major.$minor"
           git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
-          git merge -q --ff --squash origin/$release_branch
           
           if [ $current != $tag ]; then
             npm version "$tag" --no-git-tag-version
