@@ -80,7 +80,7 @@ jobs:
           echo 'git push origin ${{ env.DEFAULT_BRANCH }}''
 
   bump-patch:
-    if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+    #if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
