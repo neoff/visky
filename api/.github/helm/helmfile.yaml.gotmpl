@@ -10,9 +10,9 @@ environments:
   production:
     values:
       []
----
-releases:
-  - name: {{ env "REPO_NAME" }}
+
+release:
+  - name: sandbox
     namespace: default
     chart: ./
     values:
