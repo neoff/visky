@@ -59,7 +59,7 @@ jobs:
           IFS='.' read -r major minor patch <<< "$current"
           tag="$major.$minor.0"
           echo "Release: $tag"
-          release_branch="release/$tag"
+          release_branch="release/$major.$minor"
           git checkout -b "$release_branch"
           
           npm version "$tag" --no-git-tag-version
