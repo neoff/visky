@@ -78,6 +78,7 @@ jobs:
             --set releases.name=${REPO_NAME} \
             --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }} \
             --set image.tag=${{ steps.latest_tag.outputs.tag }} \
+            --set appVersion=${{ steps.latest_tag.outputs.tag }} \
             --set ingress.hosts[0].host=${HOSTNAME} \
             --set ingress.tls[0].hosts[0]=${HOSTNAME} \
             --set ingress.tls[0].secretName=${REPO_NAME}-tls \
