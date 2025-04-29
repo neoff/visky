@@ -11,6 +11,7 @@ environments:
     values:
       []
 
+---
 releases:
   - name: sandbox
     namespace: default
