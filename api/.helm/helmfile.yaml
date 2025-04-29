@@ -10,9 +10,9 @@ environments:
   production:
     values:
       []
-
-release:
-  - name: sandbox
+---
+releases:
+  - name: {{ .Environment.Values.releaseName }}
     namespace: default
     chart: ./
     values:

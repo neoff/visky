@@ -13,7 +13,7 @@ on:
         type: string
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -40,6 +40,13 @@ jobs:
           tag=$(git tag --sort=-v:refname | head -n 1)
           echo "current version is: $tag"
           echo "tag=$tag" >> $GITHUB_OUTPUT
+      - name: Set up version
+        run: |
+          echo "VERSION=${{ steps.latest_tag.outputs.tag }}" >> $GITHUB_ENV
+      - name: Set up manual version
+        if:  github.event_name == 'workflow_dispatch'
+        run: |
+          echo "VERSION=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -64,21 +71,22 @@ jobs:
           REPO_NAME: ${{ github.event.repository.name }}
           DOMAIN: ${{ vars.DOMAIN }}
           SUB_DOMAIN: ${{ vars.SUB_DOMAIN }}
+          TAG: ${{ env.VERSION }}
         run: |
+          HOSTNAME="${REPO_NAME}.${DOMAIN}"
           if [ -n "${SUB_DOMAIN}" ]; then
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
-          else
-            HOSTNAME="${REPO_NAME}.${DOMAIN}"
           fi
-          echo "🚀 Deploying ${REPO_NAME} with image tag: ${{ steps.latest_tag.outputs.tag }}"
+          echo "🚀 Deploying ${REPO_NAME} with image tag: ${VERSION}"
 
           helmfile --file .helm/helmfile.yaml \
             --environment production \
+            --set releaseName=${REPO_NAME} \
             --set name=${REPO_NAME} \
             --set releases.name=${REPO_NAME} \
-            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }} \
-            --set image.tag=${{ steps.latest_tag.outputs.tag }} \
-            --set appVersion=${{ steps.latest_tag.outputs.tag }} \
+            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME} \
+            --set image.tag=${TAG} \
+            --set appVersion=${TAG} \
             --set ingress.hosts[0].host=${HOSTNAME} \
             --set ingress.tls[0].hosts[0]=${HOSTNAME} \
             --set ingress.tls[0].secretName=${REPO_NAME}-tls \
@@ -89,8 +97,17 @@ jobs:
           # Validate rollout status
           kubectl rollout status deployment/${REPO_NAME} --namespace=default --timeout=300s
 
-          echo "🎉 Successfully deployed ${REPO_NAME}:$tag"
+          echo "🎉 Successfully deployed ${REPO_NAME}:${TAG}"
 
       - name: Print deployment info
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+          DOMAIN: ${{ vars.DOMAIN }}
+          SUB_DOMAIN: ${{ vars.SUB_DOMAIN }}
+          TAG: ${{ env.VERSION }}
         run: |
-          echo "🚀 Deploying ${REPO_NAME}.${{ vars.DOMAIN }} with image tag: ${{ steps.latest_tag.outputs.tag }}"
+          HOSTNAME="${REPO_NAME}.${DOMAIN}"
+          if [ -n "${SUB_DOMAIN}" ]; then
+            HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
+          fi
+          echo "🚀 Deploying ${REPO_NAME} to ${HOSTNAME} with image tag: ${TAG}"
