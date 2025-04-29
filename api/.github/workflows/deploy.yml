@@ -22,15 +22,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: List available branches and tags
-        run: |
-          echo "=== Available branches ==="
-          git ls-remote --heads origin | awk '{print $2}' | sed 's/refs\/heads\///'
-          echo ""
-          echo "=== Available tags ==="
-          git ls-remote --tags origin | awk '{print $2}' | sed 's/refs\/tags\///'
-
-
       - name: Get Latest Tag
         id: latest_tag
         #tag=$(git tag --sort=-v:refname | head -n 1)
@@ -46,10 +37,14 @@ jobs:
       - name: Set up manual version
         if:  github.event_name == 'workflow_dispatch'
         run: |
+          name=${{ github.event.inputs.ref }}
           echo "VERSION=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.VERSION }}
 
       - name: Set up Kubeconfig
         run: |
