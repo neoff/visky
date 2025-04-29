@@ -1,55 +1,127 @@
-name: ci
+name: Merge
 
 on:
   push:
     branches:
       - main
+      - master
+      - 'release/**'
+
 
 jobs:
-  build:
+  debug:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
-      - name: Get Next Version
-        id: semver
-        uses: ietf-tools/semver-action@v1
+    steps:
+      - name: Print environment variables
+        run: |
+          echo "event ${{ github.event_name }}"
+          echo "github.ref ${{ github.ref }}"
+      #- name: Parse semver string
+      #  id: semver_parser 
+      #  uses: booxmedialtd/ws-action-parse-semver@v1
+      #  with:
+      #    input_string: '1.0.4'
+      #- name: Use parsed semver #DEPRECATION WARNING 
+      #  run: |
+      #        echo "v${{ steps.semver_parser.outputs.major }}"
+      #        echo "v${{ steps.semver_parser.outputs.minor }}"
+      #        echo "v${{ steps.semver_parser.outputs.patch }}"
+      #        echo "v${{ steps.semver_parser.outputs.prerelease }}"
+      #        echo "v${{ steps.semver_parser.outputs.build }}"
+      #        echo "v${{ steps.semver_parser.outputs.fullversion }}"
+
+      - name: Get current version
+        id: version
+        #current_version=$(node -p "require('./package.json').version")
+        #current=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        run: |
+          current_version='1.2.3'
+          echo "Current version: $current_version"
+          echo "version=$current_version" >> $GITHUB_OUTPUT
+
+      #https://github.com/marketplace/actions/semver-bump-action
+      - name: Bump Minor Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
         with:
-          token: ${{ github.token }}
-          branch: main
-      - name: Create Release
-        uses: ncipollo/release-action@v1.12.0
+          current-version: ${{ steps.version.outputs.version }}
+          bump-level: minor
+
+      - name: Output
+        run: |
+          new_tag=${{ steps.bump.outputs.new_version }}
+          echo $new_tag
+
+      - name: Manual bump version in master to next development version
+        run: |
+          current="${{ steps.version.outputs.current }}"
+          IFS='.' read -r major minor patch <<< "$current"
+          
+          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            major=$((major + 1))
+            minor=0
+            patch=0
+          fi
+          
+          next_version="$major.$minor.$patch"
+          echo "Next development version: $next_version"
+
+          echo "git checkout ${{ github.event.repository.default_branch }}"
+          echo 'git add package.json'
+          echo 'git commit -m "chore: bump to next dev version $next_version [skip ci]"''
+          echo 'git push origin ${{ env.DEFAULT_BRANCH }}''
+
+  bump-patch:
+    #if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          allowUpdates: true
-          draft: false
-          makeLatest: true
-          name: ${{ steps.semver.outputs.nextStrict }}
-          body: Changelog Contents
-          token: ${{ github.token }}
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      -
-        name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      -
-        name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-#      -
-#        name: Build and test
-#        uses: docker/build-push-action@v6
-#        with:
-#          target: test
-#          load: true
-      -
-        name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          platforms: linux/amd64,linux/arm64/v8
-          push: true
-          target: prod
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:latest
+          fetch-depth: 0
+          #ref: ${{ env.DEFAULT_BRANCH }}
+
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Check if this push follows a release branch creation
+        id: release_check
+        run: |
+          latest_commit=$(git log -1 --pretty=%B)
+          echo "Latest commit: $latest_commit"
+
+          if echo "$latest_commit" | grep -q "bump to next dev version"; then
+            echo "skip_bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_bump=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Get version from package.json
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+          
+      - name: Bump patch version if not release-related
+        if: steps.release_check.outputs.skip_bump == 'false'
+        run: |
+          npm version patch --no-git-tag-version
+          git add package.json
+          git commit -m "chore: bump patch version [skip ci]"
+          git push origin ${{ env.DEFAULT_BRANCH }}
