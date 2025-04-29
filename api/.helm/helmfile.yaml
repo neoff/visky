@@ -11,7 +11,7 @@ environments:
     values:
       []
 
-release:
+releases:
   - name: sandbox
     namespace: default
     chart: ./
