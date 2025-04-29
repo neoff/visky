@@ -62,6 +62,8 @@ jobs:
       - name: Deploy via Helmfile with auto-rollback and healthcheck
         env:
           REPO_NAME: ${{ github.event.repository.name }}
+          DOMAIN: ${{ vars.DOMAIN }}
+          SUB_DOMAIN: ${{ vars.SUB_DOMAIN }}
         run: |
           if [ -n "${SUB_DOMAIN}" ]; then
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
