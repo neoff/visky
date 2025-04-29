@@ -52,6 +52,14 @@ jobs:
           new_tag=${{ steps.bump.outputs.new_version }}
           echo $new_tag
 
+      - name: List available branches and tags
+        run: |
+          echo "=== Available branches ==="
+          git ls-remote --heads origin | awk '{print $2}' | sed 's/refs\/heads\///'
+          echo ""
+          echo "=== Available tags ==="
+          git ls-remote --tags origin | awk '{print $2}' | sed 's/refs\/tags\///'
+
       - name: Manual bump version in master to next development version
         run: |
           
