@@ -11,9 +11,8 @@ environments:
     values:
       []
 
----
 releases:
-  - name: sandbox
+  - name: {{ .Environment.Values.releaseName }}
     namespace: default
     chart: ./
     values:
