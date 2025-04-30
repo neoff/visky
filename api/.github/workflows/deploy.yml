@@ -5,6 +5,12 @@ on:
     workflows: ["Push docker image"]
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to deploy (example: main, 1.4.0)'
+        required: true
+        type: string
 jobs:
   deploy:
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
