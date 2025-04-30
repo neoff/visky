@@ -36,7 +36,6 @@ jobs:
 
       - name: Read branch
         if: github.event_name == 'workflow_run'
-        id: read_branch
         run: |
           branch=$(cat branch.txt)
           echo "branch=$branch" >> $GITHUB_OUTPUT
