@@ -39,6 +39,7 @@ jobs:
 
       - name: Read branch
         if: github.event_name == 'workflow_run'
+        id: read_branch
         run: |
           branch=$(cat branch.txt)
           echo "branch=$branch"
@@ -110,7 +111,7 @@ jobs:
           current_version=$(node -p "require('./package.json').version")
           echo "Current version: $current_version"
 
-          helmfile --file .helm/helmfile.yaml \
+          REPO_NAME=${REPO_NAME} helmfile --file .helm/helmfile.yaml \
             --environment production \
             --set releaseName=${REPO_NAME} \
             --set name=${REPO_NAME} \
