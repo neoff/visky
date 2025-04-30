@@ -12,6 +12,11 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - name: Print environment variables
         run: |
           echo "event ${{ github.event_name }}"
@@ -51,6 +56,22 @@ jobs:
         run: |
           new_tag=${{ steps.bump.outputs.new_version }}
           echo $new_tag
+
+      - name: Get Latest Tag
+        id: latest_tag
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: List available branches and tags
+        run: |
+          echo "=== Available branches ==="
+          git ls-remote --heads origin | awk '{print $2}' | sed 's/refs\/heads\///'
+          echo ""
+          echo "=== Available tags ==="
+          git ls-remote --tags origin | awk '{print $2}' | sed 's/refs\/tags\///'
 
       - name: Manual bump version in master to next development version
         run: |
