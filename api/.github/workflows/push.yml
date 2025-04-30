@@ -5,27 +5,42 @@ on:
     workflows: ["Create release branch"]
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to deploy (example: main, 1.4.0)'
+        required: true
+        type: string
 
 jobs:
   build-publish-docker:
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.inputs.ref }}
+      - name: Checkout repository workflow_run
+        if: github.event_name == 'workflow_run'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.workflow_run.head_branch }}
 
-      - name: Get Latest Tag
-        id: latest_tag
+      - name: Get current version
+        id: version
         run: |
-          git fetch --tags
-          tag=$(git tag --sort=-v:refname | head -n 1)
-          echo "current version is: $tag"
-          echo "tag=$tag" >> $GITHUB_OUTPUT
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
+          echo "current=$current_version" >> $GITHUB_OUTPUT
 
       #-
         # Add support for more platforms with QEMU (optional)
@@ -44,7 +59,7 @@ jobs:
 
       - name: Build and push Docker image
         run: |
-          release_tag=${{ steps.latest_tag.outputs.tag }}
+          release_tag=${{ steps.version.outputs.current }}
           repo_full=${{ github.repository }}
           repo_name=$(basename $repo_full)
           echo "Repository name: $repo_name from $repo_full tag $release_tag"
