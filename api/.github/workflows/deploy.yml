@@ -41,6 +41,7 @@ jobs:
         if: github.event_name == 'workflow_run'
         run: |
           branch=$(cat branch.txt)
+          echo "branch=$branch"
           echo "branch=$branch" >> $GITHUB_OUTPUT
 
       - name: Checkout repository workflow_dispatch
@@ -77,13 +78,6 @@ jobs:
           echo "Current version: $current_version"
           echo "current=$current_version" >> $GITHUB_OUTPUT
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          ref: refs/tags/${{ env.VERSION }}
-
       - name: Set up Kubeconfig
         run: |
           mkdir -p ~/.kube
@@ -112,7 +106,9 @@ jobs:
           fi
           echo "🚀 Deploying ${REPO_NAME} with image tag: ${VERSION}"
           cat .helm/helmfile.yaml
-          cat package.json
+          echo ""
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
 
           helmfile --file .helm/helmfile.yaml \
             --environment production \
