@@ -58,6 +58,7 @@ export const cleanupData = (data: any) => {
         item.artist = item.artist.replace("FRISKY | ", "");
         item.type = "hls";
         item.title = item.title.replace("/ \[vk\.com\/feelin_frisky\]/g", "");
+        item.title = item.title.replace("/w\+ \d{4} - /g", "");
         return item;
     });
     return data;

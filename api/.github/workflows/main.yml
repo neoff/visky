@@ -1,3 +1,4 @@
+---
 name: Merge or push to default_branch
 
 on:
@@ -5,12 +6,29 @@ on:
     branches:
       - main
       - master
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+      - master
+    #paths:
+    #  - 'src/**'
+    #  - 'Dockerfile'
 
 jobs:
-  bump-patch:
-    if: |
-      ${{ (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) 
-          && (startsWith(github.ref, 'refs/heads/main') || startsWith(github.ref, 'refs/heads/master')) }}
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_EMAIL: ${{ secrets.DOCKERHUB_EMAIL }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
+  bump-prepatch:
+    needs: validate
+    if: ${{ (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -18,17 +36,17 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
-      - name: Set up Git
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git config init.defaultBranch ${{ env.DEFAULT_BRANCH }}
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
           ref: ${{ env.DEFAULT_BRANCH }}
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config init.defaultBranch ${{ env.DEFAULT_BRANCH }}
 
       - name: Get version from package.json
         id: version
@@ -42,7 +60,8 @@ jobs:
         uses: cbrgm/semver-bump-action@main
         with:
           current-version: ${{ steps.version.outputs.current }}
-          bump-level: patch
+          bump-level: prerelease
+          prerelease-tag: "alpha"
 
       - name: Bump patch version if not release-related
         run: |
@@ -50,3 +69,103 @@ jobs:
           git add package.json
           git commit -m "chore: bump patch version [skip ci]"
           git push origin ${{ env.DEFAULT_BRANCH }}
+          
+          
+
+  #DEBUG
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Print environment variables
+        run: |
+          echo "event ${{ github.event_name }}"
+          echo "event ${{ github.event_name }}"
+          echo "github.ref ${{ github.ref }}"
+      #- name: Parse semver string
+      #  id: semver_parser
+      #  uses: booxmedialtd/ws-action-parse-semver@v1
+      #  with:
+      #    input_string: '1.0.4'
+      #- name: Use parsed semver #DEPRECATION WARNING
+      #  run: |
+      #        echo "v${{ steps.semver_parser.outputs.major }}"
+      #        echo "v${{ steps.semver_parser.outputs.minor }}"
+      #        echo "v${{ steps.semver_parser.outputs.patch }}"
+      #        echo "v${{ steps.semver_parser.outputs.prerelease }}"
+      #        echo "v${{ steps.semver_parser.outputs.build }}"
+      #        echo "v${{ steps.semver_parser.outputs.fullversion }}"
+
+      - name: Get current version
+        id: version
+        #current_version=$(node -p "require('./package.json').version")
+        #current=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        run: |
+          current_version='1.2.3'
+          echo "Current version: $current_version"
+          echo "version=$current_version" >> $GITHUB_OUTPUT
+
+      #https://github.com/marketplace/actions/semver-bump-action
+      - name: Bump Minor Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.version.outputs.version }}
+          bump-level: minor
+
+      - name: Output
+        run: |
+          new_tag=${{ steps.bump.outputs.new_version }}
+          echo $new_tag
+
+      - name: Get Latest Tag
+        id: latest_tag
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: List available branches and tags
+        run: |
+          echo "=== Available branches ==="
+          git ls-remote --heads origin | awk '{print $2}' | sed 's/refs\/heads\///'
+          echo ""
+          echo "=== Available tags ==="
+          git ls-remote --tags origin | awk '{print $2}' | sed 's/refs\/tags\///'
+
+      - name: Manual bump version in master to next development version
+        run: |
+          
+          repo_full=${{ github.repository }}
+          repo_name=$(basename $repo_full)
+          
+          current="${{ steps.version.outputs.current }}"
+          IFS='.' read -r major minor patch <<< "$current"
+          
+          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            major=$((major + 1))
+            minor=0
+            patch=0
+          fi
+          
+          next_version="$major.$minor.$patch"
+          echo "Next development version: $repo_name $next_version"
+
+          echo "git checkout ${{ github.event.repository.default_branch }}"
+          echo 'git add package.json'
+          echo 'git commit -m "chore: bump to next dev version $next_version [skip ci]"''
+          echo 'git push origin ${{ env.DEFAULT_BRANCH }}''
+...

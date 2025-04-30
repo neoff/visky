@@ -1,3 +1,4 @@
+---
 name: Create release branch
 
 on:
@@ -18,6 +19,9 @@ on:
     types: [closed]
     branches:
       - 'release/**'
+    #paths:
+    #  - 'src/**'
+    #  - 'Dockerfile'
 
 jobs:
   relese:
@@ -72,21 +76,27 @@ jobs:
           bump-level: ${{ env.RELEASE_TYPE }}
 
       - name: Push changes and tags
+        id: release
+        env:
+          workflow_event: ${{ github.event_name }}
+          type: ${{ env.RELEASE_TYPE }}
+          current: ${{ steps.version.outputs.current }}
+          next_version: ${{ steps.bump.outputs.new_version }}
         run: |
-          current="${{ steps.version.outputs.current }}"
-          IFS='.' read -r old_major old_minor old_patch <<< "$current"
-          
-          next_version=${{ steps.bump.outputs.new_version }}
-          IFS='.' read -r major minor patch <<< "$next_version"
-          tag="${next_version}"
+          IFS='.' read -r major minor patch <<< "${next_version}"
+          if [[ ${workflow_event} == 'workflow_dispatch' && ${type} != 'major' ]]; then
+            IFS='.' read -r major_ minor patch_ <<< "${current}"
+          fi
+          tag="${major}.${minor}.${patch}"
           echo "Release: $tag"
           release_branch="release/$major.$minor"
           git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
           
-          if [ $current != $tag ]; then
-            npm version "$tag" --no-git-tag-version
-            git add package.json
+          if [ $next_version != $tag ]; then
+            echo "Version mismatch: $next_version != $tag"
           fi
+          npm version "$tag" --no-git-tag-version
+          git add package.json
           
           git commit --allow-empty -m "release: initial"
           git tag -a "$tag" -m "release $tag"
@@ -94,6 +104,7 @@ jobs:
           git push origin "refs/tags/$tag"
           
           echo "release/$major.$minor" > branch.txt
+          echo "tag=$tag" >> $GITHUB_OUTPUT
 
       - name: Upload branch name
         uses: actions/upload-artifact@v4
@@ -101,6 +112,30 @@ jobs:
           name: branch-name
           path: branch.txt
 
+      - name: Bump release version
+        if: github.event_name == 'workflow_dispatch'
+        id: bump-release
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.release.outputs.tag }}
+          bump-level: preminor
+          prerelease-tag: "alpha"
+
+      - name: Bump version in master to next development version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git checkout ${{ env.DEFAULT_BRANCH }}
+          
+          next_version=${{ steps.bump-release.outputs.new_version }}
+          echo "Next development version: $next_version"
+          
+          npm version "$next_version" --no-git-tag-version
+          git add package.json
+          
+          git commit -m "chore: bump to next dev version $next_version [skip ci]"
+          git push origin ${{ env.DEFAULT_BRANCH }}
+          
+      #Create release notes
       - name: Get Latest Tag
         id: latest_tag
         run: |
@@ -109,22 +144,27 @@ jobs:
           echo "current version is: $tag"
           echo "tag=$tag" >> $GITHUB_OUTPUT
 
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          git fetch --tags
+          prev=$(git tag --sort=-v:refname | sed -n '2p')
+          echo "Previous tag: $prev"
+          echo "prev_tag=$prev" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          log=$(git log --pretty=format:"- %s" ${{ steps.prev_tag.outputs.prev_tag }}..${{ steps.latest_tag.outputs.tag }})
+          echo "$log"
+          log="${log//'%'/'%25'}"
+          log="${log//$'\n'/'%0A'}"
+          log="${log//$'\r'/'%0D'}"
+          echo "changelog=$log" >> $GITHUB_OUTPUT
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.latest_tag.outputs.tag }}
-          body: "Release.txt"
-
-      - name: Bump version in master to next development version
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          git checkout ${{ env.DEFAULT_BRANCH }}
-          
-          next_version=${{ steps.bump.outputs.new_version }}
-          echo "Next development version: $next_version"
-          
-          npm version "$next_version" --no-git-tag-version
-          git add package.json
-          
-          git commit -m "chore: bump to next dev version $next_version [skip ci]"
-          git push origin ${{ env.DEFAULT_BRANCH }}
+          body: ${{ steps.changelog.outputs.changelog }}
+...
