@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Download artifact from previous workflow
         if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           run_id=${{ github.event.workflow_run.id }}
           echo "Getting artifacts for run $run_id"
@@ -29,7 +31,7 @@ jobs:
 
           echo "Found artifact: $artifact_url"
 
-          curl -L -H "Authorization: token $GITHUB_TOKEN" -o artifact.zip "$artifact_url"
+          curl -L -H "Authorization: token $GH_TOKEN" -o artifact.zip "$artifact_url"
           unzip artifact.zip
 
       - name: Read branch
