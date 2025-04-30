@@ -33,12 +33,6 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
-      - name: Set up Git
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git config init.defaultBranch ${{ github.event.repository.default_branch }}
-
       - name: Set up bump type
         run: |
           echo "RELEASE_TYPE=${{ github.event.inputs.release_type }}" >> $GITHUB_ENV
@@ -49,12 +43,18 @@ jobs:
             && startsWith(github.ref, 'refs/heads/release/')
         run: |
           echo "RELEASE_TYPE=patch" >> $GITHUB_ENV
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
           ref: ${{ github.ref_name }}
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config init.defaultBranch ${{ github.event.repository.default_branch }}
 
       - name: Get current version
         id: version
