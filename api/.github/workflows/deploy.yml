@@ -78,6 +78,8 @@ jobs:
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
           fi
           echo "🚀 Deploying ${REPO_NAME} with image tag: ${VERSION}"
+          cat .helm/helmfile.yaml
+          cat package.json
 
           helmfile --file .helm/helmfile.yaml \
             --environment production \
