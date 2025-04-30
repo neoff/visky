@@ -17,25 +17,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download artifact from previous workflow
-        if: github.event_name == 'workflow_run'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          run_id=${{ github.event.workflow_run.id }}
-          echo "Getting artifacts for run $run_id"
-
-          artifact_url=$(gh api \
-            repos/${{ github.repository }}/actions/runs/$run_id/artifacts \
-            --jq '.artifacts[] | select(.name=="branch-name") | .archive_download_url')
-
-          echo "Found artifact: $artifact_url"
-
-          curl -L -H "Authorization: token $GH_TOKEN" -o artifact.zip "$artifact_url"
-          unzip artifact.zip
+      - name: Download branch name
+        uses: actions/download-artifact@v4
+        with:
+          name: branch-name
 
       - name: Read branch
-        if: github.event_name == 'workflow_run'
         id: read_branch
         run: |
           branch=$(cat branch.txt)
