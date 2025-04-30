@@ -128,13 +128,3 @@ jobs:
           
           git commit -m "chore: bump to next dev version $next_version [skip ci]"
           git push origin ${{ env.DEFAULT_BRANCH }}
-          
-          current="${{ steps.version.outputs.current }}"
-          IFS='.' read -r old_major old_minor old_patch <<< "$current"
-          
-          next_version=${{ steps.bump.outputs.new_version }}
-          IFS='.' read -r major minor patch <<< "$next_version"
-          tag="${next_version}"
-          echo "Release: $tag"
-          release_branch="release/$major.$minor"
-          git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
