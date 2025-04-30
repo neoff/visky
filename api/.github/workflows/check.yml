@@ -17,7 +17,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          
       - name: Print environment variables
         run: |
           echo "event ${{ github.event_name }}"
