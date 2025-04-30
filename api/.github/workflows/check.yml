@@ -17,7 +17,11 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
+<<<<<<< HEAD
 
+=======
+          
+>>>>>>> 1eba85d (4 add GitHub actions (#44))
       - name: Print environment variables
         run: |
           echo "event ${{ github.event_name }}"
