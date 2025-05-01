@@ -1,3 +1,4 @@
+---
 name: Create release branch
 
 on:
@@ -18,6 +19,9 @@ on:
     types: [closed]
     branches:
       - 'release/**'
+    #paths:
+    #  - 'src/**'
+    #  - 'Dockerfile'
 
 jobs:
   relese:
@@ -33,12 +37,6 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
-      - name: Set up Git
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git config init.defaultBranch ${{ github.event.repository.default_branch }}
-
       - name: Set up bump type
         run: |
           echo "RELEASE_TYPE=${{ github.event.inputs.release_type }}" >> $GITHUB_ENV
@@ -49,12 +47,18 @@ jobs:
             && startsWith(github.ref, 'refs/heads/release/')
         run: |
           echo "RELEASE_TYPE=patch" >> $GITHUB_ENV
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
           ref: ${{ github.ref_name }}
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config init.defaultBranch ${{ github.event.repository.default_branch }}
 
       - name: Get current version
         id: version
@@ -72,48 +76,55 @@ jobs:
           bump-level: ${{ env.RELEASE_TYPE }}
 
       - name: Push changes and tags
-        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+        id: release
         run: |
-          current="${{ steps.version.outputs.current }}"
-          IFS='.' read -r old_major old_minor old_patch <<< "$current"
-          
           next_version=${{ steps.bump.outputs.new_version }}
           IFS='.' read -r major minor patch <<< "$next_version"
-          tag="${next_version}"
+          
+          if [ ${{ github.event_name }} == 'workflow_dispatch' && ${{ env.RELEASE_TYPE }} != 'major' ]; then
+            current="${{ steps.version.outputs.current }}"
+            IFS='.' read -r major_ minor patch_ <<< "$current"
+          fi
+          tag="${major}.${minor}.${patch}"
           echo "Release: $tag"
           release_branch="release/$major.$minor"
           git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
           
-          if [ $current != $tag ]; then
-            npm version "$tag" --no-git-tag-version
-            git add package.json
+          if [ $next_version != $tag ]; then
+            echo "Version mismatch: $next_version != $tag"
           fi
+          npm version "$tag" --no-git-tag-version
+          git add package.json
           
           git commit --allow-empty -m "release: initial"
           git tag -a "$tag" -m "release $tag"
           git push origin "$release_branch"
           git push origin "refs/tags/$tag"
-
-      - name: Get Latest Tag
-        id: latest_tag
-        run: |
-          git fetch --tags
-          tag=$(git tag --sort=-v:refname | head -n 1)
-          echo "current version is: $tag"
+          
+          echo "release/$major.$minor" > branch.txt
           echo "tag=$tag" >> $GITHUB_OUTPUT
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload branch name
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.latest_tag.outputs.tag }}
-          body: "Release.txt"
+          name: branch-name
+          path: branch.txt
+
+      - name: Bump release version
+        if: github.event_name == 'workflow_dispatch'
+        id: bump-release
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.release.outputs.tag }}
+          bump-level: preminor
+          prerelease-tag: "alpha"
 
       - name: Bump version in master to next development version
         if: github.event_name == 'workflow_dispatch'
         run: |
           git checkout ${{ env.DEFAULT_BRANCH }}
           
-          next_version=${{ steps.bump.outputs.new_version }}
+          next_version=${{ steps.bump-release.outputs.new_version }}
           echo "Next development version: $next_version"
           
           npm version "$next_version" --no-git-tag-version
@@ -122,12 +133,36 @@ jobs:
           git commit -m "chore: bump to next dev version $next_version [skip ci]"
           git push origin ${{ env.DEFAULT_BRANCH }}
           
-          current="${{ steps.version.outputs.current }}"
-          IFS='.' read -r old_major old_minor old_patch <<< "$current"
-          
-          next_version=${{ steps.bump.outputs.new_version }}
-          IFS='.' read -r major minor patch <<< "$next_version"
-          tag="${next_version}"
-          echo "Release: $tag"
-          release_branch="release/$major.$minor"
-          git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
+      #Create release notes
+      - name: Get Latest Tag
+        id: latest_tag
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          git fetch --tags
+          prev=$(git tag --sort=-v:refname | sed -n '2p')
+          echo "Previous tag: $prev"
+          echo "prev_tag=$prev" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          log=$(git log --pretty=format:"- %s" ${{ steps.prev_tag.outputs.prev_tag }}..${{ steps.latest_tag.outputs.tag }})
+          echo "$log"
+          log="${log//'%'/'%25'}"
+          log="${log//$'\n'/'%0A'}"
+          log="${log//$'\r'/'%0D'}"
+          echo "changelog=$log" >> $GITHUB_OUTPUT
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.latest_tag.outputs.tag }}
+          body: ${{ steps.changelog.outputs.changelog }}
+...
