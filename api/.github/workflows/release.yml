@@ -77,13 +77,15 @@ jobs:
 
       - name: Push changes and tags
         id: release
+        env:
+          workflow_event: ${{ github.event_name }}
+          type: ${{ env.RELEASE_TYPE }}
+          current: ${{ steps.version.outputs.current }}
+          next_version: ${{ steps.bump.outputs.new_version }}
         run: |
-          next_version=${{ steps.bump.outputs.new_version }}
-          IFS='.' read -r major minor patch <<< "$next_version"
-          
-          if [ ${{ github.event_name }} == 'workflow_dispatch' && ${{ env.RELEASE_TYPE }} != 'major' ]; then
-            current="${{ steps.version.outputs.current }}"
-            IFS='.' read -r major_ minor patch_ <<< "$current"
+          IFS='.' read -r major minor patch <<< "${next_version}"
+          if [[ ${workflow_event} == 'workflow_dispatch' && ${type} != 'major' ]]; then
+            IFS='.' read -r major_ minor patch_ <<< "${current}"
           fi
           tag="${major}.${minor}.${patch}"
           echo "Release: $tag"
