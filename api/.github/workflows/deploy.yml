@@ -106,8 +106,6 @@ jobs:
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
           fi
           echo "🚀 Deploying ${REPO_NAME} with image tag: ${TAG}"
-          cat .helm/helmfile.yaml
-          echo ""
           current_version=$(node -p "require('./package.json').version")
           echo "Current version: $current_version"
           
