@@ -85,10 +85,11 @@ jobs:
           release_branch="release/$major.$minor"
           git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
           
-          if [ $current != $tag ]; then
-            npm version "$tag" --no-git-tag-version
-            git add package.json
+          if [ $next_version != $tag ]; then
+            echo "Version mismatch: $next_version != $tag"
           fi
+          npm version "$tag" --no-git-tag-version
+          git add package.json
           
           git commit --allow-empty -m "release: initial"
           git tag -a "$tag" -m "release $tag"
