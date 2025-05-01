@@ -1,3 +1,4 @@
+---
 name: Push docker image
 
 on:
@@ -105,3 +106,4 @@ jobs:
             --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:latest \
             --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:$release_tag \
             --push .
+...
