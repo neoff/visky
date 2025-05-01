@@ -74,13 +74,13 @@ jobs:
       - name: Push changes and tags
         run: |
           current="${{ steps.version.outputs.current }}"
-          IFS='.' read -r old_major old_minor old_patch <<< "$current"
+          IFS='.' read -r major_c minor_c patch_c <<< "$current"
           
           next_version=${{ steps.bump.outputs.new_version }}
-          IFS='.' read -r major minor patch <<< "$next_version"
-          tag="${next_version}"
+          IFS='.' read -r major_n minor_n patch_n <<< "$next_version"
+          tag="${major_c}.${minor_c}.${patch_n}"
           echo "Release: $tag"
-          release_branch="release/$major.$minor"
+          release_branch="release/$major_c.$minor_c"
           git checkout "$release_branch" 2>/dev/null || git checkout -b "$release_branch"
           
           if [ $current != $tag ]; then
