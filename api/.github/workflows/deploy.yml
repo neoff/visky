@@ -94,6 +94,15 @@ jobs:
           helm plugin install https://github.com/databus23/helm-diff
           echo "HELM_DIFF_IGNORE_UNKNOWN_FLAGS=true" >> $GITHUB_ENV
 
+      - name: Create image pull secret
+        run: |
+          kubectl delete secret regcred --ignore-not-found -n default
+          kubectl create secret docker-registry regcred \
+            --docker-username=${{ secrets.DOCKERHUB_USERNAME }} \
+            --docker-password=${{ secrets.DOCKERHUB_TOKEN }} \
+            --docker-email=en.varg@gmail.com \
+            --namespace=default
+
       - name: Deploy via Helmfile with auto-rollback and healthcheck
         env:
           REPO_NAME: ${{ github.event.repository.name }}
