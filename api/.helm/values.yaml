@@ -1,4 +1,7 @@
 replicaCount: 1
+name: sandbox
+appVersion: ""
+version: 0.0.0
 
 image:
   repository: ""
