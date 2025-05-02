@@ -1,6 +1,6 @@
 {
   "name": "vk-friski-api",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Api for vk music",
   "main": "index.js",
   "author": "EN.varg",
