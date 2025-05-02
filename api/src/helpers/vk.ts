@@ -6,18 +6,26 @@ import { error } from "console";
 import {AxiosError} from "axios";
 
 
-export async function checkAuthAndroid(req: Request, res: Response, next: NextFunction) {
+export const checkAuthAndroid = async(req: Request, res: Response, next: NextFunction) => {
     console.log("===================checkAuthAndroid:",req.session)
     if ((!req.session || !req.session.access_token || !req.session.user_id) 
         && (!req.headers['x-auth-token'])) {
         console.error("ERROR! checkAuth: No token or secret", req.session)
-        return res.status(403).send(new AxiosError("No token or secret"));
+        res.status(403).send(new AxiosError("No token or secret"));
+        return;
     }
-    return next();
+    next();
 }
 
+/**
+ * call method from VK API
+ * @param req
+ * @param method
+ * @param params
+ * @param sign
+ */
 //=================== HELPER METHOD!!!!!! ======================
-export async function method(req: Request, method: string, params : {}, sign: boolean = false): Promise<any> {
+export const method = async (req: Request, method: string, params : {}, sign: boolean = false): Promise<any> => {
     let url =`/method/${method}?v=${version}&access_token=${req.session.access_token}`
     for (const [key, value] of Object.entries(params)) {
         url+=`&${key}=${value}`
@@ -41,6 +49,7 @@ export async function method(req: Request, method: string, params : {}, sign: bo
     })
 }
 
+//TODO: multiquery for different methods
 export const makeQuery = async(query: any, playlistId:string): Promise<string> => {
     const count = query.count || 1;
     const playlistCount = query.playlistCount || 1;
@@ -66,7 +75,7 @@ export const makeSimpleQuery = async(req: Request, sign: boolean = false) => {
     return `return ${exexData.replace(/\s+|\s+/g, '')};`
 }
 
- export const checkFavoiteAndCreateIfNotExist = async(req: Request, sign: boolean = false) => {
+ export const checkFavoriteAndCreateIfNotExist = async(req: Request, sign: boolean = false) => {
     let favorite = await method(req, 'audio.searchPlaylists',{q:"Frisky-favorites",count:1}, sign)
     if(favorite.response.count === 0) {
         const createFavorite =  await method(req, 'audio.createPlaylist',{title:"Frisky-favorites",owner_id:req.session.user_id}, sign)

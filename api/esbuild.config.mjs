@@ -8,7 +8,7 @@ await build({
     format: 'cjs',
     platform: 'node',
     target: 'node20',
-    outfile: 'dist/index.js',
+    outfile: 'dist/server.js',
     metafile: true,
     mainFields: ['module', 'main'],
     resolveExtensions: ['.js', '.ts', '.json'],
