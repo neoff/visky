@@ -13,8 +13,9 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
     "owner_id": owner
   }, false)
     .then((data) => {
-      console.log("===>>frisky data:", data);
-      return cleanupData(data);
+      const clean = cleanupData(data);
+      console.log("===>>frisky data:", clean);
+      return clean;
     });
 }
 /**
