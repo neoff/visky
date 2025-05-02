@@ -54,7 +54,7 @@ export const deviceIDgen = () => {
 
 export const cleanupData = (data: any) => {
     //remove from items.artist "FRISKY | " and from items.title  [vk.com/feelin_frisky]"
-    data?.items?.map((item: Item) => {
+    data.items = data?.items?.map((item: Item) => {
         item.artist = item.artist.replace("FRISKY | ", "");
         item.type = "hls";
         item.title = item.title.replace(/\w+? \d{4} - /g, "");
