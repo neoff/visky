@@ -1,10 +1,11 @@
 {
   "compilerOptions": {
     "target": "es6",
-    "strict": true,
     "module": "commonjs",
     "moduleResolution": "node",
     "lib": ["dom", "dom.iterable","esnext"],
+
+    "strict": true,
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -15,11 +16,13 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-native",
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@/assets/*": ["./public/*"]
     }
   },
+  "types": ["vitest/globals"],
   "include": ["**/*.ts", "**/*.tsx", "env.d.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "target", "dist", "build"]
 }

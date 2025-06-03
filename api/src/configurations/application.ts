@@ -1,9 +1,12 @@
+// configurations/application.ts
 import express from "express";
-import cors from "cors";
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
 import { errorHandler } from "@/middleware/error.middleware";
 import { notFoundHandler } from "@/middleware/not-found.middleware";
+import {getMetrics, register} from "@/configurations/metrics";
+import {healthRoute} from "@/configurations/health";
+import cors from "cors";
 
 const app = express();
 
@@ -11,7 +14,6 @@ const app = express();
 *  App Configuration
 */
 app.use(cors());
-app.use(express.json());
 // User session support middlewares. Your exact suite might vary depending on your app's needs.
 app.use(cookieParser('keyboard cat'));
 app.use(require('body-parser').urlencoded({extended: true}));
@@ -31,11 +33,15 @@ app.use(session({
         signed: true
     },
 }));
-
-
+app.get('/actuator/health', healthRoute());
+app.get('/actuator/prometheus', async (_req, res) => {
+    res.set('Content-Type', register.contentType);
+    res.send(await getMetrics());
+});
 // ERROR
 app.use(notFoundHandler);
 // ERROR RESPONSE
 app.use(errorHandler);
 
+app.use(express.json());
 export default app;
