@@ -155,12 +155,54 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          log=$(git log --pretty=format:"- %s" ${{ steps.prev_tag.outputs.prev_tag }}..${{ steps.latest_tag.outputs.tag }})
-          echo "$log"
-          log="${log//'%'/'%25'}"
-          log="${log//$'\n'/'%0A'}"
-          log="${log//$'\r'/'%0D'}"
-          echo "changelog=$log" >> $GITHUB_OUTPUT
+          RAW_LOG=$(git log --pretty=format:"- %s" ${{ steps.prev_tag.outputs.prev_tag }}..${{ steps.latest_tag.outputs.tag }} \
+            | grep -vE '^(- )?(release: initial|Merge remote-tracking|chore: bump to next dev version)' \
+            | sed '/^ *$/d')
+          # Initialize sections
+          FEAT=""
+          FIX=""
+          DOCS=""
+          REFACTOR=""
+          CHORE=""
+          OTHER=""
+      
+          while IFS= read -r line; do
+            case "$line" in
+              feat:*) FEAT+="${line}\n" ;;
+              fix:*) FIX+="${line}\n" ;;
+              docs:*) DOCS+="${line}\n" ;;
+              refactor:*) REFACTOR+="${line}\n" ;;
+              chore:*) CHORE+="${line}\n" ;;
+              *) OTHER+="${line}\n" ;;
+            esac
+          done <<< "$RAW_LOG"
+      
+          FINAL_LOG=""
+      
+          add_section() {
+            local title="$1"
+            local content="$2"
+            if [ -n "$content" ]; then
+            FINAL_LOG+="### $title\n"
+            FINAL_LOG+="$content\n"
+            fi
+          }
+      
+          add_section "🚀 Features" "$FEAT"
+          add_section "🛠️ Fixes" "$FIX"
+          add_section "📝 Docs" "$DOCS"
+          add_section "🧠 Refactoring" "$REFACTOR"
+          add_section "🧹 Chores" "$CHORE"
+          add_section "🌀 Other" "$OTHER"
+      
+          echo "📝 Clean grouped changelog:"
+          echo -e "$FINAL_LOG"
+      
+          # Save to output (escaped for GitHub Actions)
+          esc="${FINAL_LOG//'%'/'%25'}"
+          esc="${esc//$'\n'/'%0A'}"
+          esc="${esc//$'\r'/'%0D'}"
+          echo "changelog=$esc" >> $GITHUB_OUTPUT
 
       - name: Release
         uses: softprops/action-gh-release@v2

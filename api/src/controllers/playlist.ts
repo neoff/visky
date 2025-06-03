@@ -1,7 +1,7 @@
 import express, {NextFunction} from "express";
 import {Item, Playlist, Request, Response} from "@/types";
 import {checkAuthAndroid, method} from "@/helpers/vk";
-import {cleanupData} from "@/helpers";
+import {cleanupDataAndSortPart} from "@/helpers";
 
 
 export const api = express.Router();
@@ -13,11 +13,12 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
     "owner_id": owner
   }, false)
     .then((data) => {
-      const clean = cleanupData(data);
+      const clean = cleanupDataAndSortPart(data);
       console.log("===>>frisky data:", clean);
       return clean;
     });
 }
+
 /**
  * Get the frisky from the VK group  Frisky Radio
  */
@@ -37,13 +38,19 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
   }
 });
 
+
+/**
+ * Get the any playlist
+ * @unused
+ */
 api.get("/playlist", checkAuthAndroid, async (req: Request, res: Response) => {
 
   const owner: number = parseInt(req.query.owner as string);
   const count: number = parseInt(req.query?.count as string) || 1;
   const offset: number = parseInt(req.query.offset as string) || 0;
   if (!req.query.owner) {
-    return res.status(500).send({errData: "No owner_id"});
+    res.status(400).send({errData: "No owner_id"});
+    return;
   }
   try {
     //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
@@ -56,6 +63,10 @@ api.get("/playlist", checkAuthAndroid, async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Get the liked playlist
+ * @unused
+ */
 // TODO: add song to the liked playlist
 api.post("/playlist", checkAuthAndroid, async (req: Request, res: Response) => {
   const count: number = parseInt(req.query?.count as string) || 1;
@@ -64,15 +75,7 @@ api.post("/playlist", checkAuthAndroid, async (req: Request, res: Response) => {
   try {
     //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
     //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
-    const response: Playlist = await method(req, "audio.get", {
-      "count": count,
-      "offset": offset,
-      "owner_id": owner
-    }, false)
-      .then((data) => {
-        console.log("===>>frisky data:", data);
-        return cleanupData(data);
-      });
+    const response: Playlist = await getPlaylistData(req, owner, count, offset);
     //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
     res.status(200).send(response);
   } catch (error: Error | any) {
@@ -91,7 +94,8 @@ api.post("/playlist", checkAuthAndroid, async (req: Request, res: Response) => {
 api.get("/:user_id/:owner_id/:id", checkAuthAndroid, async (req: Request, res: Response) => {
   const refresh: boolean = Boolean(req.query?.refresh) || false;
   if (!req.params.owner_id || !req.params.id) {
-    return res.status(500).send({errData: "No owner_id or audio id"});
+    res.status(400).send({errData: "No owner_id or audio id"});
+    return;
   }
   try {
     if (refresh) {
@@ -122,10 +126,11 @@ api.get("/:user_id/:owner_id/:id", checkAuthAndroid, async (req: Request, res: R
  * ]
  * }
  **/
-api.post("/:user_id/:owner_id/:id", async (req: Request, res: Response) => {
+api.post("/:user_id/:owner_id/:id", checkAuthAndroid, async (req: Request, res: Response) => {
   const body = req.body
   if (!req.params.owner_id || !req.params.id) {
-    return res.status(500).send({errData: "No owner_id or audio id"});
+    res.status(400).send({errData: "No owner_id or audio id"});
+    return;
   }
   try {
     const response = await method(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
@@ -148,7 +153,8 @@ api.post("/:user_id/:owner_id/:id", async (req: Request, res: Response) => {
 api.put("/:user_id/:owner_id/:id", checkAuthAndroid, async (req: Request, res: Response) => {
   const body = req.body
   if (!req.params.owner_id || !req.params.id) {
-    return res.status(500).send({errData: "No owner_id or audio id"});
+    res.status(400).send({errData: "No owner_id or audio id"});
+    return;
   }
   try {
     const response = await method(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
