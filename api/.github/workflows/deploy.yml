@@ -122,7 +122,7 @@ jobs:
           sed -i "s/^version:.*/version: ${TAG}/" .github/helm/Chart.yaml
           sed -i "s/^name:.*/name: ${REPO_NAME}/" .github/helm/Chart.yaml
 
-          REPO_NAME=${REPO_NAME} helmfile --file .github/helm/helmfile.yaml \
+          REPO_NAME=${REPO_NAME} helmfile --file .github/helm/helmfile.yaml.gotmpl \
             --environment production \
             --set releaseName=${REPO_NAME} \
             --set name=${REPO_NAME} \
@@ -130,9 +130,9 @@ jobs:
             --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME} \
             --set image.tag=${TAG} \
             --set appVersion=${TAG} \
-            --set ingress.hosts[0].host=${HOSTNAME} \
-            --set ingress.tls[0].hosts[0]=${HOSTNAME} \
-            --set ingress.tls[0].secretName=${REPO_NAME}-tls \
+            --set "ingress.hosts[0].host=${HOSTNAME}" \
+            --set "ingress.tls[0].hosts[0]=${HOSTNAME}" \
+            --set "ingress.tls[0].secretName=${REPO_NAME}-tls" \
             apply
 
           echo "✅ Helm deployment completed. Checking rollout status..."
