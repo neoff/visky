@@ -40,7 +40,7 @@ export const method = async (req: Request, method: string, params : {}, sign: bo
     //console.debug('================================url https://api.vk.com'+url)
 
     return await AndroidClient.get(`https://api.vk.com${url}`).then((response) => {
-        console.debug(`======== /method/${method} RESPONSE:`, response.data)
+        console.debug(`======== /method/${method} RESPONSE:`, JSON.stringify(response.data, null, 2))
         return response.data?.response || response.data;
     })
     .catch((error) => {
