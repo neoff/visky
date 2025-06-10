@@ -3,7 +3,8 @@ import express, { NextFunction } from "express";
 import { AndroidClient, TokenUrl, AuthUrl, encodeQueryData, deviceIDgen, md5 } from ".";
 import { version } from "@/constants";
 import { error } from "console";
-import {AxiosError} from "axios";
+import {AxiosError, AxiosResponse} from "axios";
+import {VkResponse} from "@/types/response/vk";
 
 
 export const checkAuthAndroid = async(req: Request, res: Response, next: NextFunction) => {
@@ -37,14 +38,14 @@ export const method = async (req: Request, method: string, params : {}, sign: bo
         url+=`&sig=${hash}`
     }
     //console.debug(`======== /method/${method} with params ${params}`)
-    //console.debug('================================url https://api.vk.com'+url)
+    console.debug('================================url https://api.vk.com'+url)
 
-    return await AndroidClient.get(`https://api.vk.com${url}`).then((response) => {
-        console.debug(`======== /method/${method} RESPONSE:`, response.data)
+    return await AndroidClient.get(`https://api.vk.com${url}`).then((response: AxiosResponse<VkResponse, any>) => {
+        console.debug(`======== /method/${method} RESPONSE:`, JSON.stringify(response.data, null, 2))
         return response.data?.response || response.data;
     })
     .catch((error) => {
-        console.error(`======== /method/${method} ERROR:`, error)
+        console.error(`======== /method/${method} ERROR:`, JSON.stringify(error, null, 2))
         throw new Error(error.error_msg)
     })
 }
