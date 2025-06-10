@@ -1,8 +1,7 @@
 import { Request, Response } from "@/types";
-import express, { NextFunction } from "express";
-import { AndroidClient, TokenUrl, AuthUrl, encodeQueryData, deviceIDgen, md5 } from ".";
+import { NextFunction } from "express";
+import { AndroidClient, md5 } from ".";
 import { version } from "@/constants";
-import { error } from "console";
 import {AxiosError, AxiosResponse} from "axios";
 import {VkResponse} from "@/types/response/vk";
 
