@@ -37,7 +37,7 @@ export const method = async (req: Request, method: string, params : {}, sign: bo
         url+=`&sig=${hash}`
     }
     //console.debug(`======== /method/${method} with params ${params}`)
-    //console.debug('================================url https://api.vk.com'+url)
+    console.debug('================================url https://api.vk.com'+url)
 
     return await AndroidClient.get(`https://api.vk.com${url}`).then((response: AxiosResponse<VkResponse, any>) => {
         console.debug(`======== /method/${method} RESPONSE:`, JSON.stringify(response.data, null, 2))
