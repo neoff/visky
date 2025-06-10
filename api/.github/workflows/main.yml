@@ -67,7 +67,11 @@ jobs:
         run: |
           npm version "${{ steps.bump.outputs.new_version }}" --no-git-tag-version
           git add package.json
+<<<<<<< HEAD
+          git commit -m "chore(#0): bump patch version"
+=======
           git commit -m "chore: bump patch version [skip ci]"
+>>>>>>> origin/feat/84
           git push origin ${{ env.DEFAULT_BRANCH }}
           
           

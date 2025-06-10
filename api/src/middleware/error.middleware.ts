@@ -10,6 +10,7 @@ export const errorHandler = (
   next: NextFunction
 ) => {
   const status = error.statusCode || error.status || 500;
+  console.log("-------error-------", error);
   response.status(status);
   response.json({
     message: error.message,

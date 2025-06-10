@@ -1,11 +1,10 @@
-// configurations/application.ts
+// src/configurations/application.ts
 import express from "express";
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
-import { errorHandler } from "@/middleware/error.middleware";
-import { notFoundHandler } from "@/middleware/not-found.middleware";
 import {getMetrics, register} from "@/configurations/metrics";
 import {healthRoute} from "@/configurations/health";
+import {setupSwagger} from "@/configurations/swagger";
 import cors from "cors";
 
 const app = express();
@@ -38,10 +37,8 @@ app.get('/actuator/prometheus', async (_req, res) => {
     res.set('Content-Type', register.contentType);
     res.send(await getMetrics());
 });
-// ERROR
-app.use(notFoundHandler);
-// ERROR RESPONSE
-app.use(errorHandler);
+//SWAGGER
+setupSwagger(app);
 
 app.use(express.json());
 export default app;
