@@ -1,5 +1,5 @@
-import express from "express";
-import { Request, Response } from "@/types";
+import express, { NextFunction } from "express";
+import { Playlist, Request, Response } from "@/types";
 
 export const player = express.Router();
 

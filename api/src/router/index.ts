@@ -1,11 +1,11 @@
 // src/router/index.ts
-import app from "@/configurations/router";
-import {api} from "@/router/api/playlist";
-import {auth} from "@/router/api/auth";
-import {player} from "@/router/api/player";
-import {authForm} from "@/router/authForm";
-import {notFoundHandler} from "@/router/middleware/not-found.middleware";
-import {errorHandler} from "@/router/middleware/error.middleware";
+import app from "@/configurations/application";
+import { api } from "@/router/api/playlist";
+import { auth } from "@/router/api/auth";
+import { player } from "@/router/api/player";
+import { authForm } from "@/router/authForm";
+import {notFoundHandler} from "@/middleware/not-found.middleware";
+import {errorHandler} from "@/middleware/error.middleware";
 
 // APP
 app.use("/auth", authForm);

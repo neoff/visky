@@ -50,10 +50,9 @@ authForm.get('/vk', async (req: Request, res: Response) => {
    * return res.redirect(AuthUrl+"?"+queryParam)
    */
 
-  //if (!req.session
-  //  || !req.session?.access_token
-  //  || !req.session?.secret) {
-    console.log("<-------- auth.get =========", AuthUrl+ JSON.stringify(params))
+  if (!req.session
+    || !req.session?.access_token
+    || !req.session?.secret) {
     return await AndroidClient.get(AuthUrl, {params}).then((response) => {
       //console.debug("===Admin auth page response", response)
       //const resp = callBack(response.data, apiUrls.authAdminAppUrl)
@@ -67,9 +66,9 @@ authForm.get('/vk', async (req: Request, res: Response) => {
       .finally(() => {
         res.end()
       })
-  //}
-  //const data = req.session
-  //return res.redirect(`blank.html#success=1&access_token=${data.access_token}&user_id=${data.user_id}&secret=${data.secret}`)
+  }
+  const data = req.session
+  return res.redirect(`blank.html#success=1&access_token=${data.access_token}&user_id=${data.user_id}&secret=${data.secret}`)
 })
 
 // TODO: replace - /helper/request-secret-and-token-by-login-and-password
