@@ -1,0 +1,1058 @@
+openapi: 3.0.0
+info:
+  title: Visky API
+  version: 1.0.0
+  description: VK Music Express API
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://visky.envarg.com
+    description: Production server
+tags:
+  - name: authForm
+    description: Authentication form
+  - name: auth
+    description: Authentication endpoints
+  - name: playlist
+    description: Playlist management endpoints
+  - name: track
+    description: Track management endpoints
+  - name: favorites
+    description: Favorites management endpoints
+  - name: frisky
+    description: Frisky radio endpoints
+
+paths:
+  /auth/vk:
+    get:
+      summary: >
+        get VK auth page and remove defended scripts
+        to fetch after auth token and secret
+      operationId: getVkAuthPage
+      tags:
+        - authForm
+      responses:
+        '200':
+          description: OK
+          content:
+            text/html:
+              schema:
+                type: string
+                example: '<html><body>VK Auth Page</body></html>'
+    post:
+      summary: >
+        get token and secret by login and password
+        emulate old android app
+      operationId: authorizeAndGetAuthToken
+      tags:
+        - authForm
+      responses:
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errMessage:
+                    type: string
+                    example: 'Response data not contain secret or access_token'
+        '301':
+          description: Redirect to ehe /auth/blank.html
+  /auth/blank.html:
+    get:
+      summary: Redirect page for VK API auth
+      operationId: blankAuthPage
+      tags:
+        - authForm
+      responses:
+        '200':
+          description: OK
+          content:
+            text/html:
+              schema:
+                type: string
+                example: '<html><body>VK Auth Page</body></html>'
+  /api/auth/token:
+    post:
+      summary: create new auth token with data from /auth/blank.html
+      operationId: createAuthToken
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vkurl:
+                  type: string
+                  example: 'your_access_token'
+                secret:
+                  type: string
+                  example: 'your_secret_key'
+      responses:
+        '301':
+          description: Redirect to ehe /auth/profile
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errMessage:
+                    type: string
+                    example: "No 'access_token' or 'secret' in vk url"
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errMessage:
+                    type: string
+                    example: "No 'access_token' or 'secret' in vk url"
+  /api/auth/refresh:
+    get:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: get data from session and refresh auth token
+      operationId: refreshAuthToken
+      tags:
+        - auth
+      responses:
+        '301':
+          description: Redirect to ehe /auth/profile
+    post:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Set data to session
+      operationId: setAuthDataToSession
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                  example: '/auth/blank.html#access_token=your_access_token&secret=your_secret_key'
+                secret:
+                  type: string
+                  example: 'your_secret_key'
+      responses:
+        '301':
+          description: Redirect to ehe /auth/refresh
+  /api/auth/profile:
+    get:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Get list of tracks
+      operationId: getUserProfile
+      tags:
+        - auth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfoResponse'
+  /api/playlist/frisky:
+    get:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Get list of tracks from Frisky radio
+      operationId: getFriskyRadio
+      tags:
+        - playlist
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                #Tracklist
+                $ref: '#/components/schemas/PlaylistResponse'
+  /api/playlist/favorites:
+    get:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Get list of favorite tracks
+      operationId: getFavorites
+      tags:
+        - playlist
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tracklist'
+  /api/playlist/:
+    get:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Get list of tracks from playlist
+      operationId: getPlaylistTracks
+      tags:
+        - playlist
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/VkResponse'
+                  - type: object
+                    properties:
+                      response:
+                        $ref: '#/components/schemas/PlaylistResponse'
+  /api/player/{user_id}/{owner_id}/{id}:
+    parameters:
+      - schema:
+          type: number
+        name: user_id
+        in: path
+        required: true
+        description: current user id
+      - schema:
+          type: number
+        name: owner_id
+        in: path
+        required: true
+        description: song owner id
+      - schema:
+          type: number
+        name: id
+        in: path
+        required: true
+        description: track id
+    get:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Get song information by id
+      operationId: getTrackById
+      tags:
+        - track
+      responses:
+        '200':
+          description: OK
+    post:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Add some information to the song (track list, timing, genres, etc.)
+      operationId: addTrackInfo
+      tags:
+        - track
+      responses:
+        '200':
+          description: OK
+    put:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      summary: Edit song information (track list, timing, genres, etc.)
+      operationId: editTrackInfo
+      tags:
+        - track
+      responses:
+        '200':
+          description: OK
+components:
+  securitySchemes:
+    SessionCookieAuth:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+      description: |
+        Session authentification. 
+        Client must send cookie with name 'connect.sid', received after login success.
+    HeaderTokenAuth:
+      type: apiKey
+      in: header
+      name: x-auth-token
+      description: |
+        Alternate authentification method. 
+        Client must send a valid token in header with name 'x-auth-token'.
+  schemas:
+  # REQUEST
+    # RESPONSE
+    VkResponse:
+      description: Response from VK
+      type: object
+      properties:
+        response:
+          oneOf:
+            - $ref: '#/components/schemas/PlaylistResponse'
+            - $ref: '#/components/schemas/UserInfoResponse'
+    PlaylistResponse:
+      description: Response from VK
+      type: object
+      properties:
+        count:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaylistItem'
+    UserInfoResponse:
+      description: User info
+      type: object
+      properties:
+        profile:
+          type: object
+          properties:
+            id:
+              type: integer
+            first_name:
+              type: string
+            last_name:
+              type: string
+            can_access_closed:
+              type: boolean
+            is_closed:
+              type: boolean
+        info:
+          type: object
+          properties:
+            2fa_required:
+              type: integer
+            audio_ads:
+              type: object
+              properties:
+                day_limit:
+                  type: integer
+                track_limit:
+                  type: integer
+                types_allowed:
+                  type: array
+                  items:
+                    type: string
+                sections:
+                  type: array
+                  items:
+                    type: string
+            audio_permissions:
+              type: object
+              properties:
+                audio_meta_info:
+                  type: boolean
+              example:
+                audio_meta_info: false
+            business_notify_enabled:
+              type: integer
+            change_email_url:
+              type: string
+            change_phone_url:
+              type: string
+            country:
+              type: string
+            debug_available:
+              type: boolean
+            email:
+              type: string
+            email_status:
+              type: string
+            eu_user:
+              type: boolean
+            feed_preloading:
+              type: object
+              properties:
+                media_discover:
+                  type: object
+                  properties:
+                    on_app_start:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                breaking_news:
+                  type: object
+                  properties:
+                    on_app_start:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                    on_neighbour_tab:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+            https_required:
+              type: integer
+            intro:
+              type: integer
+            music_intro:
+              type: integer
+            fave_intro:
+              type: integer
+            menu_intro:
+              type: boolean
+            community_comments:
+              type: boolean
+            track_installed_apps:
+              type: boolean
+            clickable_stickers:
+              type: object
+              properties:
+                max_stickers:
+                  type: object
+                  properties:
+                    hashtag:
+                      type: integer
+                    mention:
+                      type: integer
+                    music:
+                      type: integer
+                    playlist:
+                      type: integer
+                    video:
+                      type: integer
+                    question:
+                      type: integer
+                    place:
+                      type: integer
+                    story_reply:
+                      type: integer
+                    owner:
+                      type: integer
+                    market_item:
+                      type: integer
+                    link:
+                      type: integer
+                    post:
+                      type: integer
+                    poll:
+                      type: integer
+                    sticker:
+                      type: integer
+                    app:
+                      type: integer
+                    situational_theme:
+                      type: integer
+                    spoiler:
+                      type: integer
+            reports_spa:
+              type: boolean
+            lang:
+              type: integer
+            money_p2p_params:
+              type: object
+              properties:
+                min_amount:
+                  type: integer
+                max_amount:
+                  type: integer
+                currency:
+                  type: string
+                show_intro:
+                  type: boolean
+            no_wall_replies:
+              type: integer
+            own_posts_default:
+              type: integer
+            phone:
+              type: string
+            phone_status:
+              type: string
+            profiler_enabled:
+              type: boolean
+            profiler_settings:
+              type: object
+              properties:
+                api_requests:
+                  type: boolean
+                download_patterns:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      pattern:
+                        type: string
+                      probability:
+                        type: number
+                      error_probability:
+                        type: integer
+            raise_to_record_enabled:
+              type: boolean
+            settings:
+              type: array
+              items:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  forced:
+                    type: boolean
+                  name:
+                    type: string
+                  value:
+                    type: string
+            support_url:
+              type: string
+            valid_from:
+              type: object
+              properties:
+                discover_posts:
+                  type: integer
+                discover_categories:
+                  type: integer
+            vk_pay_endpoint:
+              type: string
+            vk_pay_endpoint_v2:
+              type: string
+            stream_special_comment_price:
+              type: integer
+            menu_ads_easy_promote:
+              type: object
+              properties:
+                item_url:
+                  type: string
+                item_text:
+                  type: string
+                show_badge:
+                  type: boolean
+            side_menu_custom_items:
+              type: array
+              items:
+                type: object
+                properties:
+                  icon:
+                    type: string
+                  title:
+                    type: string
+                  action:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      target:
+                        type: string
+                      url:
+                        type: string
+            subscription_combo_allowed:
+              type: boolean
+            include_channel_notifications:
+              type: boolean
+            messages_transcript_auto_show:
+              type: boolean
+            messages_multiline_input:
+              type: boolean
+            messages_translation_language_pairs:
+              type: array
+              items:
+                type: string
+            obscene_text_filter:
+              type: boolean
+            messages_reaction_notifications:
+              type: object
+              properties:
+                max_message_age_sec:
+                  type: integer
+                max_reactions:
+                  type: integer
+              required:
+                - max_message_age_sec
+                - max_reactions
+            market_adult_18plus:
+              type: object
+              properties:
+                is_adult_by_profile:
+                  type: boolean
+                is_adult_confirm:
+                  type: boolean
+              required:
+                - is_adult_by_profile
+                - is_adult_confirm
+            can_change_password:
+              type: boolean
+            is_personal_ads_easy_promote_enabled:
+              type: boolean
+            messages_counter_settings:
+              type: object
+              properties:
+                include_muted:
+                  type: boolean
+                include_group_dialogs:
+                  type: boolean
+                include_channels:
+                  type: boolean
+        time:
+          type: integer
+        has_new_items:
+          type: object
+          properties:
+            global_promotion:
+              type: integer
+            store_new_items:
+              type: integer
+            stickers_version_hash:
+              type: string
+            favorite_stickers_version_hash:
+              type: string
+        allow_buy_votes:
+          type: boolean
+        ads_stoplist:
+          type: array
+        use_vigo:
+          type: boolean
+        html_games_supported:
+          type: integer
+        defaultAudioPlayer:
+          type: string
+      example:
+        profile:
+          id: 37758500
+          first_name: "first_name"
+          last_name: "last_name"
+          can_access_closed: true
+          is_closed: true
+        info:
+          2fa_required: 1,
+          audio_ads:
+            day_limit: 100,
+            track_limit: 1,
+            types_allowed:
+              - "preroll"
+            sections:
+              - "my"
+              - "user_playlists"
+              - "group_playlists"
+              - "my_playlists"
+              - "recent"
+              - "audio_feed"
+              - "collections"
+              - "genre_rock"
+              - "genre_pop"
+              - "genre_rap"
+              - "artist_info"
+              - "artist_main_albums"
+              - "artist_main_audios"
+              - "artist_featured_albums"
+              - "artist_featured_audios"
+              - "artist_featured_albums"
+              - "artist_featured_albums"
+              - "artist_pages"
+              - "artist_events"
+              - "artist_related"
+              - "artist_new_album"
+              - "artist_top_audios"
+              - "artist_top_videos"
+              - "artist_concerts"
+          audio_permissions:
+            audio_meta_info: false
+          business_notify_enabled: 1
+          change_email_url: "https://m.vk.com/settings?act=api_change_email&api_token=vk1.a.for_example--token"
+          change_phone_url: "https://m.vk.com/activation?act=api_change_phone&api_token=vk1.a.for_example--token"
+          country: "FI"
+          debug_available: false
+          email: "en***@gmail.com"
+          email_status: "confirmed"
+          eu_user: true
+          feed_preloading:
+            media_discover:
+              on_app_start:
+                enabled: true
+            breaking_news:
+              on_app_start:
+                enabled: false
+              on_neighbour_tab:
+                enabled: true
+          https_required: 1
+          intro: 0
+          music_intro: 2
+          fave_intro: 0
+          menu_intro: true
+          community_comments: false
+          track_installed_apps: true
+          clickable_stickers:
+            max_stickers:
+              hashtag: 4
+              mention: 10
+              music: 1
+              playlist: 1
+              video: 1
+              question: 1
+              place: 1
+              story_reply: 1
+              owner: 1
+              market_item: 10
+              link: 3
+              post: 1
+              poll: 1
+              sticker: 20
+              app: 10
+              situational_theme: 1
+              spoiler: 20
+          reports_spa: false
+          lang: 0
+          money_p2p_params:
+            min_amount: 50
+            max_amount: 75000
+            currency: "RUB"
+            show_intro: true
+          no_wall_replies: 0
+          own_posts_default: 0
+          phone: "+358 ** *** ** 94"
+          phone_status: "validated"
+          profiler_enabled: false
+          profiler_settings:
+            api_requests: true
+            download_patterns:
+              - type: "hls_chunk"
+                pattern: "^https:\/\/((cs[0-9\\-v]+)|sgi\\d+\\.[-_a-zA-Z0-9]+)\\.(vk\\.me|vk\\-cdn\\.net|userapi\\.com|vkuserphoto\\.ru|vkuservideo\\.net|vkuservideo\\.com|vkuservideo\\.ru).*\\.ts.*$"
+                probability: 0.01
+                error_probability: 1
+              - type: "mp4"
+                pattern: "^https:\/\/((cs[0-9\\-v]+)|sgi\\d+\\.[-_a-zA-Z0-9]+)\\.(vk\\.me|vk\\-cdn\\.net|userapi\\.com|vkuserphoto\\.ru|vkuservideo\\.net|vkuservideo\\.com|vkuservideo\\.ru).*\\.mp4.*$"
+                probability: 0.01
+                error_probability: 1
+              - type: "mp3"
+                pattern: "^https:\/\/([cs0-9\\-pv]+|sgi\\d+\\.[-_a-zA-Z0-9]+)\\.(vk\\.me|vk\\-cdn\\.net|userapi\\.com|vkuserphoto\\.ru|vkuservideo\\.net|vkuservideo\\.com|vkuseraudio\\.net|vkuservideo\\.ru|vkuseraudio\\.ru).*\\.mp3.*$"
+                probability: 0.01
+                error_probability: 1
+              - type: "ogg"
+                pattern: "^https:\/\/([cs0-9\\-pv]+|sgi\\d+\\.[-_a-zA-Z0-9]+)\\.(vk\\.me|vk\\-cdn\\.net|userapi\\.com|vkuserphoto\\.ru|vkuservideo\\.net|vkuservideo\\.com|vkuseraudio\\.net|vkuservideo\\.ru|vkuseraudio\\.ru).*\\.ogg.*$"
+                probability: 0.05
+                error_probability: 1
+          raise_to_record_enabled: true
+          settings:
+            - available: true
+              forced: false
+              name: "audio_restrictions"
+            - available: false
+              forced: false
+              name: "audio_autoplay"
+            - available: false
+              forced: false
+              name: "audio_recommendations"
+            - available: true
+              forced: false
+              name: "audio_background_limit"
+            - available: false
+              forced: false
+              name: "discover_preload_delay"
+            - available: true
+              forced: false
+              name: "video_discover"
+          support_url: "https://m.vk.com/support?api_view=ba7c34a0be0d0f0b8006d3c128403b"
+          valid_from:
+            discover_posts: 1645013170,
+            discover_categories: 1645013170
+          vk_pay_endpoint: "https://web-view.vkpay.io/"
+          vk_pay_endpoint_v2: "https://ea-miniapp.vkpay.io/?vk_access_token_settings=notify,friends,groups&vk_app_id=ID&vk_are_notifications_enabled=0&vk_experiment=ID&vk_is_app_user=1&vk_is_favorite=0&vk_language=ru&vk_mode=mobile_modal&vk_platform=mobile_android&vk_ref=profile&vk_ts=1749451572&vk_user_id=ID&sign=SIGN"
+          stream_special_comment_price: 3
+          menu_ads_easy_promote:
+            item_url: "https://vk.com/ads_easy_promote?from=main-menu"
+            item_text: "Ads"
+            show_badge: false
+          side_menu_custom_items:
+              icon: "advertising"
+              title: "Ads"
+              action:
+                type: "open_url"
+                target: "internal"
+                url: "https://vk.com/ads_easy_promote?from=side-menu"
+          subscription_combo_allowed: false
+          include_channel_notifications: false
+          messages_transcript_auto_show: true
+          messages_multiline_input: false
+          messages_translation_language_pairs:
+            - "ru-en"
+            - "en-ru"
+            - "ru-es"
+            - "es-ru"
+            - "ru-pt"
+            - "pt-ru"
+          obscene_text_filter: false
+          messages_reaction_notifications:
+            max_message_age_sec: 43200
+            max_reactions: 8
+          market_adult_18plus:
+            is_adult_by_profile: true
+            is_adult_confirm: false
+          can_change_password: true
+          is_personal_ads_easy_promote_enabled: false
+          messages_counter_settings:
+            include_muted: true
+            include_group_dialogs: true
+            include_channels: false
+        time: 1749451572
+        has_new_items:
+          global_promotion: 1
+          store_new_items: 15
+          stickers_version_hash: "0cfd89b8513f3d8362359c156f5cd79b"
+          favorite_stickers_version_hash: "40cd750bba9870f18aada2478b24840a"
+        allow_buy_votes: false
+        ads_stoplist: []
+        use_vigo: true
+        html_games_supported: 1
+        defaultAudioPlayer: "exoCached"
+    PlaylistItem:
+      description: Song item in the playlist
+      type: object
+      properties:
+        artist:
+          type: string
+        id:
+          type: number
+        owner_id:
+          type: number
+        title:
+          type: string
+        duration:
+          type: number
+        access_key:
+          type: string
+        ads:
+          type: object
+          properties:
+            content_id:
+              type: string
+            duration:
+              type: string
+            account_age_type:
+              type: string
+            puid1:
+              type: string
+            puid22:
+              type: string
+        is_explicit:
+          type: boolean
+        is_focus_track:
+          type: boolean
+        is_licensed:
+          type: boolean
+        track_code:
+          type: string
+        url:
+          type: string
+        date:
+          type: number
+        genre_id:
+          type: number
+        short_videos_allowed:
+          type: boolean
+        stories_allowed:
+          type: boolean
+        stories_cover_allowed:
+          type: boolean
+        like:
+          type: boolean
+        content_restricted:
+          type: number
+        album:
+          type: object
+          properties:
+            id:
+              type: number
+            title:
+              type: string
+            owner_id:
+              type: number
+            access_key:
+              type: string
+            thumb:
+              type: object
+              properties:
+                width:
+                  type: number
+                height:
+                  type: number
+                id:
+                  type: string
+                photo_34:
+                  type: string
+                photo_68:
+                  type: string
+                photo_135:
+                  type: string
+                photo_270:
+                  type: string
+                photo_300:
+                  type: string
+                photo_600:
+                  type: string
+                photo_1200:
+                  type: string
+            main_color:
+              type: string
+        release_audio_id:
+          type: string
+      example:
+        artist: FRISKY | Sonder
+        id: 456261212
+        owner_id: -42311167
+        title: May 2025 - GrahamDunn (Part 1) [vk.com/feelin_frisky]
+        duration: 3600
+        access_key: 00f7585510834ed3f4
+        ads:
+          content_id: -42311167_456261212
+          duration: "3600"
+          account_age_type: "3"
+          puid1: "554"
+          puid22: "11"
+        is_explicit: false
+        is_focus_track: false
+        is_licensed: true
+        track_code: edd5d391z4BQCEEiH-RJXhDpAmhUOsOCY7eckCdfp0xTm8tyAR7CiToSQisP7ElEDLKKgYnjD0yteVWm-17uDpCdyw
+        url: https://cs9-8v4.vkuseraudio.net/s/v1/ac/UMcGxLMUzJOJ-bU3V-ARLTW-BbhzUDR7rrOPfcNxFiPqI6PROltQiqEN_qObD_IDHaMwbDntt4wGynR7V-ioV4dFieJaxjyJ68TsneKkCg5iZeZAYOQpAfVMdwlrQ43IZUHd0Z2Bl9VsjNmYl6Db6V-2QYxgr05WWTwjGsSY5RY334Q/index.m3u8?siren=1
+        date: 1748281030
+        genre_id: 18
+        album:
+          id: 23828584
+          title: Waneda / Summit
+          owner_id: -2000828584
+          access_key: d89d83bbba9dc7d950
+          thumb:
+            width: 1500
+            height: 1500
+            id: "457239041"
+            photo_34: https://sun9-39.userapi.com/impg/O_jK21MeqEiAqvPNYTGJ1b6VEFBU_HrhgOzXVg/uYpPFitpak0.jpg?size=34x34&quality=95&sign=7f4d7627968b86d19794588a0b21f818&c_uniq_tag=Z0ujVBj2m_ueGEjyJi5L9SEZ6r9iOw3CugnYmFVrZyM&type=audio
+            photo_68: https://sun9-39.userapi.com/impg/O_jK21MeqEiAqvPNYTGJ1b6VEFBU_HrhgOzXVg/uYpPFitpak0.jpg?size=68x68&quality=95&sign=94a032b98b8da0729df309d9796b0b0a&c_uniq_tag=cNzTalX7NcFkUWnZeV-kLdmwz_3RBGf_7ysV-VUc73g&type=audio
+            photo_135: https://sun9-39.userapi.com/impg/O_jK21MeqEiAqvPNYTGJ1b6VEFBU_HrhgOzXVg/uYpPFitpak0.jpg?size=135x135&quality=95&sign=28e94bb7c90b712a45dba3cdca4d446c&c_uniq_tag=9yDhYNgs-m70VcoSe9lCKpUESYUtmbbXcfLYZX8q3yE&type=audio
+            photo_270: https://sun9-39.userapi.com/impg/O_jK21MeqEiAqvPNYTGJ1b6VEFBU_HrhgOzXVg/uYpPFitpak0.jpg?size=270x270&quality=95&sign=fec6a37990765d48f45b1ddbe19fd211&c_uniq_tag=IvEVSpQrVxqGRqa9j1r9wBRgWF7HMYR282efGE4esV0&type=audio
+            photo_300: https://sun9-39.userapi.com/impg/O_jK21MeqEiAqvPNYTGJ1b6VEFBU_HrhgOzXVg/uYpPFitpak0.jpg?size=300x300&quality=95&sign=672d70f6e485f21f3b60a414d7304819&c_uniq_tag=RKf8Sm5Ho9mJrdmpYQphv5IsPJ4mssX_DQ7RbqdvtwI&type=audio
+            photo_600: https://sun9-39.userapi.com/impg/O_jK21MeqEiAqvPNYTGJ1b6VEFBU_HrhgOzXVg/uYpPFitpak0.jpg?size=600x600&quality=95&sign=d9863839fca1ef71e840eef10cf49796&c_uniq_tag=39s-HShLgSWRERuSS_I2-GpbqV8cQY0o_xZuYGDF_X8&type=audio
+            photo_1200: https://sun9-39.userapi.com/impg/O_jK21MeqEiAqvPNYTGJ1b6VEFBU_HrhgOzXVg/uYpPFitpak0.jpg?size=1200x1200&quality=95&sign=8944024e22630febdffc45f0dd77da52&c_uniq_tag=SNlNzqDRB4QWnmh21ghZ7XmZzaTCJ0gjgmRXNOBb5Zk&type=audio
+          main_color: "#FFFFFF"
+        short_videos_allowed: false
+        stories_allowed: false
+        stories_cover_allowed: false
+        release_audio_id: -2001879996_135879996
+    Tracklist:
+      description: List of tracks
+      type: array
+      items:
+        $ref: '#/components/schemas/TrackItem'
+    TrackItem:
+      description: Track item
+      type: object
+      properties:
+        id:
+          required: true
+          type: number
+        type:
+          type: string
+          default: hls
+          required: true
+          enum:
+            - default
+            - dash
+            - hls
+            - smoothstreaming
+        url:
+          type: string
+        artwork:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        date:
+          type: string
+        duration:
+          type: number
+        favorite:
+          type: boolean
+        genre_list:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: number
+              name:
+                type: string
+        track_list:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrackContent'
+        multipart:
+          type: boolean
+        part_list:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              part:
+                type: number
+              duration:
+                type: number
+      example:
+        id: 456261212
+        type: hls
+        url: https://cs9-8v4.vkuseraudio.net/s/v1/ac/UMcGxLMUzJOJ-bU3V-ARLTW-BbhzUDR7rrOPfcNxFiPqI6PROltQiqEN_qObD_IDHaMwbDntt4wGynR7V-ioV4dFieJaxjyJ68TsneKkCg5iZeZAYOQpAfVMdwlrQ43IZUHd0Z2Bl9VsjNmYl6Db6V-2QYxgr05WWTwjGsSY5RY334Q/index.m3u8?siren=1
+        artwork: ""
+        title: May 2025 - GrahamDunn (Part 1) [vk.com/feelin_frisky]
+        artist: FRISKY | Sonder
+        date: '2025-05-01T00:00:00Z'
+        duration: 3600
+        favorite: true
+        track_list:
+            - id: 1
+              title: Some Track Title
+              artist: Some Artist
+              time_code: '01:23:45'
+              spotify: "https://open.spotify.com/track/1234567890abcdefg"
+              youtube: "https://www.youtube.com/watch?v=example"
+              apple_music: "https://music.apple.com/album/may-2025-grahamdunn-part-1-vk-com-feelin-frisky/1234567890?i=1234567890"
+        multipart: true
+        part_list:
+            - url: https://example.com/part1.m3u8
+              part: 1
+              duration: 1800
+            - url: https://example.com/part2.m3u8
+              part: 2
+              duration: 1800
+    TrackContent:
+      description: Content of the track list
+      type: object
+      properties:
+        id:
+          type: number
+        title:
+          type: string
+        artist:
+          type: string
+        duration:
+          type: number
+        time_code:
+          type: string
+        spotify:
+          type: string
+        youtube:
+          type: string
+        apple_music:
+          type: string
+      example:
+        id: 1
+        title: May 2025 - GrahamDunn (Part 1) [vk.com/feelin_frisky]
+        artist: FRISKY | Sonder
+        time_code: '00:00:00'
+        spotify: "https://open.spotify.com/track/1234567890abcdefg"
+        youtube: "https://www.youtube.com/watch?v=example"
+        apple_music: "https://music.apple.com/album/may-2025-grahamdunn-part-1-vk-com-feelin-frisky/1234567890?i=1234567890"
+

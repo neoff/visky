@@ -98,8 +98,8 @@ jobs:
           npm version "$tag" --no-git-tag-version
           git add package.json
           
-          git commit --allow-empty -m "release: initial"
-          git tag -a "$tag" -m "release $tag"
+          git commit -a -m "release: $tag"
+          git tag -a "$tag" -m "release: $tag"
           git push origin "$release_branch"
           git push origin "refs/tags/$tag"
           
@@ -132,7 +132,7 @@ jobs:
           npm version "$next_version" --no-git-tag-version
           git add package.json
           
-          git commit -m "chore: bump to next dev version $next_version [skip ci]"
+          git commit -m "chore(#0): bump to next dev version $next_version"
           git push origin ${{ env.DEFAULT_BRANCH }}
           
       #Create release notes
@@ -156,7 +156,7 @@ jobs:
         id: changelog
         run: |
           RAW_LOG=$(git log --pretty=format:"- %s" ${{ steps.prev_tag.outputs.prev_tag }}..${{ steps.latest_tag.outputs.tag }} \
-            | grep -vE '^(- )?(release: initial|Merge remote-tracking|chore: bump to next dev version)' \
+            | grep -vE '^(- )?(release: .*?|Merge remote-tracking|chore(#0): .*?)' \
             | sed '/^ *$/d')
           # Initialize sections
           FEAT=""

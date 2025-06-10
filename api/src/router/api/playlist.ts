@@ -13,6 +13,7 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
     "owner_id": owner
   }, false)
     .then((data) => {
+      console.log("===>>frisky RAW data:", data);
       const clean = cleanupDataAndSortPart(data);
       console.log("===>>frisky data:", clean);
       return clean;
@@ -20,13 +21,18 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
 }
 
 /**
- * Get the frisky from the VK group  Frisky Radio
+ * Get the any playlist
+ * @unused
  */
-api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
+api.get("/", checkAuthAndroid, async (req: Request, res: Response) => {
 
-  const owner: number = -42311167;
+  const owner: number = parseInt(req.query.owner as string);
   const count: number = parseInt(req.query?.count as string) || 1;
   const offset: number = parseInt(req.query.offset as string) || 0;
+  if (!req.query.owner) {
+    res.status(400).send({errData: "No owner_id"});
+    return;
+  }
   try {
     //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
     //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
@@ -38,20 +44,14 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
   }
 });
 
-
 /**
- * Get the any playlist
- * @unused
+ * Get the frisky from the VK group  Frisky Radio
  */
-api.get("/playlist", checkAuthAndroid, async (req: Request, res: Response) => {
+api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
 
-  const owner: number = parseInt(req.query.owner as string);
+  const owner: number = -42311167;
   const count: number = parseInt(req.query?.count as string) || 1;
   const offset: number = parseInt(req.query.offset as string) || 0;
-  if (!req.query.owner) {
-    res.status(400).send({errData: "No owner_id"});
-    return;
-  }
   try {
     //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
     //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
