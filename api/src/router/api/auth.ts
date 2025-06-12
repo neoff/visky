@@ -87,8 +87,8 @@ auth.post("/token", async (req: Request, res: Response) => {
   console.debug("===Token: set session new new: ", req.body.session)
   return await refreshSession(req, res).then((response) => {
     console.debug("===Token: response", response)
-    //res.status(200).send(response).end()
-    res.redirect(`profile`)
+    res.status(200).send(response).end()
+    //res.redirect(`profile`)
   }).catch((error) => {
     console.error("===Token: ERROR", error)
     res.status(500).send({errMessage: error.error_msg}).end()
