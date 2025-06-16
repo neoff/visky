@@ -22,7 +22,7 @@ export default function TabsLayout(){
           tabBarActiveTintColor: colors.primary,
           tabBarLabelStyle: {
             fontSize: fonts.xs,
-            fontWeight: fonts.weight,
+            fontWeight: "600",
           },
           headerShown: false,
           tabBarStyle: {

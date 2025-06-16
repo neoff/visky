@@ -51,16 +51,7 @@ const PlayerScreen = () => {
   const [background, primary] = [colors.background, colors.primary]
   const handleClosePlayer = () => {
     console.log("===AppLayout handleDismiss!!!!");
-    //router.dismiss()
-    //router.back();
-    console.log("🔙 player screen attempts to close");
-    if (router.canGoBack()) {
-      console.log("🔙 canGoBack: true → calling back()");
-      router.back();
-    } else {
-      console.log("🔙 canGoBack: false → replacing to /(tabs)");
-      router.replace("/(tabs)");
-    }
+    router.back();
   }
   return (
     <LinearGradient
