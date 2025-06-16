@@ -17,6 +17,8 @@ export const colors = {
 export const modifiers = {
   text:(Platform.OS === "ios") ? 0 : 5,
   icons:(Platform.OS === "ios") ? 0 : 5,
+  top:(Platform.OS === "ios") ? 0 : 8,
+  left:(Platform.OS === "ios") ? 0 : 12,
   padding:(Platform.OS === "ios") ? 0 : 5,
   margin:(Platform.OS === "ios") ? 0 : 25,
   width:(Platform.OS === "ios") ? 0 : 10,
@@ -36,7 +38,7 @@ export const fonts = {
   sm: 16 + modifiers.text,
   base: 20 + modifiers.text,
   lg: 24 + modifiers.text,
-  weight: 600,
+  weight: "600",
 }
 
 
@@ -97,8 +99,8 @@ export const apiUrls = {
   playlistUrl: playlistUrl,
   playerUrl: playerUrl,
   oAuthUrl: `${authUrl}/vk-oauth`,
-  authAppUrl: (__DEV) ? `${authUrl}/local${redirectUrl}` : `${authUrl}/vk`,
-  authAdminAppUrl_: `${authUrl}/vk`,
+  authAppUrl: (__DEV) ? `${baseHost}/auth/local` : `${baseHost}/auth/vk`,
+  authAdminAppUrl_: `${baseHost}/vk`,
   tokenUrl: `${authUrl}/token`,
   refreshUrl: `${authUrl}/refresh`,
   profileUrl: `${authUrl}/profile`,

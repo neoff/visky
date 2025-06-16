@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
     "scheme": "visky",
     "splash": {
       "image": "./assets/splash.png",
@@ -23,7 +24,13 @@
           "visky"
         ],
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "fetch",
+          "processing",
+          "external-accessory",
+          "bluetooth-peripheral",
+          "bluetooth-central",
+          "remote-notification"
         ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false,
@@ -32,7 +39,7 @@
               "NSIncludesSubdomains": true,
               "NSExceptionAllowsInsecureHTTPLoads": true
             },
-            "frisky.envarg.com": {
+            "visky.envarg.com": {
               "NSIncludesSubdomains": true,
               "NSExceptionAllowsInsecureHTTPLoads": true
             },
@@ -46,7 +53,7 @@
       "appleTeamId": "N853W9Q344"
     },
     "android": {
-      "ndkVersion": "26.3.11579264",
+      "versionCode": 23,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000"
@@ -54,11 +61,36 @@
       "package": "com.envarg.visky"
     },
     "web": {
-      "bundler": "webpack",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "static"
     },
     "plugins": [
+      "./src/plugins/with-trackplayer-service.js",
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-build-properties",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 24,
+            "kotlinVersion": "2.0.21",
+            "jvmTarget": "17"
+          }
+        }
+      ],
       "expo-secure-store"
     ],
     "experiments": {
@@ -73,14 +105,5 @@
         "projectId": "db8e9c8f-c68f-45fd-b4a1-bff0ca4f7c4d"
       }
     }
-  },
-  "android": {
-    "package": "com.envarg.reacttestapp"
-  },
-  "ios": {
-    "bundleIdentifier": "com.envarg.example.ReactTestApp"
-  },
-  "macos": {
-    "bundleIdentifier": "com.envarg.ReactTestApp"
   }
 }

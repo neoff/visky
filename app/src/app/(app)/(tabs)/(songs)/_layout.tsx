@@ -1,3 +1,4 @@
+// src/(app)/(tabs)/(songs)/_layout.tsx
 import {defaultStyles} from "@/styles"
 import {Stack} from "expo-router"
 import {View} from "react-native"

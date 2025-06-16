@@ -1,0 +1,184 @@
+---
+name: Merge or push to default_branch
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+      - master
+    #paths:
+    #  - 'src/**'
+    #  - 'Dockerfile'
+
+jobs:
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
+  bump-prepatch:
+    needs: validate
+    if: ${{ (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ env.DEFAULT_BRANCH }}
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config init.defaultBranch ${{ env.DEFAULT_BRANCH }}
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "current=$version"
+          echo "current=$version" >> $GITHUB_OUTPUT
+
+      - name: Bump Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.version.outputs.current }}
+          bump-level: prerelease
+          prerelease-tag: "alpha"
+      #- name: Update iOS Info.plist version
+      #  run: |
+      #    plist="ios/visky/Info.plist"
+      #    version="${{ steps.bump.outputs.new_version }}"
+      #    build_number=$(date +%s)  # можно использовать счетчик или date
+      #    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" $plist
+      #    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" $plist
+      #    git add $plist
+      #- name: Update Android build.gradle
+      #  run: |
+      #    version="${{ steps.bump.outputs.new_version }}"
+      #    code=$(date +%s)
+      #    sed -i.bak -E "s/versionName \".*\"/versionName \"$version\"/" android/app/build.gradle
+      #    sed -i.bak -E "s/versionCode [0-9]+/versionCode $code/" android/app/build.gradle
+      #    git add android/app/build.gradle
+      - name: Bump patch version if not release-related
+        run: |
+          version="${{ steps.bump.outputs.new_version }}"
+          jq '.expo.version = "'$version'"' app.json > tmp.$$.json && mv tmp.$$.json app.json
+          npm version "${{ steps.bump.outputs.new_version }}" --no-git-tag-version
+          git add package.json app.json
+          git commit -m "chore(#0): bump patch version to ${{ steps.bump.outputs.new_version }}"
+          git push origin ${{ env.DEFAULT_BRANCH }}
+          
+          
+
+  #DEBUG
+  debug:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Print environment variables
+        run: |
+          echo "event ${{ github.event_name }}"
+          echo "event ${{ github.event_name }}"
+          echo "github.ref ${{ github.ref }}"
+      #- name: Parse semver string
+      #  id: semver_parser
+      #  uses: booxmedialtd/ws-action-parse-semver@v1
+      #  with:
+      #    input_string: '1.0.4'
+      #- name: Use parsed semver #DEPRECATION WARNING
+      #  run: |
+      #        echo "v${{ steps.semver_parser.outputs.major }}"
+      #        echo "v${{ steps.semver_parser.outputs.minor }}"
+      #        echo "v${{ steps.semver_parser.outputs.patch }}"
+      #        echo "v${{ steps.semver_parser.outputs.prerelease }}"
+      #        echo "v${{ steps.semver_parser.outputs.build }}"
+      #        echo "v${{ steps.semver_parser.outputs.fullversion }}"
+
+      - name: Get current version
+        id: version
+        #current_version=$(node -p "require('./package.json').version")
+        #current=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+        run: |
+          current_version='1.2.3'
+          echo "Current version: $current_version"
+          echo "version=$current_version" >> $GITHUB_OUTPUT
+
+      #https://github.com/marketplace/actions/semver-bump-action
+      - name: Bump Minor Version
+        id: bump
+        uses: cbrgm/semver-bump-action@main
+        with:
+          current-version: ${{ steps.version.outputs.version }}
+          bump-level: minor
+
+      - name: Output
+        run: |
+          new_tag=${{ steps.bump.outputs.new_version }}
+          echo $new_tag
+
+      - name: Get Latest Tag
+        id: latest_tag
+        run: |
+          git fetch --tags
+          tag=$(git tag --sort=-v:refname | head -n 1)
+          echo "current version is: $tag"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: List available branches and tags
+        run: |
+          echo "=== Available branches ==="
+          git ls-remote --heads origin | awk '{print $2}' | sed 's/refs\/heads\///'
+          echo ""
+          echo "=== Available tags ==="
+          git ls-remote --tags origin | awk '{print $2}' | sed 's/refs\/tags\///'
+
+      - name: Manual bump version in master to next development version
+        run: |
+          
+          repo_full=${{ github.repository }}
+          repo_name=$(basename $repo_full)
+          
+          current="${{ steps.version.outputs.current }}"
+          IFS='.' read -r major minor patch <<< "$current"
+          
+          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            major=$((major + 1))
+            minor=0
+            patch=0
+          fi
+          
+          next_version="$major.$minor.$patch"
+          echo "Next development version: $repo_name $next_version"
+
+          echo "git checkout ${{ github.event.repository.default_branch }}"
+          echo 'git add package.json'
+          echo 'git commit -m "chore: bump to next dev version $next_version [skip ci]"''
+          echo 'git push origin ${{ env.DEFAULT_BRANCH }}''
+...

@@ -69,10 +69,10 @@ export default function TabsLayout(){
           }}
         />
         <Tabs.Screen
-          name="artists"
+          name="shows"
           options={{
-            title: 'Artists',
-            tabBarIcon: ({color}: {color: string}) => <FontAwesome6 name="users-line" size={20 + modifiers.icons} color={color}/>,
+            title: 'Shows',
+            tabBarIcon: ({color}: {color: string}) => <Ionicons name="albums" size={28 + modifiers.icons} color={color}/>,
           }}
         />
         <Tabs.Screen

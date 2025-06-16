@@ -1,0 +1,96 @@
+---
+name: Push docker image
+
+on:
+  workflow_run:
+    workflows: ["Create release branch"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or tag to deploy (example: main, 1.4.0)'
+        required: true
+        type: string
+
+jobs:
+  build-publish-docker:
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Download artifact from previous workflow
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=${{ github.event.workflow_run.id }}
+          echo "Getting artifacts for run $run_id"
+
+          artifact_url=$(gh api \
+            repos/${{ github.repository }}/actions/runs/$run_id/artifacts \
+            --jq '.artifacts[] | select(.name=="branch-name") | .archive_download_url')
+
+          echo "Found artifact: $artifact_url"
+
+          curl -L -H "Authorization: token $GH_TOKEN" -o artifact.zip "$artifact_url"
+          unzip artifact.zip
+
+      - name: Read branch
+        if: github.event_name == 'workflow_run'
+        id: read_branch
+        run: |
+          branch=$(cat branch.txt)
+          echo "branch=$branch" >> $GITHUB_OUTPUT
+      
+
+      - name: Checkout repository workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.inputs.ref }}
+      - name: Checkout repository workflow_run
+        if: github.event_name == 'workflow_run'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ steps.read_branch.outputs.branch }}
+
+      - name: Create branch name
+        if: github.event_name == 'workflow_run'
+        run: |
+          echo "${{ steps.read_branch.outputs.branch }}" > branch.txt
+      - name: Upload branch name
+        if: github.event_name == 'workflow_run'
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-name
+          path: branch.txt
+
+      - name: Get current version
+        id: version
+        run: |
+          current_version=$(node -p "require('./package.json').version")
+          echo "Current version: $current_version"
+          echo "current=$current_version" >> $GITHUB_OUTPUT
+
+      - name: Build Android with Expo EAS
+        run: |
+          npm install -g eas-cli
+          yarn build
+        env:
+          EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      #- name: Build iOS with Expo EAS
+      #  run: |
+      #    npm install -g eas-cli
+      #    eas build -p ios --profile preview --non-interactive
+      #  env:
+      #    EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
+...
