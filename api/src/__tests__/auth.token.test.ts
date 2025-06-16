@@ -25,7 +25,7 @@ describe('/api/auth/token', () => {
   it('should return 400 if vkurl does not include access_token', async () => {
     const res = await request(app)
       .post('/api/auth/token')
-      .send({ vkurl: 'https://oauth.vk.com/blank.html#expires_in=0' });
+      .send({vkurl: 'https://oauth.vk.com/blank.html#expires_in=0'});
 
     expect(res.status).toBe(400);
     expect(res.body.errMessage).toContain("No 'access_token'");
@@ -33,7 +33,7 @@ describe('/api/auth/token', () => {
 
   it('should process valid vkurl and return updated session', async () => {
     const userProfileMock = {
-      profile: { id: 123456 }
+      response: {profile: {id: 123456}}
     };
 
     const refreshMock = {
@@ -49,6 +49,7 @@ describe('/api/auth/token', () => {
       .post('/api/auth/token')
       .send({
         vkurl: 'https://oauth.vk.com/blank.html#access_token=mock_token&secret=mock_secret'
+        //url: 'https://oauth.vk.com/blank.html#access_token=mock_token&secret=mock_secret'
       });
 
     expect(res.status).toBe(200);
