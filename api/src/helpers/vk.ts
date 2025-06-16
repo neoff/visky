@@ -44,7 +44,7 @@ export const method = async (req: Request, method: string, params : {}, sign: bo
         return response.data?.response || response.data;
     })
     .catch((error) => {
-        console.error(`======== /method/${method} ERROR:`, JSON.stringify(error, null, 2))
+        console.error(`ERROR ======== /method/${method} ERROR:`, JSON.stringify(error, null, 2))
         throw new Error(error.error_msg)
     })
 }

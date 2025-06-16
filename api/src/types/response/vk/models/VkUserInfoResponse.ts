@@ -5,7 +5,7 @@
 /**
  * User info
  */
-export type UserInfoResponse = {
+export type VkUserInfoResponse = {
     profile?: {
         id?: number;
         first_name?: string;
