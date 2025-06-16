@@ -1,0 +1,1 @@
+export const wrapper = (client: any) => client;

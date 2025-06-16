@@ -2,12 +2,12 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import type { PlaylistResponse } from './PlaylistResponse';
-import type { UserInfoResponse } from './UserInfoResponse';
+import type { VkPlaylistResponse } from './VkPlaylistResponse';
+import type { VkUserInfoResponse } from './VkUserInfoResponse';
 /**
  * Response from VK
  */
 export type VkResponse = {
-    response?: (PlaylistResponse | UserInfoResponse);
+    response?: (VkPlaylistResponse | VkUserInfoResponse);
 };
 

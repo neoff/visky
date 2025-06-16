@@ -5,6 +5,8 @@ export default {
     testMatch: ['**/__tests__/**/*.test.ts'],
     moduleFileExtensions: ['ts', 'js', 'json'],
     moduleNameMapper: {
-        '^@/(.*)$': '<rootDir>/src/$1'
+        '^@/(.*)$': '<rootDir>/src/$1',
+        '^axios$': '<rootDir>/src/__tests__/__mocks__/axios.ts',
+        '^axios-cookiejar-support$': '<rootDir>/src/__tests__/__mocks__/axios-cookiejar-support.ts',
     }
 };

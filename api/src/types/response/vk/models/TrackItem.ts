@@ -7,15 +7,17 @@ import type { TrackContent } from './TrackContent';
  * Track item
  */
 export type TrackItem = {
-    id?: number;
-    type?: TrackItem.type;
-    url?: string;
+    id: number;
+    owner_id: number;
+    type: TrackItem.type;
+    url: string;
     artwork?: string;
-    title?: string;
-    artist?: string;
-    date?: string;
-    duration?: number;
+    title: string;
+    artist: string;
+    date: number;
+    duration: number;
     favorite?: boolean;
+    hidden?: boolean;
     genre_list?: Array<{
         id?: number;
         name?: string;
