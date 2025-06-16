@@ -1,7 +1,7 @@
 {
   "name": "visky",
   "main": "expo-router/entry",
-  "version": "1.1.0-alpha.1",
+  "version": "1.0.2",
   "scripts": {
     "generate": "apigen-ts https://visky.envarg.com/v3/api-docs ./src/rest/api-client.ts",
     "start": "expo start",
@@ -13,6 +13,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test": "jest",
+    "bump:android": "node -e \"const fs = require('fs'); const app = require('./app.json'); app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1; fs.writeFileSync('app.json', JSON.stringify(app, null, 2));\"",
     "build:android": "eas build -p android --profile preview --non-interactive",
     "build": "yarn test && yarn eas build -p android --profile preview --non-interactive",
     "postinstall": "patch-package"

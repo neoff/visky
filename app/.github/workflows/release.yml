@@ -96,9 +96,9 @@ jobs:
             echo "Version mismatch: $next_version != $tag"
           fi
           code_version=$(node -p "require('./app.json').expo.android.versionCode")
-          code=$(date +%s)
+          code=$(node -e "const fs = require('fs'); const app = require('./app.json'); app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1; fs.writeFileSync('app.json', JSON.stringify(app, null, 2));")
           npm version "$tag" --no-git-tag-version
-          jq '.expo.version = "'$tag'" | .expo.android.versionCode = '$code'' app.json > tmp.$$.json && mv tmp.$$.json app.json
+          jq '.expo.version = "'$tag'" | .expo.android.versionCode += 1' app.json > tmp.$$.json && mv tmp.$$.json app.json
           git add package.json app.json
           
           git commit -a -m "release: $tag"
@@ -130,8 +130,7 @@ jobs:
           git checkout ${{ env.DEFAULT_BRANCH }}
           
           next_version=${{ steps.bump-release.outputs.new_version }}
-          code_version=$(node -p "require('./app.json').expo.android.versionCode")
-          code=$(date +%s)
+          code=$(node -p "require('./app.json').expo.android.versionCode")
           echo "Next development version: $next_version"
           
           npm version "$next_version" --no-git-tag-version
