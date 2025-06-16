@@ -81,7 +81,6 @@ auth.post("/token", async (req: Request, res: Response) => {
   if (req.session.secret !== undefined && (req.session.secret !== null || req.session.secret !== "")) {
     req.session.device_id = deviceIDgen()
     console.info("===Token: set session new device_id: ", req.session.device_id)
-    //return res.redirect(`refresh`)
   }
   req.body.session = req.session
   console.debug("===Token: set session new new: ", req.body.session)
