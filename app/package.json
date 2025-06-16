@@ -1,7 +1,7 @@
 {
   "name": "visky",
   "main": "expo-router/entry",
-  "version": "1.1.0-alpha.1",
+  "version": "1.1.0-alpha.2",
   "scripts": {
     "generate": "apigen-ts https://visky.envarg.com/v3/api-docs ./src/rest/api-client.ts",
     "start": "expo start",
