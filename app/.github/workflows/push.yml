@@ -1,5 +1,5 @@
 ---
-name: Push docker image
+name: Push eas.dev application
 
 on:
   workflow_run:
@@ -83,6 +83,7 @@ jobs:
       - name: Build Android with Expo EAS
         run: |
           npm install -g eas-cli
+          yarn install
           yarn build
         env:
           EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}

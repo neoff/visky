@@ -2,7 +2,7 @@
   "expo": {
     "name": "visky",
     "slug": "visky",
-    "version": "1.0.2",
+    "version": "1.1.0-alpha.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -53,7 +53,7 @@
       "appleTeamId": "N853W9Q344"
     },
     "android": {
-      "versionCode": 1750115775,
+      "versionCode": 1750095071,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000"
