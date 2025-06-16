@@ -1,3 +1,4 @@
+// src/app/%28app%29/player.tsx
 import {MovingText} from "@/components/MovingText";
 import {PlayerControls} from "@/components/PlayerControls";
 import {colors, fonts, screenPadding} from "@/constants";
@@ -5,7 +6,7 @@ import {unknownTrackImageUri} from "@/constants/images";
 import {defaultStyles, playerStyle, utilsStyles} from "@/styles";
 import {Entypo, FontAwesome, MaterialCommunityIcons, MaterialIcons, Octicons} from "@expo/vector-icons";
 import {LinearGradient} from "expo-linear-gradient";
-import {ActivityIndicator, StyleSheet, Text, View} from "react-native";
+import {ActivityIndicator, Platform, StyleSheet, Text, View} from "react-native";
 import FastImage from "react-native-fast-image";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {useActiveTrack} from "react-native-track-player";
@@ -15,14 +16,18 @@ import {PlayerRepeatToggle} from "@/components/PlayerRepeatToggle";
 //import {usePlayerBackground} from "@/hooks/usePlayerBackground";
 import PlayerEqualizerBar from "@/components/PlayerEqualizerBar";
 import PlayerTrackListBar from "@/components/PlayerTrackListBar";
-import React from "react";
+import React, {useEffect} from "react";
 import {router} from "expo-router";
 import PlayerEditInfoBar from "@/components/PlayerEditInfoBar";
 
 const PlayerScreen = () => {
   const activeTrack = useActiveTrack()
   //const {imageColors} = usePlayerBackground(activeTrack?.artwork ?? unknownTrackImageUri)
-
+  useEffect(() => {
+    return () => {
+      console.log("🧹 PlayerScreen unmounted");
+    };
+  }, []);
   const {top, bottom} = useSafeAreaInsets()
 
   //temp fix
@@ -45,7 +50,17 @@ const PlayerScreen = () => {
   //const [background, primary] = !imageColors ? [colors.background, colors.primary] : imageColors.platform === 'ios' ? [imageColors.background, imageColors.primary] : [imageColors.dominant, imageColors.vibrant]
   const [background, primary] = [colors.background, colors.primary]
   const handleClosePlayer = () => {
-    router.dismiss()
+    console.log("===AppLayout handleDismiss!!!!");
+    //router.dismiss()
+    //router.back();
+    console.log("🔙 player screen attempts to close");
+    if (router.canGoBack()) {
+      console.log("🔙 canGoBack: true → calling back()");
+      router.back();
+    } else {
+      console.log("🔙 canGoBack: false → replacing to /(tabs)");
+      router.replace("/(tabs)");
+    }
   }
   return (
     <LinearGradient
@@ -86,13 +101,13 @@ const PlayerScreen = () => {
                     />
                   </View>
                   {/* Hide button icon */}
-                  <MaterialCommunityIcons
+                  {/* <MaterialCommunityIcons
                     name={isHidedSong ? 'eye-off' : 'eye-off-outline'}
                     size={23}
                     color={isFavorite ? colors.primary : colors.icon}
                     style={{marginLeft: 14}}
                     onPress={toggleHideSong}
-                  />
+                  /> */}
                   {/* Favorite button icon */}
                   <FontAwesome
                     name={isFavorite ? 'heart' : 'heart-o'}
@@ -130,11 +145,11 @@ const PlayerScreen = () => {
                   justifyContent: 'space-between',
                 }}
               >
-                <PlayerTrackListBar size={37} />
+                {/*<PlayerTrackListBar size={37} />
                 <MaterialIcons name="edit-note" size={28} color={colors.icon} />
                 <PlayerRepeatToggle size={30} style={{marginBottom: 6, marginHorizontal: 10}}/>
                 <PlayerEqualizerBar size={25} style={{marginBottom: 6, marginTop: 3}}/>
-                <Entypo name="share-alternative" size={24} color={colors.icon} />
+                <Entypo name="share-alternative" size={24} color={colors.icon} /> */}
               </View>
             </View>
           </View>

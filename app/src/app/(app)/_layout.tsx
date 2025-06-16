@@ -1,4 +1,5 @@
-import {Button, Text, View} from 'react-native';
+// src/(app)/_layout.tsx
+import {Button, Platform, Text, View} from 'react-native';
 import {Redirect, router, SplashScreen, Stack, useRouter} from 'expo-router';
 import {apiUrls, authPage} from "@/constants";
 import React, {useCallback, useRef, useState} from "react";
@@ -26,9 +27,6 @@ export default function AppLayout() {
   }
   SplashScreen.hideAsync()
   console.log("--AppLayout=Stack session: ", userSession);
-  const handleDismiss = () => {
-    router.dismiss()
-  };
   console.log("===AppLayout return");
   // This layout can be deferred because it's not the root layout.
   return (
@@ -40,9 +38,9 @@ export default function AppLayout() {
           presentation: 'card',
           gestureEnabled: true,
           gestureDirection: 'vertical',
-          animationDuration: 400,
+          animationDuration: 500,
           headerShown: false,
-          headerLeft: () => <Button onPress={handleDismiss} title="Close" />,
+          animation: 'slide_from_bottom',
         }}
       />
     </Stack>

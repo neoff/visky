@@ -1,3 +1,4 @@
+// src/services/PlayerRegisterService.tsx
 import TrackPlayer, { Event } from "react-native-track-player";
 
 const PlayerRegisterService = async () => {
@@ -6,10 +7,6 @@ const PlayerRegisterService = async () => {
     TrackPlayer.addEventListener(Event.RemotePlay, () => {
       TrackPlayer.play()
     })
-    TrackPlayer.addEventListener(Event.RemotePlay, () => {
-      TrackPlayer.play()
-    })
-
     TrackPlayer.addEventListener(Event.RemotePause, () => {
       TrackPlayer.pause()
     });

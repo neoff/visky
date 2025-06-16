@@ -46,7 +46,7 @@ export const TrackListItem = ({
               <Ionicons
                 style={styles.trackPausedIndicator}
                 name="play"
-                size={24}
+                size={24 + modifiers.icons}
                 color={colors.icon}
               />
             ))}
@@ -108,15 +108,15 @@ const styles = StyleSheet.create({
   },
   trackPlayingIconIndicator: {
     position: 'absolute',
-    top: 18,
-    left: 28,
-    width: 16,
-    height: 16,
+    top: 18 + modifiers.top,
+    left: 28 + modifiers.left,
+    width: 16 + modifiers.width,
+    height: 16 + modifiers.height,
   },
   trackPausedIndicator: {
     position: 'absolute',
-    top: 14,
-    left: 24,
+    top: 14 + modifiers.top,
+    left: 24 + modifiers.left,
   },
   trackArtworkImage: {
     borderRadius: 8,
@@ -134,6 +134,6 @@ const styles = StyleSheet.create({
     ...defaultStyles.text,
     color: colors.textMuted,
     fontSize: 14 + modifiers.text,
-    marginTop: 4  + modifiers.padding,
+    marginTop: 4 + modifiers.padding,
   },
 })

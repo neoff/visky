@@ -1,3 +1,4 @@
+// sec/app/_layout.tsx
 import {Slot, SplashScreen} from 'expo-router';
 import React, {useCallback, useState} from "react";
 import {SafeAreaProvider} from "react-native-safe-area-context";

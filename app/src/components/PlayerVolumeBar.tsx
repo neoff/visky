@@ -1,5 +1,6 @@
+// src/components/PlayerVolumeBar.tsx
 import {View, ViewProps} from "react-native";
-import {useSharedValue} from "react-native-reanimated";
+import {useDerivedValue, useSharedValue} from "react-native-reanimated";
 import {Ionicons} from "@expo/vector-icons";
 import {colors} from "@/constants";
 import {Slider} from "react-native-awesome-slider";
@@ -16,7 +17,10 @@ export const PlayerVolumeBar = ({ style }: ViewProps) => {
   const min = useSharedValue(0)
   const max = useSharedValue(1)
 
-  progress.value = volume ?? 0
+  //progress.value = volume ?? 0
+  useDerivedValue(() => {
+    progress.value = volume ?? 0;
+  });
 
   return (
     <View style={style}>

@@ -1,10 +1,11 @@
+// src/components/PlayerProgressBar.tsx
 import {View, Text, ViewProps, StyleSheet} from "react-native";
 import TrackPlayer, {useProgress} from "react-native-track-player";
-import {useSharedValue} from "react-native-reanimated";
+import {useDerivedValue, useSharedValue} from "react-native-reanimated";
 import {formatSecondsToMinutes} from "@/helpers/miscellaneous";
 import {Slider} from "react-native-awesome-slider";
-import {defaultStyles, progressBarStyles, utilsStyles} from "@/styles";
-import {colors, fonts} from "@/constants";
+import {progressBarStyles, utilsStyles} from "@/styles";
+import {colors} from "@/constants";
 
 export const PlayerProgressBar = ({ style }: ViewProps) => {
   const { duration, position, buffered } = useProgress(250)
@@ -18,10 +19,16 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
   const trackElapsedTime = formatSecondsToMinutes(position)
   const trackRemainingTime = formatSecondsToMinutes(duration - position)
 
-  if (!isSliding.value) {
+  /*if (!isSliding.value) {
     progress.value = duration > 0 ? position / duration : 0
     cache.value = duration > 0 ? buffered / duration : 0
-  }
+  }*/
+  useDerivedValue(() => {
+    if (!isSliding.value) {
+      progress.value = duration > 0 ? position / duration : 0;
+      cache.value = duration > 0 ? buffered / duration : 0;
+    }
+  });
 
   return (
     <View style={style}>
