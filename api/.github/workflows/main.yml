@@ -5,12 +5,10 @@ on:
   push:
     branches:
       - main
-      - master
   pull_request:
     types: [closed]
     branches:
       - main
-      - master
     #paths:
     #  - 'src/**'
     #  - 'Dockerfile'
@@ -27,19 +25,17 @@ jobs:
       DOMAIN: ${{ vars.DOMAIN }}
   wait-for-unlock:
     uses: ./.github/workflows/wait-for-unlock.yml
-  bump-prepatch:
+  main:
     needs:
       - wait-for-unlock
       - validate
-    if: ${{ (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch) }}
+    if: |
+      (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch && github.head_ref != github.base_ref)
     #runs-on: ubuntu-latest
     runs-on: main-n
     permissions:
       contents: write
-    env:
-      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-
     steps:
       - name: Lock workspace
         if: always()
@@ -50,12 +46,12 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ env.DEFAULT_BRANCH }}
+          ref: ${{ github.event.repository.default_branch }}
       - name: Set up Git
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git config init.defaultBranch ${{ env.DEFAULT_BRANCH }}
+          git config init.defaultBranch ${{ github.event.repository.default_branch }}
 
       - name: Get version from package.json
         id: version
@@ -77,7 +73,7 @@ jobs:
           npm version "${{ steps.bump.outputs.new_version }}" --no-git-tag-version
           git add package.json
           git commit -m "chore(#0): bump patch version to ${{ steps.bump.outputs.new_version }}"
-          git push origin ${{ env.DEFAULT_BRANCH }}
+          git push origin ${{ github.event.repository.default_branch }}
 
       - name: Unlock workspace
         if: always()

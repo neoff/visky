@@ -19,19 +19,15 @@ on:
     types: [closed]
     branches:
       - 'release/**'
-    #paths:
-    #  - 'src/**'
-    #  - 'Dockerfile'
 
 jobs:
   wait-for-unlock:
     uses: ./.github/workflows/wait-for-unlock.yml
   relese:
     if: |
-      ((github.event_name == 'push' 
-            || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) 
-        && startsWith(github.ref, 'refs/heads/release/')) 
-      || github.event_name == 'workflow_dispatch'
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) ||
+      (github.event_name == 'pull_request' &&  github.event.pull_request.merged == true && startsWith(github.base_ref, 'release/'))
     #runs-on: ubuntu-latest
     runs-on: main-n
     needs:
