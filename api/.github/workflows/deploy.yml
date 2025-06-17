@@ -86,7 +86,31 @@ jobs:
 
       - name: Set up Helmfile
         run: |
-          curl -L https://github.com/helmfile/helmfile/releases/download/v0.171.0/helmfile_0.171.0_linux_amd64.tar.gz | tar xz
+          if [ -x /usr/local/bin/helmfile ]; then
+            echo "Helmfile already exists at /usr/local/bin/helmfile. Skipping installation."
+            exit 0
+          fi
+          
+          ARCH=arm64
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) ARCH="amd64" ;;
+            aarch64 | arm64) ARCH="arm64" ;;
+            *) echo "Unsupported architecture: $ARCH" && exit 1 ;;
+          esac
+          
+          OS=linux
+          OS=$(uname -s)
+          case "$OS" in
+            Linux) OS="linux" ;;
+            Darwin) OS="darwin" ;;
+            MINGW*|MSYS*|CYGWIN*) OS="windows" ;;
+            *) echo "❌ Unsupported OS: $OS" && exit 1 ;;
+          esac
+          
+          VERSION=1.1.2
+          curl -L https://github.com/helmfile/helmfile/releases/download/v${VERSION}/helmfile_${VERSION}_${OS}_${ARCH}.tar.gz | tar xz
+          rm -rf LICENSE README*
           sudo mv helmfile /usr/local/bin/
 
       - name: Install Helm Diff Plugin
