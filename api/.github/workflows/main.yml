@@ -43,7 +43,7 @@ jobs:
       - name: Set up Git
         run: |
           git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          git config user.email "318709+neoff@users.noreply.github.com"
           git config init.defaultBranch ${{ github.event.repository.default_branch }}
 
       - name: Get version from package.json
