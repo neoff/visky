@@ -41,6 +41,7 @@ jobs:
         if: always()
         run: |
           echo "${{ github.job }}@${{ github.run_id }}" > "${GITHUB_WORKSPACE}/.runner.lock"
+
       - name: Download artifact from previous workflow
         if: github.event_name == 'workflow_run'
         env:
@@ -109,18 +110,18 @@ jobs:
           repo_full=${{ github.repository }}
           repo_name=$(basename $repo_full)
           echo "Repository name: $repo_name from $repo_full tag $release_tag"
-          echo "${release_tag}" > tag.txt
+          echo "${release_tag}" > branch.txt
           docker buildx build \
             --platform linux/arm64 \
             --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:latest \
             --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:$release_tag \
             --push .
 
-      - name: Upload branch name
+      - name: Upload tag name
         uses: actions/upload-artifact@v4
         with:
-          name: tag-name
-          path: tag.txt
+          name: branch-name
+          path: branch.txt
 
       - name: Unlock workspace
         if: always()

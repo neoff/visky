@@ -40,6 +40,7 @@ jobs:
         if: always()
         run: |
           echo "${{ github.job }}@${{ github.run_id }}" > "${GITHUB_WORKSPACE}/.runner.lock"
+
       - name: Download artifact from previous workflow
         if: github.event_name == 'workflow_run'
         env:
