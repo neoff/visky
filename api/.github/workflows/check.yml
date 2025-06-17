@@ -1,3 +1,5 @@
+# .github/workflows/check.yml
+---
 name: Check any push before merge
 
 on:
@@ -29,3 +31,15 @@ jobs:
           [[ -z "${{ secrets.DOCKERHUB_EMAIL }}" ]] && echo "❌ Missing secrets.DOCKERHUB_EMAIL" && exit 1
           [[ -z "${{ secrets.KUBECONFIG }}" ]] && echo "❌ Missing secrets.KUBECONFIG" && exit 1
           echo "✅ All required secrets and vars are set"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.ref_name }}
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workspace files..."
+          find . -mindepth 1 -delete
