@@ -1,0 +1,29 @@
+# .github/workflows/wait-for-unlock.yml
+name: Wait for Unlock
+
+on:
+  workflow_call: {}
+
+jobs:
+  wait-for-unlock:
+    name: Wait for workspace unlock
+    #runs-on: ubuntu-latest
+    runs-on: main-n
+    steps:
+      - name: Wait until lock is released
+        run: |
+          LOCK_FILE="${GITHUB_WORKSPACE}/.runner.lock"
+          echo "⏳ Waiting for workspace lock to be released..."
+          MAX_WAIT=300  # seconds
+          WAITED=0
+
+          while [ -f "$LOCK_FILE" ]; do
+            sleep 5
+            WAITED=$((WAITED + 5))
+            if [ "$WAITED" -ge "$MAX_WAIT" ]; then
+              echo "❌ Timeout: Lock not released after $MAX_WAIT seconds."
+              exit 1
+            fi
+          done
+
+          echo "✅ Lock released, continuing..."
