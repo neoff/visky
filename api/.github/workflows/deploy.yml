@@ -169,8 +169,7 @@ jobs:
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
           fi
           echo "🚀 Deploying ${REPO_NAME} with image tag: ${TAG} with hostname: ${HOSTNAME}"
-          current_version=$(node -p "require('./package.json').version")
-          echo "Current version: $current_version"
+          echo "Current version: $TAG"
           
           sed -i "s/^appVersion:.*/appVersion: \"${TAG}\"/" .github/helm/Chart.yaml
           sed -i "s/^version:.*/version: ${TAG}/" .github/helm/Chart.yaml
