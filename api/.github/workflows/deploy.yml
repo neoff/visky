@@ -87,7 +87,7 @@ jobs:
       - name: Set up Helmfile
         run: |
           if [ -x /usr/local/bin/helmfile ]; then
-            echo "Helmfile already exists at /usr/local/bin/helmfile. Skipping installation."
+            echo "✅ Helmfile already exists at /usr/local/bin/helmfile. Skipping installation."
             exit 0
           fi
           
@@ -96,7 +96,7 @@ jobs:
           case "$ARCH" in
             x86_64) ARCH="amd64" ;;
             aarch64 | arm64) ARCH="arm64" ;;
-            *) echo "Unsupported architecture: $ARCH" && exit 1 ;;
+            *) echo "❌ Unsupported architecture: $ARCH" && exit 1 ;;
           esac
           
           OS=linux
@@ -115,7 +115,12 @@ jobs:
 
       - name: Install Helm Diff Plugin
         run: |
-          helm plugin install https://github.com/databus23/helm-diff
+          if helm plugin list | grep -q 'diff'; then
+            echo "✅ Helm Diff plugin already installed. Skipping."
+          else
+            helm plugin install https://github.com/databus23/helm-diff
+            echo "✅ Helm Diff plugin installed."
+          fi
           echo "HELM_DIFF_IGNORE_UNKNOWN_FLAGS=true" >> $GITHUB_ENV
 
       - name: Create image pull secret
