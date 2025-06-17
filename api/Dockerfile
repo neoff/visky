@@ -1,6 +1,5 @@
 FROM node:24-alpine AS build
 
-ENV NODE_OPTIONS="--no-experimental-fetch"
 ENV YARN_IGNORE_BUILD=true
 WORKDIR /app
 COPY package.json  ./
