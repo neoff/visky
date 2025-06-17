@@ -18,7 +18,8 @@ on:
 
 jobs:
   check-config:
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
+    runs-on: main-n
     steps:
       - name: Check required config
         run: |
