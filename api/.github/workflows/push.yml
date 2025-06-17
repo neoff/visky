@@ -6,11 +6,6 @@ on:
     workflows: ["Create release branch"]
     types:
       - completed
-  workflow_call:
-    inputs:
-      ref:
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       ref:
