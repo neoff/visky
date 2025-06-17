@@ -160,12 +160,7 @@ jobs:
             | grep -vE '^(- )?(release: .*?|Merge remote-tracking|chore(#0): .*?)' \
             | sed '/^ *$/d')
           # Initialize sections
-          FEAT=""
-          FIX=""
-          DOCS=""
-          REFACTOR=""
-          CHORE=""
-          OTHER=""
+          FEAT="" FIX="" DOCS="" REFACTOR="" CHORE="" OTHER=""
       
           while IFS= read -r line; do
             case "$line" in
@@ -179,13 +174,11 @@ jobs:
           done <<< "$RAW_LOG"
       
           FINAL_LOG=""
-      
           add_section() {
             local title="$1"
             local content="$2"
             if [ -n "$content" ]; then
-            FINAL_LOG+="### $title\n"
-            FINAL_LOG+="$content\n"
+            FINAL_LOG+="### $title\n$content\n"
             fi
           }
       
@@ -195,7 +188,9 @@ jobs:
           add_section "🧠 Refactoring" "$REFACTOR"
           add_section "🧹 Chores" "$CHORE"
           add_section "🌀 Other" "$OTHER"
-      
+
+          echo -e "$FINAL_LOG" > release_changelog.md
+          
           echo "📝 Clean grouped changelog:"
           echo -e "$FINAL_LOG"
       
@@ -209,5 +204,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.latest_tag.outputs.tag }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          body_path: release_changelog.md
+          #body: ${{ steps.changelog.outputs.changelog }}
 ...
