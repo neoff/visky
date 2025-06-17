@@ -13,15 +13,38 @@ on:
         required: true
         type: string
 jobs:
+  wait-for-unlock:
+    uses: ./.github/workflows/wait-for-unlock.yml
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_EMAIL: ${{ secrets.DOCKERHUB_EMAIL }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
+  build-publish-docker:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/push.yml
+    with:
+      ref: ${{ github.event.inputs.ref }}
   deploy:
+    name: Deploy to kubernetes cluster
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
     #runs-on: ubuntu-latest
     runs-on: main-n
+    needs:
+      - validate
+      - build-publish-docker
     permissions:
       actions: read
       contents: read
-
     steps:
+      - name: Lock workspace
+        if: always()
+        run: |
+          echo "${{ github.job }}@${{ github.run_id }}" > "${GITHUB_WORKSPACE}/.runner.lock"
       - name: Download artifact from previous workflow
         if: github.event_name == 'workflow_run'
         env:
@@ -39,45 +62,51 @@ jobs:
           curl -L -H "Authorization: token $GH_TOKEN" -o artifact.zip "$artifact_url"
           unzip -o artifact.zip
 
-      - name: Read branch
-        if: github.event_name == 'workflow_run'
-        id: read_branch
-        run: |
-          branch=$(cat branch.txt)
-          echo "branch=$branch"
-          echo "branch=$branch" >> $GITHUB_OUTPUT
-
-      - name: Checkout repository workflow_dispatch
+      - name: Release tag
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          ref: ${{ github.ref_name }}
-      - name: Checkout repository workflow_run
-        if: github.event_name == 'workflow_run'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-          ref: ${{ steps.read_branch.outputs.branch }}
+        run: |
+          echo "TAG=${{ github.event.inputs.ref }}"
+          echo "TAG=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
 
-      - name: Get Latest Tag
-        id: latest_tag
+      - name: Read release tag
+        if: github.event_name == 'workflow_run'
+        id: current_tag
         run: |
-          git fetch --tags
-          tag=$(git tag --sort=-v:refname | head -n 1)
-          echo "current version is: $tag"
-          echo "tag=$tag" >> $GITHUB_OUTPUT
-      - name: Set up version
-        run: |
-          echo "VERSION=${{ steps.latest_tag.outputs.tag }}" >> $GITHUB_ENV
-      - name: Get current version
-        id: version
-        run: |
-          current_version=$(node -p "require('./package.json').version")
-          echo "Current version: $current_version"
-          echo "current=$current_version" >> $GITHUB_OUTPUT
+          branch=$(cat tag.txt)
+          echo "TAG=$tag"
+          echo "TAG=$tag" >> $GITHUB_ENV
+
+      #- name: Checkout repository workflow_dispatch
+      #  if: github.event_name == 'workflow_dispatch'
+      #  uses: actions/checkout@v4
+      #  with:
+      #    fetch-depth: 0
+      #    fetch-tags: true
+      #    ref: ${{ github.ref_name }}
+      #- name: Checkout repository workflow_run
+      #  if: github.event_name == 'workflow_run'
+      #  uses: actions/checkout@v4
+      #  with:
+      #    fetch-depth: 0
+      #    fetch-tags: true
+      #    ref: ${{ steps.read_branch.outputs.branch }}
+
+      #- name: Get Latest Tag
+      #  id: latest_tag
+      #  run: |
+      #    git fetch --tags
+      #    tag=$(git tag --sort=-v:refname | head -n 1)
+      #    echo "current version is: $tag"
+      #    echo "tag=$tag" >> $GITHUB_OUTPUT
+      #- name: Set up version
+      #  run: |
+      #    echo "VERSION=${{ steps.latest_tag.outputs.tag }}" >> $GITHUB_ENV
+      #- name: Get current version
+      #  id: version
+      #  run: |
+      #    current_version=$(node -p "require('./package.json').version")
+      #    echo "Current version: $current_version"
+      #    echo "current=$current_version" >> $GITHUB_OUTPUT
 
       - name: Set up Kubeconfig
         run: |
@@ -138,7 +167,7 @@ jobs:
           REPO_NAME: ${{ github.event.repository.name }}
           DOMAIN: ${{ vars.DOMAIN }}
           SUB_DOMAIN: ${{ vars.SUB_DOMAIN }}
-          TAG: ${{ steps.version.outputs.current }}
+          TAG: ${{ env.TAG }}
         run: |
           HOSTNAME="${REPO_NAME}.${DOMAIN}"
           if [ -n "${SUB_DOMAIN}" ]; then
@@ -184,4 +213,14 @@ jobs:
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
           fi
           echo "🚀 Deploying ${REPO_NAME} to ${HOSTNAME} with image tag: ${TAG}"
+
+      - name: Unlock workspace
+        if: always()
+        run: |
+          rm -f "${GITHUB_WORKSPACE}/.runner.lock"
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workspace files..."
+          find . -mindepth 1 -delete
 ...
