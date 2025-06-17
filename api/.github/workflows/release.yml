@@ -15,13 +15,6 @@ on:
   push:
     branches:
       - 'release/**'
-  pull_request:
-    types: [closed]
-    branches:
-      - 'release/**'
-    #paths:
-    #  - 'src/**'
-    #  - 'Dockerfile'
 
 jobs:
   wait-for-unlock:
