@@ -38,7 +38,7 @@ jobs:
           echo "Found artifact: $artifact_url"
 
           curl -L -H "Authorization: token $GH_TOKEN" -o artifact.zip "$artifact_url"
-          unzip artifact.zip
+          unzip -o artifact.zip
 
       - name: Read branch
         if: github.event_name == 'workflow_run'
