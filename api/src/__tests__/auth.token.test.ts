@@ -1,6 +1,5 @@
 import request from 'supertest';
 import app from '@/router/index';
-import session from 'express-session';
 
 jest.mock('@/helpers/vk', () => ({
   method: jest.fn(),

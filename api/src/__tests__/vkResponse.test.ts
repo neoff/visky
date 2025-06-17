@@ -1,9 +1,9 @@
-import {PlaylistResponse, TokenResponse, UserInfoResponse, VkResponse} from "@/types/response/vk";
+import {VkPlaylistResponse, TokenRequest, VkUserInfoResponse, VkResponse} from "@/types/response/vk";
 
 /**
  * Моковые (тестовые) данные для PlaylistResponse
  */
-const mockPlaylistResponse: PlaylistResponse = {
+const mockPlaylistResponse: VkPlaylistResponse = {
   count: 2,
   items: [
     {
@@ -31,7 +31,7 @@ const mockPlaylistResponse: PlaylistResponse = {
 /**
  * Моковые данные для UserInfoResponse
  */
-const mockUserInfoResponse: UserInfoResponse = {
+const mockUserInfoResponse: VkUserInfoResponse = {
   profile: {
     id: 12345,
     first_name: 'John',
@@ -50,7 +50,7 @@ const mockUserInfoResponse: UserInfoResponse = {
 /**
  * Моковые данные для TokenResponse
  */
-const mockTokenResponse: TokenResponse = {
+const mockTokenResponse: TokenRequest = {
   token: 'a1b2c3d4e5f6g7h8i9j0',
   secret: 's3cr3t_k3y_h3r3',
 };
@@ -92,15 +92,12 @@ describe('VkResponse Handling', () => {
 
   // Тест для случая, когда response содержит TokenResponse
   test('should handle VkResponse with TokenResponse correctly', () => {
-    const vkResponse: VkResponse = {
-      response: mockTokenResponse,
-    };
 
     // Проверяем, что вложенный объект является TokenResponse
-    expect(vkResponse.response).toBeDefined();
-    if ('token' in vkResponse.response!) {
-      expect(vkResponse.response.token).toBe('a1b2c3d4e5f6g7h8i9j0');
-      expect(vkResponse.response.secret).toBe('s3cr3t_k3y_h3r3');
+    expect(mockTokenResponse).toBeDefined();
+    if ('token' in mockTokenResponse) {
+      expect(mockTokenResponse.token).toBe('a1b2c3d4e5f6g7h8i9j0');
+      expect(mockTokenResponse.secret).toBe('s3cr3t_k3y_h3r3');
     }
   });
 
