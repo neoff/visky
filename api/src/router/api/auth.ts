@@ -1,4 +1,3 @@
-// src/router/api/auth.ts
 import {deviceIDgen} from "@/helpers"
 import {checkAuthAndroid, method} from "@/helpers/vk"
 import {Request, Response} from "@/types"
@@ -20,7 +19,7 @@ auth.get('/vk-oauth/callback',
 const UserProfile = async (req: Request, res: Response) => {
   return await method(req, "execute.getUserInfo", {func_v: 9}, true).then((response) => {
     //console.log("---> REFRESH auth.UserProfile ---response", response)
-    req.session.user_id = response?.response?.profile?.id.toString()
+    req.session.user_id = response?.profile?.id.toString()
     return response
   }).catch((error) => {
     console.error("----> UserProfile --- error", error)
@@ -44,7 +43,7 @@ const refreshSession = async (req: Request, res: Response) => {
     throw new Error(error.error_msg)
   })
 
-  req.session.user_id = user?.response?.profile?.id.toString()
+  req.session.user_id = user?.profile?.id.toString()
   req.session.access_token = refresh.token
   req.session.secret = refresh.secret
   req.session.created = refresh.created
@@ -56,30 +55,26 @@ const refreshSession = async (req: Request, res: Response) => {
 auth.post("/token", async (req: Request, res: Response) => {
   console.debug(`=== Token body: `, req.body)
   console.debug(`=== Token  session: `, req.session)
-  if(req.body?.vkurl != undefined && req.body?.vkurl != "") {
-    req.body.url= req.body.vkurl;
-  }
-  if (!req.body || !req.body.url) {
+  if (!req.body || !req.body.vkurl) {
     console.error("===Token ERROR: No vkurl in post request")
     res.status(400).send({errMessage: "No vkurl in post request"}).end()
     return;
   }
-  const sharp: boolean = req.body.url.includes("#") || false
-  const token: boolean = req.body.url.includes("access_token=") || false
-  //const secret: boolean = req.body.url.includes("secret=") || false
+  const sharp: boolean = req.body.vkurl.includes("#") || false
+  const token: boolean = req.body.vkurl.includes("access_token=") || false
+  //const secret: boolean = req.body.vkurl.includes("secret=") || false
   if (!sharp || !token) {
-    console.error("===Token: ERROR No 'access_token' in url")
-    res.status(400).send({errMessage: "No 'access_token' or 'secret' in url"}).end()
+    console.error("===Token: ERROR No 'access_token' in vkurl")
+    res.status(400).send({errMessage: "No 'access_token' or 'secret' in vkurl"}).end()
     return;
   }
 
-  const fragments: string = req.body.url.split("#")[1]
+  const fragments: string = req.body.vkurl.split("#")[1]
   fragments.split("&").map(fragment => {
     const [key, value] = fragment.split("=")
     req.session[key] = value
   })
-  const expires: Date | null | undefined = req.session.cookie.expires
-  req.session.expires = expires?.toISOString() ?? null
+  req.session.expires = req.session.cookie.expires
   req.session.maxAge = req.session.cookie.originalMaxAge
   req.session.created = new Date().toISOString()
 
@@ -92,11 +87,13 @@ auth.post("/token", async (req: Request, res: Response) => {
   return await refreshSession(req, res).then((response) => {
     console.debug("===Token: response", response)
     res.status(200).send(response).end()
+    //res.redirect(`profile`)
   }).catch((error) => {
     console.error("===Token: ERROR", error)
     res.status(500).send({errMessage: error.error_msg}).end()
     throw new Error(error.error_msg)
   })
+  //return res.status(200).send({"redirect": `${apiUrls.refreshUrl}, session: ${req.session}`}).end()
 })
 
 auth.post("/refresh", async (req: Request, res: Response) => {
@@ -104,7 +101,7 @@ auth.post("/refresh", async (req: Request, res: Response) => {
   //if(!req.body || !req.body.session || !req.body.session.access_token || !req.body.session.secret) {
   if (!req.body || !req.body.access_token || !req.body.secret) {
     console.error("===Refresh ERROR: No session data in post request")
-    res.status(400).send({errMessage: "No `session` in request"}).end()
+    res.status(400).send({errMessage: "No session in request"}).end()
     return;
   }
   //req.session = req.body
@@ -114,7 +111,6 @@ auth.post("/refresh", async (req: Request, res: Response) => {
   req.session.created = req.body.created
   req.session.maxAge = req.body.maxAge
   req.session.expires = req.body.expires
-  console.log("=== POST Refresh redirect -> refresh =========== req.session", req.session)
   res.redirect(`refresh`)
 })
 
@@ -124,7 +120,8 @@ auth.get("/refresh", checkAuthAndroid, async (req: Request, res: Response) => {
 
   return await refreshSession(req, res)
     .then((response) => {
-      res.status(200).send(response).end()
+      //res.status(200).send(response).end()
+      res.redirect(`profile`)
     })
     .catch((error) => {
       console.error("----> REFRESH auth.refreshToken ---error", error)
