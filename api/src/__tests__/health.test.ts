@@ -1,7 +1,7 @@
 // health.test.ts
 import request from 'supertest';
 import express from 'express';
-import { healthRoute } from '@/configurations/health';
+import { healthRoute } from '@/router/health/health';
 
 jest.mock('os');
 jest.mock('fs');

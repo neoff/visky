@@ -7,4 +7,5 @@ export const register = new Registry();
 collectDefaultMetrics({ register });
 
 // Function to expose Prometheus metrics
-export const getMetrics = async () => await register.metrics();
+const getMetrics = async () => await register.metrics();
+export default getMetrics;
