@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: visky-api-cert
+  namespace: default
+spec:
+  secretName: visky-api-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: visky.envarg.com
+  dnsNames:
+    - visky.envarg.com

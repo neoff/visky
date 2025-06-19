@@ -176,6 +176,7 @@ jobs:
             --set image.tag=${TAG} \
             --set appVersion=${TAG} \
             --set "ingress.hosts[0].host=${HOSTNAME}" \
+            --set "ingress.issuerName=letsencrypt-prod" \
             --set "ingress.tls[0].hosts[0]=${HOSTNAME}" \
             --set "ingress.tls[0].secretName=${REPO_NAME}-tls" \
             apply

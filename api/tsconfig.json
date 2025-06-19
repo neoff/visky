@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
     "target": "es6",
+    "strict": true,
     "module": "commonjs",
     "moduleResolution": "node",
     "lib": ["dom", "dom.iterable","esnext"],
-
-    "strict": true,
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -22,7 +21,6 @@
       "@/assets/*": ["./public/*"]
     }
   },
-  "types": ["vitest/globals"],
   "include": ["**/*.ts", "**/*.tsx", "env.d.ts"],
   "exclude": ["node_modules", "target", "dist", "build"]
 }
