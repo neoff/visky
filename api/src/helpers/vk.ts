@@ -1,31 +1,23 @@
 import { Request, Response } from "@/types";
-import { NextFunction } from "express";
-import { AndroidClient, md5 } from ".";
+import express, { NextFunction } from "express";
+import { AndroidClient, TokenUrl, AuthUrl, encodeQueryData, deviceIDgen, md5 } from ".";
 import { version } from "@/constants";
-import {AxiosError, AxiosResponse} from "axios";
-import {VkResponse} from "@/types/response/vk";
+import { error } from "console";
+import {AxiosError} from "axios";
 
 
-export const checkAuthAndroid = async(req: Request, res: Response, next: NextFunction) => {
+export async function checkAuthAndroid(req: Request, res: Response, next: NextFunction) {
     console.log("===================checkAuthAndroid:",req.session)
     if ((!req.session || !req.session.access_token || !req.session.user_id) 
         && (!req.headers['x-auth-token'])) {
         console.error("ERROR! checkAuth: No token or secret", req.session)
-        res.status(403).send(new AxiosError("No token or secret"));
-        return;
+        return res.status(403).send(new AxiosError("No token or secret"));
     }
-    next();
+    return next();
 }
 
-/**
- * call method from VK API
- * @param req
- * @param method
- * @param params
- * @param sign
- */
 //=================== HELPER METHOD!!!!!! ======================
-export const method = async (req: Request, method: string, params : {}, sign: boolean = false): Promise<any> => {
+export async function method(req: Request, method: string, params : {}, sign: boolean = false): Promise<any> {
     let url =`/method/${method}?v=${version}&access_token=${req.session.access_token}`
     for (const [key, value] of Object.entries(params)) {
         url+=`&${key}=${value}`
@@ -37,19 +29,18 @@ export const method = async (req: Request, method: string, params : {}, sign: bo
         url+=`&sig=${hash}`
     }
     //console.debug(`======== /method/${method} with params ${params}`)
-    console.debug('================================url https://api.vk.com'+url)
+    //console.debug('================================url https://api.vk.com'+url)
 
-    return await AndroidClient.get(`https://api.vk.com${url}`).then((response: AxiosResponse<VkResponse, any>) => {
-        console.debug(`======== /method/${method} RESPONSE:`, JSON.stringify(response.data, null, 2))
+    return await AndroidClient.get(`https://api.vk.com${url}`).then((response) => {
+        console.debug(`======== /method/${method} RESPONSE:`, response.data)
         return response.data?.response || response.data;
     })
     .catch((error) => {
-        console.error(`======== /method/${method} ERROR:`, JSON.stringify(error, null, 2))
+        console.error(`======== /method/${method} ERROR:`, error)
         throw new Error(error.error_msg)
     })
 }
 
-//TODO: multiquery for different methods
 export const makeQuery = async(query: any, playlistId:string): Promise<string> => {
     const count = query.count || 1;
     const playlistCount = query.playlistCount || 1;
@@ -75,7 +66,7 @@ export const makeSimpleQuery = async(req: Request, sign: boolean = false) => {
     return `return ${exexData.replace(/\s+|\s+/g, '')};`
 }
 
- export const checkFavoriteAndCreateIfNotExist = async(req: Request, sign: boolean = false) => {
+ export const checkFavoiteAndCreateIfNotExist = async(req: Request, sign: boolean = false) => {
     let favorite = await method(req, 'audio.searchPlaylists',{q:"Frisky-favorites",count:1}, sign)
     if(favorite.response.count === 0) {
         const createFavorite =  await method(req, 'audio.createPlaylist',{title:"Frisky-favorites",owner_id:req.session.user_id}, sign)

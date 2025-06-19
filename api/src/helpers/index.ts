@@ -1,8 +1,7 @@
-// helpers/index.ts
 import * as crypto from 'crypto';
 import { wrapper } from 'axios-cookiejar-support';
 import axios, { AxiosError } from "axios";
-import {Item, Playlist, Request, Response} from "@/types"
+import {Item, Request, Response} from "@/types"
 
 
 export const TokenUrl = "https://oauth.vk.com/token"
@@ -53,58 +52,16 @@ export const deviceIDgen = () => {
     return result;
 }
 
-export const cleanupData = (data: Playlist): Playlist => {
+export const cleanupData = (data: any) => {
     //remove from items.artist "FRISKY | " and from items.title  [vk.com/feelin_frisky]"
-    data.items = data?.items?.map((item: Item) => {
+    data?.items?.map((item: Item) => {
         item.artist = item.artist.replace("FRISKY | ", "");
         item.type = "hls";
-        item.title = item.title.replace(/\w+? \d{4} - /g, "");
-        item.title = item.title.replace(/ \[vk\.com\/feelin_frisky]/g, "");
+        item.title = item.title.replace("/ \[vk\.com\/feelin_frisky\]/g", "");
+        item.title = item.title.replace("/w\+ \d{4} - /g", "");
         return item;
     });
     return data;
-}
-
-export const  sortLocalPartTracks = (data: Playlist): Playlist =>{
-    const partRegex = /^(.*)\s+\(Part (\d+)\)$/i
-
-    const sortedItems: Item[] = [];
-    let i = 0;
-
-    while (i < data.items.length) {
-        const match = data.items[i].title.match(partRegex);
-
-        if (match) {
-            const baseTitle = match[1]
-            const group: Item[] = [];
-
-            while (i < data.items.length) {
-                const m = data.items[i].title.match(partRegex);
-                if (!m || m[1] !== baseTitle) break;
-                group.push(data.items[i]);
-                i++
-            }
-
-            // отсортировать Part N по номеру
-            group.sort((a, b) => {
-                const aNum = Number(a.title.match(partRegex)![2]);
-                const bNum = Number(b.title.match(partRegex)![2]);
-                return aNum - bNum;
-            })
-
-            sortedItems.push(...group);
-        } else {
-            sortedItems.push(data.items[i]);
-            i++
-        }
-    }
-    data.items = sortedItems;
-    return data
-}
-
-export const cleanupDataAndSortPart = (data: Playlist): Playlist => {
-    const cleanedData = cleanupData(data);
-    return sortLocalPartTracks(cleanedData);
 }
 
 export const md5 = (contents: string) => crypto.createHash('md5').update(contents).digest("hex");
