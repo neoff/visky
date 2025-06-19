@@ -1,9 +1,10 @@
 // health.ts //yarn add node-fetch
 import os from 'os';
 import fs from 'fs';
-import { Request, Response, RequestHandler } from 'express';
+import {Request, Response, RequestHandler, Express} from 'express';
+import getMetrics, {register} from "@/router/health/metrics";
 
-export const healthRoute = (): RequestHandler  => {
+export const healthSetup = (): RequestHandler => {
   return async (_req: Request, res: Response) => {
     const diskPath = process.cwd();
     const threshold = 10 * 1024 * 1024;
@@ -36,7 +37,7 @@ export const healthRoute = (): RequestHandler  => {
             exists,
           },
         },
-        ping: { status: 'UP' },
+        ping: {status: 'UP'},
         ssl: {
           status: 'UP',
           details: {
@@ -48,3 +49,15 @@ export const healthRoute = (): RequestHandler  => {
     });
   };
 }
+
+const setupHealth = (app: Express): void => {
+
+  app.get('/health', healthSetup());
+  app.get('/prometheus', async (_req, res) => {
+    res.set('Content-Type', register.contentType);
+    res.send(await getMetrics());
+  });
+
+}
+
+export default setupHealth;

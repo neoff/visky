@@ -80,6 +80,15 @@ jobs:
           release_branch="release/$major.$minor"
           echo "branch=$release_branch" >> $GITHUB_OUTPUT
 
+      - name: Get release branch
+        id: read_branch
+        env:
+          TAG: ${{ env.TAG }}
+        run: |
+          IFS='.' read -r major minor patch <<< "${TAG}"
+          release_branch="release/$major.$minor"
+          echo "branch=$release_branch" >> $GITHUB_OUTPUT
+
       - name: Read release tag
         if: github.event_name == 'workflow_run'
         uses: actions/checkout@v4
@@ -169,6 +178,7 @@ jobs:
             --set image.tag=${TAG} \
             --set appVersion=${TAG} \
             --set "ingress.hosts[0].host=${HOSTNAME}" \
+            --set "ingress.issuerName=letsencrypt-prod" \
             --set "ingress.tls[0].hosts[0]=${HOSTNAME}" \
             --set "ingress.tls[0].secretName=${REPO_NAME}-tls" \
             apply
