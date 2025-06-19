@@ -27,8 +27,8 @@ jobs:
   deploy:
     name: Deploy to kubernetes cluster
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
-    #runs-on: ubuntu-latest
-    runs-on: main-n
+    runs-on: ubuntu-latest
+    #runs-on: main-n
     needs:
       - wait-for-unlock
       - validate
@@ -70,6 +70,15 @@ jobs:
           branch=$(cat branch.txt)
           echo "TAG=$branch"
           echo "TAG=$branch" >> $GITHUB_ENV
+
+      - name: Get release branch
+        id: read_branch
+        env:
+          TAG: ${{ env.TAG }}
+        run: |
+          IFS='.' read -r major minor patch <<< "${TAG}"
+          release_branch="release/$major.$minor"
+          echo "branch=$release_branch" >> $GITHUB_OUTPUT
 
       - name: Get release branch
         id: read_branch
