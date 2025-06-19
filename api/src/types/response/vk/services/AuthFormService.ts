@@ -7,9 +7,8 @@ import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class AuthFormService {
     /**
-     * Get VK auth page and remove defended scripts to fetch after auth token and secret.  Try to emulate old android app.
+     * get VK auth page and remove defended scripts to fetch after auth token and secret
      *
-     * Authorize user using VK auth page.
      * @returns string OK
      * @throws ApiError
      */
@@ -37,7 +36,6 @@ export class AuthFormService {
     }
     /**
      * Redirect page for VK API auth
-     * Page for redirection.
      * @returns string OK
      * @throws ApiError
      */

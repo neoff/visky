@@ -1,8 +1,17 @@
-import { Request, Response, NextFunction } from 'express';
+import HttpException from "../common/http-exception";
+import { Request, Response, NextFunction } from "express";
 
-export const notFoundHandler = (req: Request, res: Response, next: NextFunction) => {
-  const error = new Error(`Not Found - ${req.originalUrl}`);
-  // @ts-ignore
-  error.status = 404;
+export const notFoundHandler = (
+  error: HttpException,
+  request: Request,
+  response: Response,
+  next: NextFunction
+) => {
+  const status = error.statusCode || error.status || 404;
+  response.status(status);
+  response.json({
+    message: error.message,
+    error: error
+  })
   next(error);
 };

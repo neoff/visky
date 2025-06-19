@@ -7,8 +7,7 @@ import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class TrackService {
     /**
-     * NOT IMPLEMENTED YET Get song information by id.
-     * NOT IMPLEMENTED YET.
+     * Get song information by id
      * @returns any OK
      * @throws ApiError
      */
@@ -41,8 +40,7 @@ export class TrackService {
         });
     }
     /**
-     * NOT IMPLEMENTED YET Add some information to the song (track list, timing, genres, etc.)
-     * NOT IMPLEMENTED YET.
+     * Add some information to the song (track list, timing, genres, etc.)
      * @returns any OK
      * @throws ApiError
      */
@@ -75,8 +73,7 @@ export class TrackService {
         });
     }
     /**
-     * NOT IMPLEMENTED YET Edit song information (track list, timing, genres, etc.)
-     * NOT IMPLEMENTED YET.
+     * Edit song information (track list, timing, genres, etc.)
      * @returns any OK
      * @throws ApiError
      */

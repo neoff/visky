@@ -15,12 +15,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-native",
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@/assets/*": ["./public/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "env.d.ts"],
-  "exclude": ["node_modules", "target", "dist", "build"]
+  "exclude": ["node_modules"]
 }

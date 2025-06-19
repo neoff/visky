@@ -6,10 +6,4 @@ import type { TrackItem } from './TrackItem';
 /**
  * List of tracks
  */
-export type Tracklist = {
-    count: number;
-    offset: number;
-    total: number;
-    items: Array<TrackItem>;
-};
-
+export type Tracklist = Array<TrackItem>;

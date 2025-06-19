@@ -23,12 +23,12 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/redirect-entry-point: https
   hosts:
-    - host: visky.envarg.com
+    - host: envarg.com
       paths:
         - path: /
           pathType: Prefix
   issuerName: letsencrypt-prod
   tls:
-    - secretName: visky-api-tls
+    - secretName: sandbox-tls
       hosts:
-        - visky.envarg.com
+        - envarg.com
