@@ -27,6 +27,7 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+  issuerName: letsencrypt-prod
   tls:
     - secretName: sandbox-tls
       hosts:

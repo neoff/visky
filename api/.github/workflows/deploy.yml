@@ -13,14 +13,34 @@ on:
         required: true
         type: string
 jobs:
+  wait-for-unlock:
+    uses: ./.github/workflows/wait-for-unlock.yml
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_EMAIL: ${{ secrets.DOCKERHUB_EMAIL }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
   deploy:
+    name: Deploy to kubernetes cluster
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    #runs-on: main-n
+    needs:
+      - wait-for-unlock
+      - validate
     permissions:
       actions: read
       contents: read
-
     steps:
+      - name: Lock workspace
+        if: always()
+        run: |
+          echo "${{ github.job }}@${{ github.run_id }}" > "${GITHUB_WORKSPACE}/.runner.lock"
+
       - name: Download artifact from previous workflow
         if: github.event_name == 'workflow_run'
         env:
@@ -36,15 +56,29 @@ jobs:
           echo "Found artifact: $artifact_url"
 
           curl -L -H "Authorization: token $GH_TOKEN" -o artifact.zip "$artifact_url"
-          unzip artifact.zip
+          unzip -o artifact.zip
 
-      - name: Read branch
+      - name: Release tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "TAG=${{ github.event.inputs.ref }}"
+          echo "TAG=${{ github.event.inputs.ref }}" >> $GITHUB_ENV
+
+      - name: Read release tag
         if: github.event_name == 'workflow_run'
-        id: read_branch
         run: |
           branch=$(cat branch.txt)
-          echo "branch=$branch"
-          echo "branch=$branch" >> $GITHUB_OUTPUT
+          echo "TAG=$branch"
+          echo "TAG=$branch" >> $GITHUB_ENV
+
+      - name: Get release branch
+        id: read_branch
+        env:
+          TAG: ${{ env.TAG }}
+        run: |
+          IFS='.' read -r major minor patch <<< "${TAG}"
+          release_branch="release/$major.$minor"
+          echo "branch=$release_branch" >> $GITHUB_OUTPUT
 
       - name: Checkout repository workflow_dispatch
         if: github.event_name == 'workflow_dispatch'
@@ -61,23 +95,6 @@ jobs:
           fetch-tags: true
           ref: ${{ steps.read_branch.outputs.branch }}
 
-      - name: Get Latest Tag
-        id: latest_tag
-        run: |
-          git fetch --tags
-          tag=$(git tag --sort=-v:refname | head -n 1)
-          echo "current version is: $tag"
-          echo "tag=$tag" >> $GITHUB_OUTPUT
-      - name: Set up version
-        run: |
-          echo "VERSION=${{ steps.latest_tag.outputs.tag }}" >> $GITHUB_ENV
-      - name: Get current version
-        id: version
-        run: |
-          current_version=$(node -p "require('./package.json').version")
-          echo "Current version: $current_version"
-          echo "current=$current_version" >> $GITHUB_OUTPUT
-
       - name: Set up Kubeconfig
         run: |
           mkdir -p ~/.kube
@@ -85,12 +102,41 @@ jobs:
 
       - name: Set up Helmfile
         run: |
-          curl -L https://github.com/helmfile/helmfile/releases/download/v0.171.0/helmfile_0.171.0_linux_amd64.tar.gz | tar xz
+          if [ -x /usr/local/bin/helmfile ]; then
+            echo "✅ Helmfile already exists at /usr/local/bin/helmfile. Skipping installation."
+            exit 0
+          fi
+          
+          ARCH=arm64
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64) ARCH="amd64" ;;
+            aarch64 | arm64) ARCH="arm64" ;;
+            *) echo "❌ Unsupported architecture: $ARCH" && exit 1 ;;
+          esac
+          
+          OS=linux
+          OS=$(uname -s)
+          case "$OS" in
+            Linux) OS="linux" ;;
+            Darwin) OS="darwin" ;;
+            MINGW*|MSYS*|CYGWIN*) OS="windows" ;;
+            *) echo "❌ Unsupported OS: $OS" && exit 1 ;;
+          esac
+          
+          VERSION=1.1.2
+          curl -L https://github.com/helmfile/helmfile/releases/download/v${VERSION}/helmfile_${VERSION}_${OS}_${ARCH}.tar.gz | tar xz
+          rm -rf LICENSE README*
           sudo mv helmfile /usr/local/bin/
 
       - name: Install Helm Diff Plugin
         run: |
-          helm plugin install https://github.com/databus23/helm-diff
+          if helm plugin list | grep -q 'diff'; then
+            echo "✅ Helm Diff plugin already installed. Skipping."
+          else
+            helm plugin install https://github.com/databus23/helm-diff
+            echo "✅ Helm Diff plugin installed."
+          fi
           echo "HELM_DIFF_IGNORE_UNKNOWN_FLAGS=true" >> $GITHUB_ENV
 
       - name: Create image pull secret
@@ -108,21 +154,20 @@ jobs:
           REPO_NAME: ${{ github.event.repository.name }}
           DOMAIN: ${{ vars.DOMAIN }}
           SUB_DOMAIN: ${{ vars.SUB_DOMAIN }}
-          TAG: ${{ steps.version.outputs.current }}
+          TAG: ${{ env.TAG }}
         run: |
           HOSTNAME="${REPO_NAME}.${DOMAIN}"
           if [ -n "${SUB_DOMAIN}" ]; then
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
           fi
           echo "🚀 Deploying ${REPO_NAME} with image tag: ${TAG} with hostname: ${HOSTNAME}"
-          current_version=$(node -p "require('./package.json').version")
-          echo "Current version: $current_version"
+          echo "Current version: $TAG"
           
           sed -i "s/^appVersion:.*/appVersion: \"${TAG}\"/" .github/helm/Chart.yaml
           sed -i "s/^version:.*/version: ${TAG}/" .github/helm/Chart.yaml
           sed -i "s/^name:.*/name: ${REPO_NAME}/" .github/helm/Chart.yaml
 
-          REPO_NAME=${REPO_NAME} helmfile --file .github/helm/helmfile.yaml \
+          REPO_NAME=${REPO_NAME} helmfile --file .github/helm/helmfile.yaml.gotmpl \
             --environment production \
             --set releaseName=${REPO_NAME} \
             --set name=${REPO_NAME} \
@@ -130,9 +175,10 @@ jobs:
             --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/${REPO_NAME} \
             --set image.tag=${TAG} \
             --set appVersion=${TAG} \
-            --set ingress.hosts[0].host=${HOSTNAME} \
-            --set ingress.tls[0].hosts[0]=${HOSTNAME} \
-            --set ingress.tls[0].secretName=${REPO_NAME}-tls \
+            --set "ingress.hosts[0].host=${HOSTNAME}" \
+            --set "ingress.issuerName=letsencrypt-prod" \
+            --set "ingress.tls[0].hosts[0]=${HOSTNAME}" \
+            --set "ingress.tls[0].secretName=${REPO_NAME}-tls" \
             apply
 
           echo "✅ Helm deployment completed. Checking rollout status..."
@@ -154,4 +200,14 @@ jobs:
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
           fi
           echo "🚀 Deploying ${REPO_NAME} to ${HOSTNAME} with image tag: ${TAG}"
+
+      - name: Unlock workspace
+        if: always()
+        run: |
+          rm -f "${GITHUB_WORKSPACE}/.runner.lock"
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workspace files..."
+          find . -mindepth 1 -delete
 ...
