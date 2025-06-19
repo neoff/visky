@@ -7,8 +7,8 @@ on:
 jobs:
   wait-for-unlock:
     name: Wait for workspace unlock
-    #runs-on: ubuntu-latest
-    runs-on: main-n
+    runs-on: ubuntu-latest
+    #runs-on: main-n
     steps:
       - name: Wait until lock is released
         run: |
