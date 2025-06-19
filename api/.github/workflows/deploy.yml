@@ -27,8 +27,8 @@ jobs:
   deploy:
     name: Deploy to kubernetes cluster
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
-    #runs-on: ubuntu-latest
-    runs-on: main-n
+    runs-on: ubuntu-latest
+    #runs-on: main-n
     needs:
       - wait-for-unlock
       - validate
