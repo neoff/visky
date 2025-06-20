@@ -1,7 +1,7 @@
 // src/middleware/error.middleware.ts
 
-import HttpException from "../common/http-exception";
 import { Request, Response, NextFunction } from "express";
+import HttpException from "@/router/middleware/http-exception";
 
 export const errorHandler = (
   error: HttpException,
@@ -10,6 +10,7 @@ export const errorHandler = (
   next: NextFunction
 ) => {
   const status = error.statusCode || error.status || 500;
+  console.error("-------error-------", error);
   response.status(status);
   response.json({
     message: error.message,

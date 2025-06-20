@@ -1,24 +1,99 @@
-import express, {NextFunction} from "express";
-import {Item, Playlist, Request, Response} from "@/types";
-import {checkAuthAndroid, method} from "@/helpers/vk";
-import {cleanupDataAndSortPart} from "@/helpers";
+// src/router/api/playlist.ts
+import express from "express";
+import {Request, Response} from "@/types";
+import {checkAuthAndroid, vkMethod} from "@/helper/vk";
+import {cleanupDataAndSortPart, formatPlaylist} from "@/helper";
+import {Tracklist, type VkPlaylistResponse, VkResponse} from "@/__genedated__/openapi/vk";
 
 
 export const api = express.Router();
 
-const getPlaylistData =  async (req: Request, owner: number, count: number, offset: number): Promise<Playlist> => {
-  return await method(req, "audio.get", {
+const getPlaylistData =  async (req: Request, owner: number, count: number, offset: number): Promise<Tracklist> => {
+  return await vkMethod(req, "audio.get", {
     "count": count,
     "offset": offset,
     "owner_id": owner
   }, false)
-    .then((data) => {
-      console.log("===>>frisky RAW data:", data);
-      const clean = cleanupDataAndSortPart(data);
-      console.log("===>>frisky data:", clean);
-      return clean;
+    .then((vkResponse: VkResponse) => {
+      //console.log("===>>frisky RAW data:", data);
+      const response = vkResponse.response as VkPlaylistResponse;
+      const clean = cleanupDataAndSortPart(response);
+      //console.log("===>>frisky data:", clean);
+      return formatPlaylist(clean, offset);
     });
 }
+
+
+
+/**
+ * Get the frisky from the VK group  Frisky Radio
+ */
+api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
+
+  const owner: number = -42311167;
+  const count: number = parseInt(req.query?.count as string) || 1;
+  const offset: number = parseInt(req.query.offset as string) || 0;
+  try {
+    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
+    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
+    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
+    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
+    res.status(200).send(response);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
+
+/**
+ * add the frisky to the liked playlist
+ * @unused
+ */
+// TODO: add song to the liked playlist
+api.get("/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
+  const count: number = parseInt(req.query?.count as string) || 1;
+  const offset: number = parseInt(req.query.offset as string) || 0;
+  const owner: number = parseInt(req.query.owner as string) || -42311167;
+  try {
+    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
+    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
+    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
+    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
+    res.status(200).send(response);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+})
+
+api.put("/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
+  const count: number = parseInt(req.query?.count as string) || 1;
+  const offset: number = parseInt(req.query.offset as string) || 0;
+  const owner: number = parseInt(req.query.owner as string) || -42311167;
+  try {
+    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
+    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
+    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
+    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
+    res.status(200).send(response);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+})
+
+api.delete("/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
+  const count: number = parseInt(req.query?.count as string) || 1;
+  const offset: number = parseInt(req.query.offset as string) || 0;
+  const owner: number = parseInt(req.query.owner as string) || -42311167;
+  try {
+    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
+    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
+    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
+    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
+    res.status(200).send(response);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+})
+
 
 /**
  * Get the any playlist
@@ -36,7 +111,7 @@ api.get("/", checkAuthAndroid, async (req: Request, res: Response) => {
   try {
     //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
     //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
-    const response: Playlist = await getPlaylistData(req, owner, count, offset);
+    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
     //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
     res.status(200).send(response);
   } catch (error: Error | any) {
@@ -45,46 +120,51 @@ api.get("/", checkAuthAndroid, async (req: Request, res: Response) => {
 });
 
 /**
- * Get the frisky from the VK group  Frisky Radio
- */
-api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
-
-  const owner: number = -42311167;
-  const count: number = parseInt(req.query?.count as string) || 1;
-  const offset: number = parseInt(req.query.offset as string) || 0;
-  try {
-    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
-    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
-    const response: Playlist = await getPlaylistData(req, owner, count, offset);
-    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
-    res.status(200).send(response);
-  } catch (error: Error | any) {
-    res.status(500).send({errMessage: error.message});
-  }
-});
-
-/**
- * Get the liked playlist
+ * Get the any playlist
  * @unused
  */
-// TODO: add song to the liked playlist
-api.post("/playlist", checkAuthAndroid, async (req: Request, res: Response) => {
+api.put("/", checkAuthAndroid, async (req: Request, res: Response) => {
+
+  const owner: number = parseInt(req.query.owner as string);
   const count: number = parseInt(req.query?.count as string) || 1;
   const offset: number = parseInt(req.query.offset as string) || 0;
-  const owner: number = parseInt(req.query.owner as string) || -42311167;
+  if (!req.query.owner) {
+    res.status(400).send({errData: "No owner_id"});
+    return;
+  }
   try {
     //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
     //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
-    const response: Playlist = await getPlaylistData(req, owner, count, offset);
+    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
     //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
     res.status(200).send(response);
   } catch (error: Error | any) {
     res.status(500).send({errMessage: error.message});
   }
-})
+});
+/**
+ * Get the any playlist
+ * @unused
+ */
+api.delete("/", checkAuthAndroid, async (req: Request, res: Response) => {
 
-
-
+  const owner: number = parseInt(req.query.owner as string);
+  const count: number = parseInt(req.query?.count as string) || 1;
+  const offset: number = parseInt(req.query.offset as string) || 0;
+  if (!req.query.owner) {
+    res.status(400).send({errData: "No owner_id"});
+    return;
+  }
+  try {
+    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
+    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
+    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
+    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
+    res.status(200).send(response);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
 
 
 
@@ -102,7 +182,7 @@ api.get("/:user_id/:owner_id/:id", checkAuthAndroid, async (req: Request, res: R
       res.status(200).send({status: "ok", message: "Refreshed"});
       return;
     }
-    const response = await method(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
+    const response = await vkMethod(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
     res.status(200).send(response);
 
   } catch (error: Error | any) {
@@ -133,7 +213,7 @@ api.post("/:user_id/:owner_id/:id", checkAuthAndroid, async (req: Request, res: 
     return;
   }
   try {
-    const response = await method(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
+    const response = await vkMethod(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
     res.status(200).send(response);
 
   } catch (error: Error | any) {
@@ -157,7 +237,7 @@ api.put("/:user_id/:owner_id/:id", checkAuthAndroid, async (req: Request, res: R
     return;
   }
   try {
-    const response = await method(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
+    const response = await vkMethod(req, "audio.getById", {"audios": `${req.params.owner_id}_${req.params.id}`})
     res.status(200).send(response);
 
   } catch (error: Error | any) {

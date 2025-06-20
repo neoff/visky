@@ -1,6 +1,6 @@
 {
   "name": "visky-api",
-  "version": "1.0.38",
+  "version": "1.0.31",
   "description": "Api for vk music",
   "main": "src/index.ts",
   "author": "en.varg",
@@ -8,12 +8,12 @@
   "scripts": {
     "generate:back": "apigen-ts http://127.0.0.1:8082/v3/api-docs ./src/rest/api-client.ts",
     "generate:catalog": "apigen-ts https://catalog-service-prod.mac.yc.mvideo.ru/contracts/api.yaml ./src/rest/api-catalog.ts",
-    "generate:api": "npx openapi-typescript-codegen --input ./docs/openapi.yaml --output ./src/types/response/vk --useOptions --client axios",
+    "generate:api": "npx openapi-typescript-codegen --input ./docs/openapi.yaml --output ./src/__genedated__/openapi/vk --useOptions --client axios",
     "generate:all": "yarn generate:api && yarn generate:back && yarn generate:catalog",
     "generate": "yarn generate:api",
     "dev": "tsx watch src/index.ts",
-    "build": "yarn generate:api && yarn test && node esbuild.config.mjs",
-    "test": "jest",
+    "build": "yarn generate && yarn test && node esbuild.config.mjs",
+    "test": "jest --coverage",
     "lint": "eslint .",
     "prune": "npm prune --production",
     "start": "node dist/index.js"
