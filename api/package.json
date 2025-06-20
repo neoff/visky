@@ -1,6 +1,6 @@
 {
   "name": "visky-api",
-  "version": "1.0.39",
+  "version": "1.0.40",
   "description": "Api for vk music",
   "main": "src/index.ts",
   "author": "en.varg",
