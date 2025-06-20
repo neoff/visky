@@ -2,8 +2,8 @@
 import express from "express";
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
-import healthRoute from "@/router/health/health";
-import {setupSwagger} from "@/configurations/swagger";
+import healthRoute from "@/router/health";
+import setupSwagger from "@/router/swagger";
 import cors from "cors";
 
 /**
