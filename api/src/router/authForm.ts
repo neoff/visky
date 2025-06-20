@@ -1,12 +1,8 @@
 import {vkTokenAncor} from "@/configurations"
-import {apiUrls} from "@/constants"
-import {AndroidClient, AuthUrl, deviceIDgen, encodeQueryData, TokenUrl} from "@/helpers"
-import passport from "@/helpers/strategies"
-import {checkAuthAndroid, method} from "@/helpers/vk"
+import {AndroidClient, AuthUrl, deviceIDgen, encodeQueryData, TokenUrl} from "@/helper"
 import {Request, Response} from "@/types"
 import express from "express"
 import fs, {readFileSync} from 'fs'
-import {session} from "passport"
 import path from "path"
 
 export const authForm = express.Router()
@@ -15,14 +11,10 @@ const callBack = (html: string, url: string) => {
 
   let regex;
 
-  //regex = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi
-  //remove ',window._preventEvents=["click","touchstart","touchend","mouseover","mousemove"]'
   regex = /,window._preventEvents=\["click","touchstart","touchend","mouseover","mousemove"\]/gi
   html = html.replace(regex, "")
-  // remove  '&&location.reload()' only inside second <script>...</script>
   regex = /&&location.reload\(\)/gi
   html = html.replace(regex, "")
-  //replace <body...>...<form method=... action=... to <form method="post" action="/auth/vk2"
   regex = /<form[^>]*>/gi
   html = html.replace(regex, `<form method="post" action="${url}">`)
   return html

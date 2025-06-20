@@ -4,7 +4,6 @@ import {api} from "@/router/api/playlist";
 import {auth} from "@/router/api/auth";
 import {player} from "@/router/api/player";
 import {authForm} from "@/router/authForm";
-import {notFoundHandler} from "@/router/middleware/not-found.middleware";
 import {errorHandler} from "@/router/middleware/error.middleware";
 
 // APP
@@ -14,8 +13,6 @@ app.use("/api/oauth", auth);
 app.use("/api/playlist", api);
 app.use("/api/player", player);
 
-// ERROR
-app.use(notFoundHandler);
 // ERROR RESPONSE
 app.use(errorHandler);
 
