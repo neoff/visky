@@ -105,15 +105,17 @@ jobs:
 
       - name: Build Android with Expo EAS
         run: |
-          yarn install
-          yarn test && EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn build:cloud
+          yarn install --frozen-lockfile
+          yarn generate 
+          yarn test
+          yarn build
         env:
-          EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build Android local Expo EAS
         if: ${{ vars.BUILD_LOCAL == 'truees'}}
         run: |
-          yarn install
+          yarn install --frozen-lockfile
           yarn test && EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn eas build --platform android --local --profile preview --non-interactive --output android/build/visky-${{ steps.version.outputs.current }}-${{ steps.code_version.outputs.current }}.apk
         env:
           EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}

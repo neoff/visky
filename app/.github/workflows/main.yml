@@ -15,17 +15,27 @@ jobs:
     with:
       DOMAIN: ${{ vars.DOMAIN }}
 <<<<<<< 15-add-github-actions
+  test:
+    uses: ./.github/workflows/test.yml
+  main:
+    needs:
+      - test
+=======
+<<<<<<< 15-add-github-actions
   wait-for-unlock:
     uses: ./.github/workflows/wait-for-unlock.yml
   main:
     needs:
       - wait-for-unlock
+>>>>>>> main
       - validate
     #if: |
     #  (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
     #  (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch && github.head_ref != github.base_ref)
     runs-on: ubuntu-latest
     #runs-on: main-n
+<<<<<<< 15-add-github-actions
+=======
 =======
   bump-prepatch:
     needs: validate
@@ -33,6 +43,7 @@ jobs:
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch) }}
     #runs-on: ubuntu-latest
     runs-on: main-n
+>>>>>>> main
 >>>>>>> main
     permissions:
       contents: write

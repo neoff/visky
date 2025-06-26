@@ -17,10 +17,23 @@ on:
       - 'release/**'
 
 jobs:
+<<<<<<< 15-add-github-actions
+  test:
+    uses: ./.github/workflows/test.yml
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
+  relese:
+=======
   wait-for-unlock:
     uses: ./.github/workflows/wait-for-unlock.yml
   relese:
 <<<<<<< 15-add-github-actions
+>>>>>>> main
     #if: |
     #  (github.event_name == 'workflow_dispatch') ||
     #  (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) ||
@@ -28,6 +41,10 @@ jobs:
     runs-on: ubuntu-latest
     #runs-on: main-n
     needs:
+<<<<<<< 15-add-github-actions
+      - test
+      - validate
+=======
       - wait-for-unlock
 =======
     if: |
@@ -37,6 +54,7 @@ jobs:
       || github.event_name == 'workflow_dispatch'
     #runs-on: ubuntu-latest
     runs-on: main-n
+>>>>>>> main
 >>>>>>> main
     permissions:
       contents: write
@@ -108,6 +126,9 @@ jobs:
           npm version "$tag" --no-git-tag-version
           jq '.expo.version = "'$tag'" | .expo.android.versionCode += 1' app.json > tmp.$$.json && mv tmp.$$.json app.json
 <<<<<<< 15-add-github-actions
+=======
+<<<<<<< 15-add-github-actions
+>>>>>>> main
           echo "tag=$tag" >> $GITHUB_OUTPUT
 
       - name: Push changes and tags
@@ -116,7 +137,10 @@ jobs:
         run: |
           IFS='.' read -r major minor patch <<< "${tag}"
           release_branch="release/$major.$minor"
+<<<<<<< 15-add-github-actions
 =======
+=======
+>>>>>>> main
 >>>>>>> main
           git add package.json app.json
           

@@ -18,8 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     #runs-on: main-n
 =======
+<<<<<<< 15-add-github-actions
+    runs-on: ubuntu-latest
+    #runs-on: main-n
+=======
     #runs-on: ubuntu-latest
     runs-on: main-n
+>>>>>>> main
 >>>>>>> main
     steps:
       - name: Check required config
