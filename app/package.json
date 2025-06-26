@@ -1,7 +1,7 @@
 {
   "name": "visky",
   "main": "expo-router/entry",
-  "version": "1.1.0-alpha.6",
+  "version": "1.0.4",
   "scripts": {
     "generate:client": "apigen-ts https://visky.envarg.com/v3/api-docs ./src/__genedated__/openapi/backend.ts",
     "generate:backend": "npx openapi-typescript-codegen --input ./docs/openapi.yaml --output ./src/__genedated__/openapi/backend --useOptions --client axios",
@@ -18,8 +18,8 @@
     "app:version": "node -e \"const fs = require('fs'); const app = require('./app.json'); console.log(`app.${app.expo.android.versionCode}-${app.expo.version}`);\"",
     "bump:android": "node -e \"const fs = require('fs'); const app = require('./app.json'); app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1; fs.writeFileSync('app.json', JSON.stringify(app, null, 2));\"",
     "build:local": "chmod +x ./scripts/build-local.sh && ./scripts/build-local.sh",
-    "build:cloud": "yarn eas build -p android --profile preview --non-interactive",
-    "build": "yarn build:local",
+    "build:cloud": "chmod +x ./scripts/build-local.sh && ./scripts/build-local.sh 2>&1",
+    "build": "yarn build:cloud",
     "deploy": "chmod +x ./scripts/deploy.sh && ./scripts/deploy.sh",
     "postinstall": "patch-package"
   },

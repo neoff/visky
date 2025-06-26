@@ -2,11 +2,7 @@
   "expo": {
     "name": "visky",
     "slug": "visky",
-<<<<<<< 15-add-github-actions
-    "version": "1.0.3",
-=======
-    "version": "1.1.0-alpha.6",
->>>>>>> main
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/adaptive-icon.png",
     "userInterfaceStyle": "dark",
