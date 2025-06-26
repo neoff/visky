@@ -3,12 +3,13 @@ FROM node:24-alpine AS build
 ENV YARN_IGNORE_BUILD=true
 WORKDIR /app
 COPY package.json  ./
-RUN yarn install
+COPY yarn.lock  ./
+RUN yarn install --frozen-lockfile
 COPY . .
 
 #RUN ls -la
-
-#RUN npm run test
+RUN yarn generate
+RUN yarn test
 RUN yarn build
 RUN mkdir -p /swagger-static && cp -r node_modules/swagger-ui-dist/* /swagger-static/
 RUN npm prune --production
