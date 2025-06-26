@@ -29,7 +29,7 @@ jobs:
           [[ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]] && echo "❌ Missing secrets.DOCKERHUB_USERNAME" && exit 1
           [[ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]] && echo "❌ Missing secrets.DOCKERHUB_TOKEN" && exit 1
           [[ -z "${{ secrets.DOCKERHUB_EMAIL }}" ]] && echo "❌ Missing secrets.DOCKERHUB_EMAIL" && exit 1
-          [[ -z "${{ secrets.KUBECONFIG }}" ]] && echo "❌ Missing secrets.KUBECONFIG" && exit 1
+          [[ -z "${{ secrets.KUBECONFIG }}" ]] && echo "❌ Missing secrets.KUBECONFIG\n create one base64 -i ~/.kube/config | pbcopy" && exit 1
           echo "✅ All required secrets and vars are set"
 
       - name: Checkout repository

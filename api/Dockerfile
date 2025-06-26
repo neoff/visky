@@ -3,7 +3,8 @@ FROM node:24-alpine AS build
 ENV YARN_IGNORE_BUILD=true
 WORKDIR /app
 COPY package.json  ./
-RUN yarn install
+COPY yarn.lock  ./
+RUN yarn install --frozen-lockfile
 COPY . .
 
 #RUN ls -la
