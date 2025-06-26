@@ -4,7 +4,7 @@
   "version": "1.0.4",
   "scripts": {
     "generate:client": "apigen-ts https://visky.envarg.com/v3/api-docs ./src/__genedated__/openapi/backend.ts",
-    "generate:backend": "npx openapi-typescript-codegen --input ./docs/openapi.yaml --output ./src/__genedated__/openapi/backend --useOptions --client axios",
+    "generate:backend": "npx openapi-typescript-codegen --input https://visky.envarg.com/v3/api-docs --output ./src/__genedated__/openapi/backend --useOptions --client axios",
     "generate": "yarn generate:backend",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
