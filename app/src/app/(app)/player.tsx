@@ -1,21 +1,17 @@
 // src/app/%28app%29/player.tsx
 import {MovingText} from "@/components/MovingText";
 import {PlayerControls} from "@/components/PlayerControls";
-import {colors, fonts, screenPadding} from "@/constants";
+import {colors} from "@/constants";
 import {unknownTrackImageUri} from "@/constants/images";
 import {defaultStyles, playerStyle, utilsStyles} from "@/styles";
-import {Entypo, FontAwesome, MaterialCommunityIcons, MaterialIcons, Octicons} from "@expo/vector-icons";
+import {FontAwesome, Octicons} from "@expo/vector-icons";
 import {LinearGradient} from "expo-linear-gradient";
-import {ActivityIndicator, Platform, StyleSheet, Text, View} from "react-native";
-import FastImage from "react-native-fast-image";
+import {ActivityIndicator, Text, View} from "react-native";
+import {Image} from 'expo-image';
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {useActiveTrack} from "react-native-track-player";
 import {PlayerProgressBar} from "@/components/PlayerProgressbar";
 import {PlayerVolumeBar} from "@/components/PlayerVolumeBar";
-import {PlayerRepeatToggle} from "@/components/PlayerRepeatToggle";
-//import {usePlayerBackground} from "@/hooks/usePlayerBackground";
-import PlayerEqualizerBar from "@/components/PlayerEqualizerBar";
-import PlayerTrackListBar from "@/components/PlayerTrackListBar";
 import React, {useEffect} from "react";
 import {router} from "expo-router";
 import PlayerEditInfoBar from "@/components/PlayerEditInfoBar";
@@ -63,13 +59,11 @@ const PlayerScreen = () => {
 
         <View style={{flex: 1, marginTop: top + 70, marginBottom: bottom}}>
           <View style={playerStyle.artworkImageContainer}>
-            <FastImage
-              source={{
-                uri: activeTrack.artwork ?? unknownTrackImageUri,
-                priority: FastImage.priority.high,
-              }}
-              resizeMode="cover"
+            <Image
+              source={activeTrack.artwork ?? unknownTrackImageUri}
               style={playerStyle.artworkImage}
+              contentFit="cover"
+              transition={300}
             />
           </View>
 

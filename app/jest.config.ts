@@ -2,6 +2,13 @@
 export default {
     preset: 'ts-jest',
     testEnvironment: 'node',
+    collectCoverage: true,
+    collectCoverageFrom: [
+        "src/**/*.{ts,tsx}",
+        "!src/**/*.d.ts",
+        "!src/**/__tests__/**",
+        "!src/**/__mocks__/**",
+    ],
     testMatch: ['**/__tests__/**/*.test.ts'],
     moduleFileExtensions: ['ts', 'js', 'json'],
     moduleNameMapper: {
