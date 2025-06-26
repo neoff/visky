@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Generate source
+        run: yarn generate
+
       - name: Run tests
         run: yarn test
 
