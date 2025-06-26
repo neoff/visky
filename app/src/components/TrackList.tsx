@@ -1,8 +1,8 @@
 // src/components/TrackList.tsx
 import { unknownTrackImageUri } from "@/constants/images";
 import { utilsStyles } from '@/styles';
-import {ActivityIndicator, FlatList, FlatListProps, Text, View} from "react-native";
-import FastImage from "react-native-fast-image";
+import {Text, View} from "react-native";
+import { Image } from 'expo-image';
 import TrackPlayer, {RepeatMode, Track, TrackType} from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
@@ -98,9 +98,11 @@ export const TrackList = ({
         <View>
           <Text style={utilsStyles.emptyContentText}>No songs found</Text>
 
-          <FastImage
-            source={{uri: unknownTrackImageUri, priority: FastImage.priority.normal}}
+          <Image
+            source={unknownTrackImageUri}
             style={utilsStyles.emptyContentImage}
+            contentFit="cover"
+            transition={100}
           />
         </View>
       }

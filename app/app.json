@@ -4,19 +4,20 @@
     "slug": "visky",
     "version": "1.1.0-alpha.6",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/adaptive-icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": false,
     "scheme": "visky",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000"
+      "backgroundColor": "#000000"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
+      "versionCode": 35,
       "supportsTablet": true,
       "bundleIdentifier": "com.envarg.visky",
       "infoPlist": {
@@ -53,10 +54,10 @@
       "appleTeamId": "N853W9Q344"
     },
     "android": {
-      "versionCode": 25,
+      "versionCode": 35,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#000000"
       },
       "package": "com.envarg.visky"
     },
@@ -91,7 +92,8 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

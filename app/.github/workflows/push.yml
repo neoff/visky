@@ -16,7 +16,8 @@ on:
 jobs:
   build-publish-docker:
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
+    runs-on: main-n
     permissions:
       actions: read
       contents: read
@@ -77,13 +78,51 @@ jobs:
         id: version
         run: |
           current_version=$(node -p "require('./package.json').version")
+          code_version=$(node -p "require('./app.json').expo.android.versionCode")
+          app_code_version=$(node -p "require('./app.json').expo.version")
           echo "Current version: $current_version"
           echo "current=$current_version" >> $GITHUB_OUTPUT
+
+      - name: Get current code version
+        id: code_version
+        run: |
+          current_version=$(node -p "require('./package.json').version")
+          code_version=$(node -p "require('./app.json').expo.android.versionCode")
+          app_code_version=$(node -p "require('./app.json').expo.version")
+          echo "Current version: $current_version"
+          echo "current=$code_version" >> $GITHUB_OUTPUT
 
       - name: Build Android with Expo EAS
         run: |
           yarn install
+<<<<<<< 15-add-github-actions
+          yarn test && EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn build:cloud
+        env:
+          EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build Android local Expo EAS
+        if: ${{ vars.BUILD_LOCAL == 'truees'}}
+        run: |
+          yarn install
+          yarn test && EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn eas build --platform android --local --profile preview --non-interactive --output android/build/visky-${{ steps.version.outputs.current }}-${{ steps.code_version.outputs.current }}.apk
+        env:
+          EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+
+      - name: Set up eas
+        if: ${{ vars.BUILD_LOCAL == 'true'}}
+        run: |
+          mkdir -p ~/.credentials
+          echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" | base64 --decode > ~/.credentials/google-play-service-account.json
+
+      - name: Upload Android with Expo EAS
+        if: ${{ vars.BUILD_LOCAL == 'true'}}
+        run: |
+          yarn install
+          EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn eas submit --platform android --profile preview --path android/build/visky-${{ steps.version.outputs.current }}-${{ steps.code_version.outputs.current }}.apk
+=======
           EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn build
+>>>>>>> main
         env:
           EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
 

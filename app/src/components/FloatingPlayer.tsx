@@ -5,10 +5,9 @@ import {useLastActiveTrack} from "@/hooks/useLastActiveTrack";
 import {defaultStyles} from "@/styles";
 import {useRouter} from "expo-router";
 import {StyleSheet, TouchableOpacity, View, ViewProps} from "react-native";
-import FastImage from "react-native-fast-image";
 import {useActiveTrack} from "react-native-track-player";
 import {modifiers} from "@/constants";
-import {FontAwesome} from "@expo/vector-icons";
+import { Image } from 'expo-image';
 import React from "react";
 
 export const FloatingPlayer = ({style}: ViewProps) => {
@@ -26,11 +25,11 @@ export const FloatingPlayer = ({style}: ViewProps) => {
   return (
     <TouchableOpacity onPress={handlePress} activeOpacity={0.9} style={[styles.container, style]}>
       <>
-        <FastImage
-          source={{
-            uri: displayedTrack.artwork ?? unknownTrackImageUri,
-          }}
+        <Image
+          source={displayedTrack.artwork ?? unknownTrackImageUri}
           style={styles.trackArtworkImage}
+          contentFit="cover"
+          transition={300}
         />
 
         <View style={styles.trackTitleContainer}>
