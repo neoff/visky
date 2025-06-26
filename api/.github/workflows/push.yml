@@ -1,5 +1,5 @@
 ---
-name: Push docker image
+name: Push application image
 
 on:
   workflow_run:
@@ -30,7 +30,7 @@ jobs:
       KUBECONFIG: ${{ secrets.KUBECONFIG }}
     with:
       DOMAIN: ${{ vars.DOMAIN }}
-  build-publish-docker:
+  build-publish:
     name: Build and publish Docker image
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -117,7 +117,7 @@ jobs:
           echo "Repository name: $repo_name from $repo_full tag $release_tag"
           echo "${release_tag}" > branch.txt
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/arm64 \
             --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:latest \
             --tag ${{ secrets.DOCKERHUB_USERNAME }}/$repo_name:$release_tag \
             --push .

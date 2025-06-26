@@ -1,0 +1,47 @@
+name: Run tests
+
+on:
+  push:
+    branches: ["**"]
+
+jobs:
+  wait-for-unlock:
+    uses: ./.github/workflows/wait-for-unlock.yml
+  test:
+    needs:
+      - wait-for-unlock
+    name: Run Yarn Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Lock workspace
+        if: always()
+        run: |
+          echo "${{ github.job }}@${{ github.run_id }}" > "${GITHUB_WORKSPACE}/.runner.lock"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate source
+        run: yarn generate
+
+      - name: Run tests
+        run: yarn test
+
+      - name: Unlock workspace
+        if: always()
+        run: |
+          rm -f "${GITHUB_WORKSPACE}/.runner.lock"
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workspace files..."
+          find . -mindepth 1 -delete
