@@ -20,6 +20,7 @@ jobs:
   wait-for-unlock:
     uses: ./.github/workflows/wait-for-unlock.yml
   relese:
+<<<<<<< 15-add-github-actions
     #if: |
     #  (github.event_name == 'workflow_dispatch') ||
     #  (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) ||
@@ -28,6 +29,15 @@ jobs:
     #runs-on: main-n
     needs:
       - wait-for-unlock
+=======
+    if: |
+      ((github.event_name == 'push' 
+            || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)) 
+        && startsWith(github.ref, 'refs/heads/release/')) 
+      || github.event_name == 'workflow_dispatch'
+    #runs-on: ubuntu-latest
+    runs-on: main-n
+>>>>>>> main
     permissions:
       contents: write
     steps:
@@ -97,6 +107,7 @@ jobs:
           code=$(node -e "const fs = require('fs'); const app = require('./app.json'); app.expo.android.versionCode = (app.expo.android.versionCode || 1) + 1; fs.writeFileSync('app.json', JSON.stringify(app, null, 2));")
           npm version "$tag" --no-git-tag-version
           jq '.expo.version = "'$tag'" | .expo.android.versionCode += 1' app.json > tmp.$$.json && mv tmp.$$.json app.json
+<<<<<<< 15-add-github-actions
           echo "tag=$tag" >> $GITHUB_OUTPUT
 
       - name: Push changes and tags
@@ -105,6 +116,8 @@ jobs:
         run: |
           IFS='.' read -r major minor patch <<< "${tag}"
           release_branch="release/$major.$minor"
+=======
+>>>>>>> main
           git add package.json app.json
           
           git commit -a -m "release: $tag"
