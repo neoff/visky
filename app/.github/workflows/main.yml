@@ -5,15 +5,6 @@ on:
   push:
     branches:
       - main
-      - master
-  pull_request:
-    types: [closed]
-    branches:
-      - main
-      - master
-    #paths:
-    #  - 'src/**'
-    #  - 'Dockerfile'
 
 jobs:
   validate:
@@ -23,29 +14,35 @@ jobs:
       GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
     with:
       DOMAIN: ${{ vars.DOMAIN }}
-  bump-prepatch:
-    needs: validate
-    if: ${{ (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch) }}
-    #runs-on: ubuntu-latest
-    runs-on: main-n
+  wait-for-unlock:
+    uses: ./.github/workflows/wait-for-unlock.yml
+  main:
+    needs:
+      - wait-for-unlock
+      - validate
+    #if: |
+    #  (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+    #  (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.base_ref == github.event.repository.default_branch && github.head_ref != github.base_ref)
+    runs-on: ubuntu-latest
+    #runs-on: main-n
     permissions:
       contents: write
-    env:
-      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-
     steps:
+      - name: Lock workspace
+        if: always()
+        run: |
+          echo "${{ github.job }}@${{ github.run_id }}" > "${GITHUB_WORKSPACE}/.runner.lock"
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: ${{ env.DEFAULT_BRANCH }}
+          ref: ${{ github.event.repository.default_branch }}
       - name: Set up Git
         run: |
           git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git config init.defaultBranch ${{ env.DEFAULT_BRANCH }}
+          git config user.email "318709+neoff@users.noreply.github.com"
+          git config init.defaultBranch ${{ github.event.repository.default_branch }}
 
       - name: Get version from package.json
         id: version
@@ -83,104 +80,15 @@ jobs:
           npm version "${{ steps.bump.outputs.new_version }}" --no-git-tag-version
           git add package.json app.json
           git commit -m "chore(#0): bump patch version to ${{ steps.bump.outputs.new_version }}"
-          git push origin ${{ env.DEFAULT_BRANCH }}
-          
-          
+          git push origin ${{ github.event.repository.default_branch }}
 
-  #DEBUG
-  debug:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-      - name: Print environment variables
+      - name: Unlock workspace
+        if: always()
         run: |
-          echo "event ${{ github.event_name }}"
-          echo "event ${{ github.event_name }}"
-          echo "github.ref ${{ github.ref }}"
-      #- name: Parse semver string
-      #  id: semver_parser
-      #  uses: booxmedialtd/ws-action-parse-semver@v1
-      #  with:
-      #    input_string: '1.0.4'
-      #- name: Use parsed semver #DEPRECATION WARNING
-      #  run: |
-      #        echo "v${{ steps.semver_parser.outputs.major }}"
-      #        echo "v${{ steps.semver_parser.outputs.minor }}"
-      #        echo "v${{ steps.semver_parser.outputs.patch }}"
-      #        echo "v${{ steps.semver_parser.outputs.prerelease }}"
-      #        echo "v${{ steps.semver_parser.outputs.build }}"
-      #        echo "v${{ steps.semver_parser.outputs.fullversion }}"
-
-      - name: Get current version
-        id: version
-        #current_version=$(node -p "require('./package.json').version")
-        #current=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          rm -f "${GITHUB_WORKSPACE}/.runner.lock"
+      - name: Cleanup workspace
+        if: always()
         run: |
-          current_version='1.2.3'
-          echo "Current version: $current_version"
-          echo "version=$current_version" >> $GITHUB_OUTPUT
-
-      #https://github.com/marketplace/actions/semver-bump-action
-      - name: Bump Minor Version
-        id: bump
-        uses: cbrgm/semver-bump-action@main
-        with:
-          current-version: ${{ steps.version.outputs.version }}
-          bump-level: minor
-
-      - name: Output
-        run: |
-          new_tag=${{ steps.bump.outputs.new_version }}
-          echo $new_tag
-
-      - name: Get Latest Tag
-        id: latest_tag
-        run: |
-          git fetch --tags
-          tag=$(git tag --sort=-v:refname | head -n 1)
-          echo "current version is: $tag"
-          echo "tag=$tag" >> $GITHUB_OUTPUT
-
-      - name: List available branches and tags
-        run: |
-          echo "=== Available branches ==="
-          git ls-remote --heads origin | awk '{print $2}' | sed 's/refs\/heads\///'
-          echo ""
-          echo "=== Available tags ==="
-          git ls-remote --tags origin | awk '{print $2}' | sed 's/refs\/tags\///'
-
-      - name: Manual bump version in master to next development version
-        run: |
-          
-          repo_full=${{ github.repository }}
-          repo_name=$(basename $repo_full)
-          
-          current="${{ steps.version.outputs.current }}"
-          IFS='.' read -r major minor patch <<< "$current"
-          
-          if [[ "${{ github.event.inputs.release_type }}" == "minor" ]]; then
-            minor=$((minor + 1))
-            patch=0
-          else
-            major=$((major + 1))
-            minor=0
-            patch=0
-          fi
-          
-          next_version="$major.$minor.$patch"
-          echo "Next development version: $repo_name $next_version"
-
-          echo "git checkout ${{ github.event.repository.default_branch }}"
-          echo 'git add package.json'
-          echo 'git commit -m "chore: bump to next dev version $next_version [skip ci]"''
-          echo 'git push origin ${{ env.DEFAULT_BRANCH }}''
+          echo "🧹 Cleaning up workspace files..."
+          find . -mindepth 1 -delete
 ...

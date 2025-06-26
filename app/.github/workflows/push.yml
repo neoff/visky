@@ -1,11 +1,16 @@
 ---
-name: Push eas.dev application
+name: Push application image
 
 on:
   workflow_run:
     workflows: ["Create release branch"]
     types:
       - completed
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       ref:
@@ -14,15 +19,32 @@ on:
         type: string
 
 jobs:
-  build-publish-docker:
+  wait-for-unlock:
+    uses: ./.github/workflows/wait-for-unlock.yml
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
+  build-publish:
+    name: Build and publish Docker image
     if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
-    #runs-on: ubuntu-latest
-    runs-on: main-n
+    runs-on: ubuntu-latest
+    #runs-on: mini-s
+    needs:
+      - validate
     permissions:
       actions: read
       contents: read
 
     steps:
+      - name: Lock workspace
+        if: always()
+        run: |
+          echo "${{ github.job }}@${{ github.run_id }}" > "${GITHUB_WORKSPACE}/.runner.lock"
+
       - name: Download artifact from previous workflow
         if: github.event_name == 'workflow_run'
         env:
@@ -38,7 +60,7 @@ jobs:
           echo "Found artifact: $artifact_url"
 
           curl -L -H "Authorization: token $GH_TOKEN" -o artifact.zip "$artifact_url"
-          unzip artifact.zip
+          unzip -o artifact.zip
 
       - name: Read branch
         if: github.event_name == 'workflow_run'
@@ -62,17 +84,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           ref: ${{ steps.read_branch.outputs.branch }}
-
-      - name: Create branch name
-        if: github.event_name == 'workflow_run'
-        run: |
-          echo "${{ steps.read_branch.outputs.branch }}" > branch.txt
-      - name: Upload branch name
-        if: github.event_name == 'workflow_run'
-        uses: actions/upload-artifact@v4
-        with:
-          name: branch-name
-          path: branch.txt
 
       - name: Get current version
         id: version
@@ -128,4 +139,20 @@ jobs:
       #    eas build -p ios --profile preview --non-interactive
       #  env:
       #    EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload tag name
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-name
+          path: branch.txt
+
+      - name: Unlock workspace
+        if: always()
+        run: |
+          rm -f "${GITHUB_WORKSPACE}/.runner.lock"
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workspace files..."
+          find . -mindepth 1 -delete
 ...
