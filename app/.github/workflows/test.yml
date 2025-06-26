@@ -1,10 +1,7 @@
 name: Run tests
 
 on:
-<<<<<<< 15-add-github-actions
   workflow_call:
-=======
->>>>>>> main
   push:
     branches: ["**"]
 
@@ -34,12 +31,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-<<<<<<< 15-add-github-actions
       - name: Generate source
         run: yarn generate
 
-=======
->>>>>>> main
       - name: Run tests
         run: yarn test
 
