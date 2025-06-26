@@ -5,8 +5,8 @@ import {Playlist} from '@/helpers/types'
 import {useNavigationSearch} from '@/hooks/useNavigationSearch'
 import {utilsStyles} from '@/styles'
 import {useMemo} from 'react'
-import {FlatList, FlatListProps, Text, View} from 'react-native'
-import FastImage from 'react-native-fast-image'
+import {Text, View} from 'react-native'
+import { Image } from 'expo-image';
 import {FlashList, FlashListProps} from "@shopify/flash-list";
 
 type PlayListProps = {
@@ -42,10 +42,11 @@ export const PlayList = ({
       ListEmptyComponent={
         <View>
           <Text style={utilsStyles.emptyContentText}>No playlist found</Text>
-
-          <FastImage
-            source={{uri: unknownTrackImageUri, priority: FastImage.priority.normal}}
+          <Image
+            source={unknownTrackImageUri}
             style={utilsStyles.emptyContentImage}
+            contentFit="cover"
+            transition={300}
           />
         </View>
       }

@@ -308,6 +308,8 @@ build/
 .gradle
 *.hprof
 .cxx/
+android/*
+ios/*
 
 # Bundle artifacts
 *.jsbundle
