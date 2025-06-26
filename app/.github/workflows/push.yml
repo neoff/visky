@@ -130,6 +130,7 @@ jobs:
         run: |
           yarn install
           EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn eas submit --platform android --profile preview --path android/build/visky-${{ steps.version.outputs.current }}-${{ steps.code_version.outputs.current }}.apk
+          EXPO_TOKEN=${EAS_ACCESS_TOKEN} yarn build
         env:
           EAS_ACCESS_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
