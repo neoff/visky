@@ -8,8 +8,8 @@ RUN yarn install --frozen-lockfile
 COPY . .
 
 #RUN ls -la
-
-#RUN npm run test
+RUN yarn generate
+RUN yarn test
 RUN yarn build
 RUN mkdir -p /swagger-static && cp -r node_modules/swagger-ui-dist/* /swagger-static/
 RUN npm prune --production
