@@ -1,46 +1,218 @@
-# Getting Started with Create React App
+# Visky API
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Backend API для мобильного приложения Visky - музыкального плеера с контентом Frisky Radio из VK Music.
 
-## Available Scripts
+## 🚀 Текущий деплой
 
-In the project directory, you can run:
+- **Environment**: Production
+- **Namespace**: `frisky` (Kubernetes)
+- **Version**: `1.1.1`
+- **URL**: https://visky.envarg.com
+- **Status**: ✅ Running
 
-### `yarn dev`
+## 📦 Технологии
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- **Backend**: Express.js + TypeScript
+- **Database**: PostgreSQL + TypeORM
+- **Authentication**: Custom VK OAuth emulation
+- **Containerization**: Docker (multi-platform: linux/amd64, linux/arm64)
+- **Orchestration**: Kubernetes + Helm + Helmfile
+- **CI/CD**: GitHub Actions
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+## 🏗️ Архитектура
 
-### `yarn test`
+\`\`\`
+visky-api (Express.js backend)
+├── VK Music API Proxy
+│   ├── Authentication (custom OAuth flow)
+│   ├── Playlist management (Frisky Radio content)
+│   └── Favorites handling
+├── Static Web Pages
+│   ├── Landing page (/)
+│   ├── EULA (/eula)
+│   └── Privacy Policy (/privacy)
+└── Health Checks (/health)
+\`\`\`
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## 🛠️ Разработка
 
-### `yarn build`
+### Предварительные требования
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- Node.js 20+
+- PostgreSQL 14+
+- Docker (опционально)
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Установка
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+\`\`\`bash
+# Клонировать репозиторий
+git clone https://github.com/neoff/visky-api.git
+cd visky-api
 
-### `npm run eject`
+# Установить зависимости
+yarn install
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+# Настроить переменные окружения
+cp .env.example .env
+# Отредактировать .env с вашими настройками
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+# Запустить в режиме разработки
+yarn dev
+\`\`\`
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+### Доступные команды
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+\`\`\`bash
+yarn dev              # Запуск в режиме разработки с hot-reload
+yarn build            # Сборка production bundle
+yarn test             # Запуск тестов
+yarn generate         # Генерация OpenAPI типов
+\`\`\`
 
-## Learn More
+## 🐳 Docker
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Локальная сборка
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+\`\`\`bash
+# Сборка образа
+docker build -t visky-api:local .
+
+# Запуск контейнера
+docker run -p 3000:3000 --env-file .env visky-api:local
+\`\`\`
+
+### Multi-platform сборка
+
+\`\`\`bash
+# Сборка для linux/amd64 и linux/arm64
+docker buildx build \\
+  --platform linux/amd64,linux/arm64 \\
+  --tag varg/visky-api:latest \\
+  --push .
+\`\`\`
+
+## ☸️ Kubernetes Deployment
+
+### Быстрый старт
+
+См. [Quick Start Guide](./.github/helm/QUICKSTART.md)
+
+\`\`\`bash
+# Деплой через Helm
+helm upgrade --install visky-api .github/helm \\
+  --namespace frisky \\
+  --set image.tag=1.1.1
+
+# Проверка статуса
+kubectl get pods -n frisky -l app=visky-api
+curl https://visky.envarg.com/health
+\`\`\`
+
+### Документация
+
+- 📘 [Helm Chart README](./.github/helm/README.md) - полная документация по деплою
+- 🚀 [Quick Start](./.github/helm/QUICKSTART.md) - быстрый старт
+- 📝 [Migration Guide](./.github/helm/MIGRATION-FRISKY-NAMESPACE.md) - история миграции в namespace frisky
+
+## 🔄 CI/CD
+
+Автоматический пайплайн через GitHub Actions:
+
+1. **Release** → создание версии с semantic versioning
+2. **Build** → сборка multi-platform Docker образа
+3. **Deploy** → деплой в Kubernetes namespace \`frisky\`
+
+### Ручной запуск workflows
+
+\`\`\`bash
+# Создать новый релиз
+gh workflow run release.yml --ref main
+
+# Собрать Docker образ для конкретной версии
+gh workflow run push.yml --ref main --field ref=1.1.1
+
+# Задеплоить конкретную версию
+gh workflow run deploy.yml --ref main --field ref=1.1.1
+\`\`\`
+
+## 📡 API Endpoints
+
+### Public Endpoints
+
+- \`GET /\` - Landing page
+- \`GET /eula\` - End User License Agreement
+- \`GET /privacy\` - Privacy Policy
+- \`GET /health\` - Health check
+
+### Auth Endpoints
+
+- \`GET /auth/vk\` - VK OAuth authentication flow
+- \`POST /auth/vk/callback\` - OAuth callback handler
+
+### API Endpoints (требуют аутентификации)
+
+- \`GET /api/playlist/frisky\` - Получить плейлист Frisky Radio
+- \`GET /api/playlist/favorites\` - Получить избранные треки
+- \`PUT /api/playlist/favorites\` - Добавить трек в избранное
+- \`DELETE /api/playlist/favorites/:id\` - Удалить трек из избранного
+
+Полная документация API: https://visky.envarg.com/v3/api-docs
+
+## 📊 Мониторинг
+
+\`\`\`bash
+# Логи приложения
+kubectl logs -n frisky -l app=visky-api -f
+
+# Метрики ресурсов
+kubectl top pod -n frisky -l app=visky-api
+
+# Health check
+curl https://visky.envarg.com/health
+
+# Prometheus метрики
+curl https://visky.envarg.com/prometheus
+\`\`\`
+
+## 🔧 Troubleshooting
+
+### ImagePullBackOff
+
+\`\`\`bash
+# Проверить секрет
+kubectl get secret regcred -n frisky
+
+# Скопировать из default namespace
+kubectl get secret regcred -n default -o yaml | \\
+  sed 's/namespace: default/namespace: frisky/' | \\
+  kubectl apply -f -
+\`\`\`
+
+### CrashLoopBackOff
+
+\`\`\`bash
+# Проверить логи
+kubectl logs -n frisky -l app=visky-api --tail=100
+
+# Проверить events
+kubectl describe pod -n frisky -l app=visky-api
+\`\`\`
+
+Больше информации: [Helm Chart README](./.github/helm/README.md#troubleshooting)
+
+## 📝 Лицензия
+
+См. [LICENSE](./LICENSE)
+
+## 👥 Contributing
+
+Pull requests приветствуются! Для major изменений сначала откройте issue для обсуждения.
+
+## 🔗 Связанные проекты
+
+- [visky](../visky/) - React Native мобильное приложение (iOS/Android)
+
+## 📞 Контакты
+
+- **Issues**: https://github.com/neoff/visky-api/issues
+- **Discussions**: https://github.com/neoff/visky-api/discussions
