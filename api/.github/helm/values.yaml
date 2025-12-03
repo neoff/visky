@@ -5,7 +5,7 @@ version: 0.0.0
 
 image:
   repository: ""
-  tag: "latest"
+  tag: "latest" # Current: 1.1.0-alpha.40 (multi-platform: linux/amd64, linux/arm64)
   pullPolicy: Always
 
 imagePullSecrets:
