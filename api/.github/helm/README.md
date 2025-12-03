@@ -45,6 +45,18 @@ kubectl get nodes --show-labels
 - **Liveness Probe**: проверяет, что приложение живо (каждые 10 сек, начиная с 30 сек)
 - **Readiness Probe**: проверяет готовность принимать трафик (каждые 5 сек, начиная с 10 сек)
 
+### Web Pages
+
+Приложение также предоставляет статические web страницы:
+- **Landing Page**: `https://visky.envarg.com/` - главная страница приложения
+- **EULA**: `https://visky.envarg.com/eula` - End User License Agreement (требуется для App Store/Google Play)
+- **Privacy Policy**: `https://visky.envarg.com/privacy` - политика конфиденциальности (GDPR/CCPA compliant)
+- **Download Pages**: 
+  - `https://visky.envarg.com/download/ios` - скачать для iOS (заглушка)
+  - `https://visky.envarg.com/download/android` - скачать для Android (заглушка)
+
+Подробнее см. `public/README.md` в репозитории.
+
 ### Развертывание
 
 #### Автоматическое (через GitHub Actions)

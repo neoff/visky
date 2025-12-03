@@ -24,6 +24,7 @@ app.use(session({
     signed: true
   },
 }));
+
 // HEALTH CHECK
 healthRoute(app)
 //SWAGGER
