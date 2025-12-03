@@ -11,6 +11,22 @@ image:
 imagePullSecrets:
   - name: regcred
 
+# Resources optimized for micro-s or mini-s nodes
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector for micro-s or mini-s nodes
+# By hostname (current configuration)
+nodeSelector:
+  kubernetes.io/hostname: micro-s
+  # Alternative: mini-s
+  # kubernetes.io/hostname: mini-s
+
 service:
   type: ClusterIP
   port: 80
