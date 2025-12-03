@@ -14,8 +14,13 @@
 
 ### Совместимость с нодами
 
-✅ **micro-s** - Рекомендуется (~1 vCPU, ~1GB RAM)
-✅ **mini-s** - Полностью поддерживается (~1-2 vCPU, ~2-4GB RAM)
+✅ **mini-n** - Выбрана (2 vCPU, ~980MB RAM, текущее использование: 58%)
+✅ **micro-n** - Альтернатива (2 vCPU, ~980MB RAM, текущее использование: 62%)
+
+**Почему mini-n:**
+- Больше свободной памяти (~448MB vs ~380MB на момент выбора)
+- Меньше загрузка CPU (2% vs 3%)
+- Оптимальное соотношение ресурсов для visky-api
 
 ### Node Selector
 
@@ -23,8 +28,8 @@
 
 ```yaml
 nodeSelector:
-  node.kubernetes.io/instance-type: micro-s  # или mini-s
-  # Или другой label, если используется в вашем кластере
+  kubernetes.io/hostname: mini-n  # Текущая конфигурация
+  # или micro-n
 ```
 
 **Проверить доступные labels на нодах:**
@@ -59,21 +64,32 @@ REPO_NAME=visky-api helmfile --file .github/helm/helmfile.yaml.gotmpl \
 
 #### Деплой на конкретную ноду
 ```bash
-# Для micro-s ноды
+# Для mini-n ноды (рекомендуется)
 helm upgrade --install visky-api .github/helm \
-  --set nodeSelector."node\.kubernetes\.io/instance-type"=micro-s
+  --set nodeSelector."kubernetes\.io/hostname"=mini-n
 
-# Для mini-s ноды
+# Для micro-n ноды
 helm upgrade --install visky-api .github/helm \
-  --set nodeSelector."node\.kubernetes\.io/instance-type"=mini-s
+  --set nodeSelector."kubernetes\.io/hostname"=micro-n
 ```
+
+### Анализ ресурсов нод
+
+Выбор между mini-n и micro-n был сделан на основе анализа:
+
+| Нода | CPU Allocatable | Memory Allocatable | CPU Usage | Memory Usage | Свободно RAM |
+|------|----------------|-------------------|-----------|--------------|--------------|
+| **mini-n** ✅ | 2 cores | 980 MB | 54m (2%) | 532Mi (55%) | ~448 MB |
+| micro-n | 2 cores | 980 MB | 75m (3%) | 600Mi (62%) | ~380 MB |
+
+**Результат:** Выбрана `mini-n` - больше свободных ресурсов.
 
 ### Мониторинг
 
 Проверить статус деплоя:
 ```bash
 kubectl rollout status deployment/visky-api -n default
-kubectl get pods -n default -l app=visky-api
+kubectl get pods -n default -l app=visky-api -o wide
 kubectl top pod -n default -l app=visky-api
 kubectl describe pod -n default -l app=visky-api
 ```
@@ -81,6 +97,18 @@ kubectl describe pod -n default -l app=visky-api
 Проверить на какой ноде запущен pod:
 ```bash
 kubectl get pod -n default -l app=visky-api -o wide
+# Ожидается: NODE = mini-n
+```
+
+Текущее использование ресурсов:
+```bash
+# Pod visky-api
+kubectl top pod -n default -l app=visky-api
+# Типично: CPU: 5-12m, Memory: 66-96Mi
+
+# Нода mini-n
+kubectl top node mini-n
+# После деплоя: CPU: ~37m (1%), Memory: ~563Mi (58%)
 ```
 
 Проверить health endpoint:

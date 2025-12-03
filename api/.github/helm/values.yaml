@@ -20,12 +20,12 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-# Node selector for micro-s or mini-s nodes
-# By hostname (current configuration)
+# Node selector for mini-n or micro-n nodes
+# Selected mini-n based on resource availability analysis
 nodeSelector:
-  kubernetes.io/hostname: micro-s
-  # Alternative: mini-s
-  # kubernetes.io/hostname: mini-s
+  kubernetes.io/hostname: mini-n
+  # Alternative: micro-n
+  # kubernetes.io/hostname: micro-n
 
 service:
   type: ClusterIP
