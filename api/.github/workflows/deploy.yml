@@ -173,9 +173,13 @@ jobs:
           echo "🚀 Deploying ${REPO_NAME} with image tag: ${TAG} with hostname: ${HOSTNAME}"
           echo "Current version: $TAG"
           
-          sed -i "s/^appVersion:.*/appVersion: \"${TAG}\"/" .github/helm/Chart.yaml
-          sed -i "s/^version:.*/version: ${TAG}/" .github/helm/Chart.yaml
-          sed -i "s/^name:.*/name: ${REPO_NAME}/" .github/helm/Chart.yaml
+          # Update Chart.yaml with actual version (sed -i syntax for Linux)
+          sed -i'' "s/^appVersion:.*/appVersion: \"${TAG}\"/" .github/helm/Chart.yaml
+          sed -i'' "s/^version:.*/version: ${TAG}/" .github/helm/Chart.yaml
+          sed -i'' "s/^name:.*/name: ${REPO_NAME}/" .github/helm/Chart.yaml
+          
+          echo "📝 Updated Chart.yaml:"
+          cat .github/helm/Chart.yaml
 
           # Deploy to frisky namespace with dynamic NAMESPACE env var
           # Helmfile uses: namespace: {{ env "NAMESPACE" | default "default" }}
@@ -205,13 +209,13 @@ jobs:
           REPO_NAME: ${{ github.event.repository.name }}
           DOMAIN: ${{ vars.DOMAIN }}
           SUB_DOMAIN: ${{ vars.SUB_DOMAIN }}
-          TAG: ${{ env.VERSION }}
+          TAG: ${{ env.TAG }}
         run: |
           HOSTNAME="${REPO_NAME}.${DOMAIN}"
           if [ -n "${SUB_DOMAIN}" ]; then
             HOSTNAME="${SUB_DOMAIN}.${DOMAIN}"
           fi
-          echo "🚀 Deploying ${REPO_NAME} to ${HOSTNAME} with image tag: ${TAG}"
+          echo "🚀 Deployed ${REPO_NAME} to ${HOSTNAME} with image tag: ${TAG}"
 
       - name: Unlock workspace
         if: always()
