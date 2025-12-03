@@ -3,8 +3,8 @@ repositories:
     url: https://charts.helm.sh/stable
 
 helmDefaults:
-  atomic: true
-  timeout: 300
+  atomic: true  # Auto-rollback on failure
+  timeout: 300  # 5 minutes timeout for deployment
 
 environments:
   production:
@@ -13,6 +13,10 @@ environments:
 ---
 releases:
   - name: {{ env "REPO_NAME" }}
+    # Dynamic namespace support via NAMESPACE env var
+    # Usage: NAMESPACE=frisky REPO_NAME=visky-api helmfile apply
+    # Default: "default" if NAMESPACE not set
+    # Current deployment: frisky namespace (as of Dec 2025)
     namespace: {{ env "NAMESPACE" | default "default" }}
     chart: ./
     values:

@@ -1,6 +1,13 @@
 ---
 name: Deploy to kubernetes
 
+# This workflow deploys the application to Kubernetes cluster in 'frisky' namespace
+# Triggered automatically after successful Docker image push or manually via workflow_dispatch
+#
+# Deployment target: namespace=frisky, node=mini-n (amd64)
+# Requires: multi-platform Docker image (linux/amd64, linux/arm64)
+# Requires: regcred secret in target namespace for Docker Hub authentication
+
 on:
   workflow_run:
     workflows: ["Push docker image"]
@@ -140,6 +147,9 @@ jobs:
           echo "HELM_DIFF_IGNORE_UNKNOWN_FLAGS=true" >> $GITHUB_ENV
 
       - name: Create image pull secret
+        # Only create secret on first deployment (controlled by FIRST_DEPLOYMENT variable)
+        # For subsequent deployments, secret should already exist in namespace
+        # To recreate: kubectl delete secret regcred -n frisky && set FIRST_DEPLOYMENT=true
         if: ${{ vars.DOCKERHUB_PRIVATE == 'true' && vars.FIRST_DEPLOYMENT == 'true' }}
         run: |
           kubectl delete secret regcred --ignore-not-found -n frisky
@@ -167,6 +177,8 @@ jobs:
           sed -i "s/^version:.*/version: ${TAG}/" .github/helm/Chart.yaml
           sed -i "s/^name:.*/name: ${REPO_NAME}/" .github/helm/Chart.yaml
 
+          # Deploy to frisky namespace with dynamic NAMESPACE env var
+          # Helmfile uses: namespace: {{ env "NAMESPACE" | default "default" }}
           REPO_NAME=${REPO_NAME} NAMESPACE=frisky helmfile --file .github/helm/helmfile.yaml.gotmpl \
             --environment production \
             --set releaseName=${REPO_NAME} \
@@ -183,7 +195,7 @@ jobs:
 
           echo "✅ Helm deployment completed. Checking rollout status..."
 
-          # Validate rollout status
+          # Validate rollout status in frisky namespace
           kubectl rollout status deployment/${REPO_NAME} --namespace=frisky --timeout=300s
 
           echo "🎉 Successfully deployed ${REPO_NAME}:${TAG}"

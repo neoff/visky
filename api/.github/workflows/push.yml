@@ -1,6 +1,14 @@
 ---
 name: Push application image
 
+# This workflow builds and pushes multi-platform Docker images to Docker Hub
+# Platforms: linux/amd64, linux/arm64
+# This ensures compatibility with both Intel/AMD and ARM-based nodes in Kubernetes cluster
+#
+# Triggered:
+# - Automatically after successful release creation
+# - Manually via workflow_dispatch with specific ref (tag/branch)
+
 on:
   workflow_run:
     workflows: ["Create release branch"]
@@ -95,12 +103,14 @@ jobs:
           echo "current=$current_version" >> $GITHUB_OUTPUT
 
       #-
-        # Add support for more platforms with QEMU (optional)
+        # Add support for more platforms with QEMU
+        # QEMU enables building images for architectures different from the host
         # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        # Buildx enables multi-platform image builds
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to DockerHub
@@ -110,6 +120,15 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
+        # Multi-platform build for maximum compatibility:
+        # - linux/arm64: ARM-based nodes (AWS Graviton, Apple Silicon, etc.)
+        # - linux/amd64: Intel/AMD-based nodes (most cloud providers)
+        # 
+        # IMPORTANT: Both platforms are required for the current cluster setup
+        # - Some nodes run on amd64 (mini-n, micro-n)
+        # - Future nodes may use arm64
+        #
+        # Build time: ~8-10 minutes for both platforms
         run: |
           release_tag=${{ steps.version.outputs.current }}
           repo_full=${{ github.repository }}
