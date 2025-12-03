@@ -282,14 +282,68 @@ helm upgrade --install visky-api .github/helm \
   --set image.tag=1.1.1
 ```
 
+## Cleanup старого deployment из namespace default
+
+**ВАЖНО**: После успешной миграции в `frisky` namespace необходимо удалить старый deployment из `default`, чтобы избежать:
+- **Конфликта Ingress** - два Ingress на один hostname `visky.envarg.com` могут привести к непредсказуемой маршрутизации
+- **Дублирования ресурсов** - два pod'а потребляют двойное количество CPU/Memory
+- **Путаницы при отладке** - неясно какой экземпляр отвечает на запросы
+
+### Проверка наличия старого deployment
+```bash
+# Проверить есть ли visky-api в default namespace
+kubectl get all -n default -l app=visky-api
+
+# Проверить Ingress конфликт
+kubectl get ingress -A | grep visky-api
+# Должно быть только одно в frisky, не два!
+```
+
+### Удаление через Helm
+```bash
+# Удалить Helm release из default namespace
+helm uninstall visky-api --namespace default
+
+# Проверить что удалился
+helm list -A | grep visky-api
+# Должен остаться только frisky
+```
+
+### Удаление через kubectl (альтернатива)
+```bash
+# Если Helm release не найден, удалить ресурсы напрямую
+kubectl delete deployment visky-api -n default
+kubectl delete service visky-api -n default
+kubectl delete ingress visky-api -n default
+```
+
+### Проверка после удаления
+```bash
+# Убедиться что остался только frisky namespace
+kubectl get all,ingress -A | grep visky-api
+
+# Ожидаемый результат:
+# frisky   pod/visky-api-79bcdb9748-z4nmj   1/1   Running   0   40m
+# frisky   service/visky-api                ClusterIP   10.43.122.15   <none>   80/TCP   1h
+# frisky   deployment.apps/visky-api        1/1     1            1           40m
+# frisky   replicaset.apps/visky-api-79...  1         1         1       40m
+# frisky   ingress.../visky-api             traefik   visky.envarg.com   207.127.89.52   80,443
+
+# Проверить что API работает
+curl https://visky.envarg.com/health | jq '.status'
+# "UP"
+```
+
+**Статус**: ✅ Выполнено 3 декабря 2025 - старый deployment из `default` namespace удален через `helm uninstall`.
+
 ## Итоговый статус
 
-✅ **Namespace**: frisky  
+✅ **Namespace**: frisky (old `default` deployment removed)  
 ✅ **Version**: 1.1.1  
 ✅ **Docker Image**: varg/visky-api:1.1.1 (multi-platform: linux/amd64, linux/arm64)  
 ✅ **Pod Status**: Running (1/1 Ready)  
 ✅ **Node**: mini-n (amd64)  
-✅ **Ingress**: https://visky.envarg.com (Working)  
+✅ **Ingress**: https://visky.envarg.com (Working, no conflicts)  
 ✅ **Health Check**: UP  
 ✅ **Web Pages**: All accessible (/, /eula, /privacy)  
 
