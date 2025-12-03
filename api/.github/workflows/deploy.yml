@@ -142,12 +142,12 @@ jobs:
       - name: Create image pull secret
         if: ${{ vars.DOCKERHUB_PRIVATE == 'true' && vars.FIRST_DEPLOYMENT == 'true' }}
         run: |
-          kubectl delete secret regcred --ignore-not-found -n default
+          kubectl delete secret regcred --ignore-not-found -n frisky
           kubectl create secret docker-registry regcred \
             --docker-username=${{ secrets.DOCKERHUB_USERNAME }} \
             --docker-password=${{ secrets.DOCKERHUB_TOKEN }} \
             --docker-email=${{ secrets.DOCKERHUB_EMAIL }} \
-            --namespace=default
+            --namespace=frisky
 
       - name: Deploy via Helmfile with auto-rollback and healthcheck
         env:
@@ -167,7 +167,7 @@ jobs:
           sed -i "s/^version:.*/version: ${TAG}/" .github/helm/Chart.yaml
           sed -i "s/^name:.*/name: ${REPO_NAME}/" .github/helm/Chart.yaml
 
-          REPO_NAME=${REPO_NAME} helmfile --file .github/helm/helmfile.yaml.gotmpl \
+          REPO_NAME=${REPO_NAME} NAMESPACE=frisky helmfile --file .github/helm/helmfile.yaml.gotmpl \
             --environment production \
             --set releaseName=${REPO_NAME} \
             --set name=${REPO_NAME} \
@@ -184,7 +184,7 @@ jobs:
           echo "✅ Helm deployment completed. Checking rollout status..."
 
           # Validate rollout status
-          kubectl rollout status deployment/${REPO_NAME} --namespace=default --timeout=300s
+          kubectl rollout status deployment/${REPO_NAME} --namespace=frisky --timeout=300s
 
           echo "🎉 Successfully deployed ${REPO_NAME}:${TAG}"
 

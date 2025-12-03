@@ -13,7 +13,7 @@ environments:
 ---
 releases:
   - name: {{ env "REPO_NAME" }}
-    namespace: default
+    namespace: {{ env "NAMESPACE" | default "default" }}
     chart: ./
     values:
       - values.yaml
