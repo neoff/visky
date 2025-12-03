@@ -5,6 +5,7 @@ import session from 'express-session';
 import healthRoute from "@/router/health";
 import setupSwagger from "@/router/swagger";
 import cors from "cors";
+import path from "path";
 
 /**
  *  App Configuration
@@ -24,6 +25,10 @@ app.use(session({
     signed: true
   },
 }));
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, '../../public')));
+
 // HEALTH CHECK
 healthRoute(app)
 //SWAGGER

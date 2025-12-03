@@ -5,6 +5,10 @@ import {auth} from "@/router/api/auth";
 import {player} from "@/router/api/player";
 import {authForm} from "@/router/authForm";
 import {errorHandler} from "@/router/middleware/error.middleware";
+import webRouter from "@/router/web";
+
+// WEB PAGES (Landing, EULA, Downloads)
+app.use("/", webRouter);
 
 // APP
 app.use("/auth", authForm);
