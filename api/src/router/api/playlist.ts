@@ -242,7 +242,8 @@ api.get("/frisky/favorites", checkAuthAndroid, async (req: Request, res: Respons
     }, false);
 
     const playlistResponse = response.response as VkPlaylistResponse;
-    const formatted = formatPlaylist(playlistResponse, offset);
+    const clean = cleanupDataAndSortPart(playlistResponse);
+    const formatted = formatPlaylist(clean, offset);
 
     res.status(200).send(formatted);
   } catch (error: Error | any) {

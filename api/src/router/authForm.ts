@@ -45,15 +45,21 @@ authForm.get('/vk', async (req: Request, res: Response) => {
   //if (!req.session
   //  || !req.session?.access_token
   //  || !req.session?.secret) {
-    console.log("<-------- auth.get =========", AuthUrl+ JSON.stringify(params))
+    console.log("<-------- auth.get =========", AuthUrl, JSON.stringify(params))
     return await AndroidClient.get(AuthUrl, {params}).then((response) => {
+      console.log("===Admin auth page SUCCESS, status:", response.status)
       //console.debug("===Admin auth page response", response)
       //const resp = callBack(response.data, apiUrls.authAdminAppUrl)
       const resp = callBack(response.data, "vk")
       res.setHeader('Content-Type', 'text/html')
       res.status(200).send(resp)
     }).catch((error) => {
-      console.error("===Admin auth page error", error)
+      console.error("===Admin auth page ERROR:")
+      console.error("  Message:", error.message)
+      console.error("  Status:", error.response?.status)
+      console.error("  Data:", error.response?.data)
+      console.error("  URL:", AuthUrl)
+      console.error("  Params:", params)
       res.status(500).send({errMessage: error.message})
     })
       .finally(() => {

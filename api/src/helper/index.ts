@@ -7,6 +7,7 @@ import {TrackItem, Tracklist, VkPlaylistResponse} from "@/__genedated__/openapi/
 
 export const TokenUrl = "https://oauth.vk.com/token"
 export const AuthUrl = "https://oauth.vk.com/authorize"
+export const AuthUrlNew = "https://id.vk.ru/authorize"  // New VK ID endpoint
 export const vkBlankUrl = "https://oauth.vk.com/blank.html"
 
 export const normalizePort = (val: string): number => {
