@@ -342,7 +342,7 @@ paths:
       tags:
         - playlist
       responses:
-        '200':
+        '201':
           description: Playlist created successfully
           content:
             application/json:
@@ -360,6 +360,66 @@ paths:
                     type: integer
                   totalFriskyTracks:
                     type: integer
+        '409':
+          description: Playlist already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Playlist already exists
+                  message:
+                    type: string
+                  playlistId:
+                    type: integer
+        '500':
+          description: Internal server error
+    patch:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      description: Recreate Frisky-favorites playlist - delete all current tracks and repopulate with feelin_frisky tracks from user's main favorites.
+      summary: Recreate Frisky-favorites playlist.
+      operationId: recreateFriskyFavorites
+      tags:
+        - playlist
+      responses:
+        '200':
+          description: Playlist recreated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: recreated
+                  message:
+                    type: string
+                  playlistId:
+                    type: integer
+                  deletedTracks:
+                    type: integer
+                  tracksAdded:
+                    type: integer
+                  totalFriskyTracks:
+                    type: integer
+        '404':
+          description: Frisky-favorites playlist not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Playlist not found
+                  message:
+                    type: string
+        '500':
+          description: Internal server error
   /api/playlist/:
     get:
       security:

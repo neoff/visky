@@ -223,9 +223,69 @@ describe('/api/playlist/frisky/favorites', () => {
     
     const res = await request(app).post('/api/playlist/frisky/create-favorites');
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(res.body.status).toBe('created');
     expect(res.body.playlistId).toBe(12345);
+  });
+
+  it('POST /api/playlist/frisky/create-favorites should return 409 if playlist exists', async () => {
+    // Mock searchPlaylists to return existing playlist
+    vkMethod.mockResolvedValueOnce({ response: { count: 1, items: [{ id: 12345 }] } });
+    
+    const res = await request(app).post('/api/playlist/frisky/create-favorites');
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('Playlist already exists');
+    expect(res.body.playlistId).toBe(12345);
+  });
+
+  it('PATCH /api/playlist/frisky/create-favorites should return 404 if playlist not exists', async () => {
+    // Mock searchPlaylists to return no playlist
+    vkMethod.mockResolvedValueOnce({ response: { count: 0, items: [] } });
+    
+    const res = await request(app).patch('/api/playlist/frisky/create-favorites');
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Playlist not found');
+  });
+
+  it('PATCH /api/playlist/frisky/create-favorites should recreate playlist', async () => {
+    // Mock searchPlaylists to find existing playlist
+    vkMethod.mockResolvedValueOnce({ response: { count: 1, items: [{ id: 12345 }] } });
+    // Mock audio.get for current tracks in playlist
+    vkMethod.mockResolvedValueOnce({ 
+      response: { 
+        count: 1, 
+        items: [
+          { id: 999, owner_id: 123, artist: "Old", title: "Track", duration: 120, url: "test.com" }
+        ] 
+      } 
+    });
+    // Mock audio.delete for old track
+    vkMethod.mockResolvedValueOnce({ response: 1 });
+    // Mock audio.get for user favorites (to find feelin_frisky tracks)
+    vkMethod.mockResolvedValueOnce({ 
+      response: { 
+        count: 3, 
+        items: [
+          { id: 1, owner_id: 123, artist: "Test", title: "Feelin_Frisky Part 1", duration: 120, url: "test.com", date: 1000 },
+          { id: 2, owner_id: 123, artist: "Test", title: "Feelin Frisky Part 2", duration: 120, url: "test.com", date: 2000 },
+          { id: 3, owner_id: 123, artist: "Other", title: "Random", duration: 120, url: "test.com", date: 3000 }
+        ] 
+      } 
+    });
+    // Mock audio.add for each feelin_frisky track (2 tracks)
+    vkMethod.mockResolvedValueOnce({ response: { id: 1 } });
+    vkMethod.mockResolvedValueOnce({ response: { id: 2 } });
+    
+    const res = await request(app).patch('/api/playlist/frisky/create-favorites');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('recreated');
+    expect(res.body.playlistId).toBe(12345);
+    expect(res.body.deletedTracks).toBe(1);
+    expect(res.body.tracksAdded).toBe(2);
+    expect(res.body.totalFriskyTracks).toBe(2);
   });
 
 

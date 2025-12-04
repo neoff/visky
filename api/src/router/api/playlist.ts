@@ -81,6 +81,49 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
 });
 
 /**
+ * Helper function to populate Frisky-favorites playlist with feelin_frisky tracks
+ */
+const populateFriskyFavorites = async (req: Request, playlistId: number) => {
+  // Get all user's favorites to find feelin_frisky tracks
+  const userFavorites = await vkMethod(req, "audio.get", {
+    owner_id: req.session.user_id,
+    count: 6000, // VK max
+    offset: 0
+  }, false);
+
+  const favoritesResponse = userFavorites.response as VkPlaylistResponse;
+  
+  // Filter tracks with "feelin_frisky" in title or artist (case-insensitive)
+  const friskyTracks = favoritesResponse.items.filter((track: any) => {
+    const searchStr = `${track.artist} ${track.title}`.toLowerCase();
+    return searchStr.includes("feelin_frisky") || searchStr.includes("feelin frisky");
+  });
+
+  // Sort by date (oldest first)
+  friskyTracks.sort((a: any, b: any) => (a.date || 0) - (b.date || 0));
+
+  // Add tracks to Frisky-favorites playlist
+  const addedTracks: number[] = [];
+  for (const track of friskyTracks) {
+    try {
+      await vkMethod(req, "audio.add", {
+        audio_id: track.id,
+        owner_id: track.owner_id,
+        album_id: playlistId
+      }, false);
+      addedTracks.push(track.id);
+    } catch (error) {
+      console.error(`Failed to add track ${track.id} to playlist:`, error);
+    }
+  }
+
+  return {
+    tracksAdded: addedTracks.length,
+    totalFriskyTracks: friskyTracks.length
+  };
+}
+
+/**
  * Create Frisky-favorites playlist and populate with feelin_frisky tracks
  * POST /api/playlist/frisky/create-favorites
  */
@@ -90,9 +133,9 @@ api.post("/frisky/create-favorites", checkAuthAndroid, async (req: Request, res:
     let playlistId = await getFriskyFavoritesPlaylistId(req);
     
     if (playlistId) {
-      res.status(200).send({
-        status: "exists",
-        message: "Frisky-favorites playlist already exists",
+      res.status(409).send({
+        error: "Playlist already exists",
+        message: "Frisky-favorites playlist already exists. Use PATCH to recreate it.",
         playlistId
       });
       return;
@@ -101,45 +144,71 @@ api.post("/frisky/create-favorites", checkAuthAndroid, async (req: Request, res:
     // Create new playlist
     playlistId = await createFriskyFavoritesPlaylist(req);
 
-    // Get all user's favorites to find feelin_frisky tracks
-    const userFavorites = await vkMethod(req, "audio.get", {
-      owner_id: req.session.user_id,
-      count: 6000, // VK max
-      offset: 0
-    }, false);
+    // Populate playlist with feelin_frisky tracks
+    const populateResult = await populateFriskyFavorites(req, playlistId);
 
-    const favoritesResponse = userFavorites.response as VkPlaylistResponse;
-    
-    // Filter tracks with "feelin_frisky" in title or artist (case-insensitive)
-    const friskyTracks = favoritesResponse.items.filter((track: any) => {
-      const searchStr = `${track.artist} ${track.title}`.toLowerCase();
-      return searchStr.includes("feelin_frisky") || searchStr.includes("feelin frisky");
-    });
-
-    // Sort by date (oldest first)
-    friskyTracks.sort((a: any, b: any) => (a.date || 0) - (b.date || 0));
-
-    // Add tracks to Frisky-favorites playlist
-    const addedTracks: number[] = [];
-    for (const track of friskyTracks) {
-      try {
-        await vkMethod(req, "audio.add", {
-          audio_id: track.id,
-          owner_id: track.owner_id,
-          album_id: playlistId
-        }, false);
-        addedTracks.push(track.id);
-      } catch (error) {
-        console.error(`Failed to add track ${track.id} to playlist:`, error);
-      }
-    }
-
-    res.status(200).send({
+    res.status(201).send({
       status: "created",
       message: "Frisky-favorites playlist created and populated",
       playlistId,
-      tracksAdded: addedTracks.length,
-      totalFriskyTracks: friskyTracks.length
+      ...populateResult
+    });
+
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
+
+/**
+ * Recreate Frisky-favorites playlist (delete all tracks and repopulate)
+ * PATCH /api/playlist/frisky/create-favorites
+ */
+api.patch("/frisky/create-favorites", checkAuthAndroid, async (req: Request, res: Response) => {
+  try {
+    // Check if Frisky-favorites exists
+    const playlistId = await getFriskyFavoritesPlaylistId(req);
+    
+    if (!playlistId) {
+      res.status(404).send({
+        error: "Playlist not found",
+        message: "Frisky-favorites playlist does not exist. Use POST to create it."
+      });
+      return;
+    }
+
+    // Get current tracks in the playlist
+    const currentTracks = await vkMethod(req, "audio.get", {
+      owner_id: req.session.user_id,
+      album_id: playlistId,
+      count: 6000,
+      offset: 0
+    }, false);
+
+    const tracksResponse = currentTracks.response as VkPlaylistResponse;
+    
+    // Delete all tracks from the playlist
+    let deletedCount = 0;
+    for (const track of tracksResponse.items) {
+      try {
+        await vkMethod(req, "audio.delete", {
+          audio_id: track.id,
+          owner_id: track.owner_id
+        }, false);
+        deletedCount++;
+      } catch (error) {
+        console.error(`Failed to delete track ${track.id}:`, error);
+      }
+    }
+
+    // Repopulate playlist with feelin_frisky tracks
+    const populateResult = await populateFriskyFavorites(req, playlistId);
+
+    res.status(200).send({
+      status: "recreated",
+      message: "Frisky-favorites playlist recreated",
+      playlistId,
+      deletedTracks: deletedCount,
+      ...populateResult
     });
 
   } catch (error: Error | any) {
