@@ -42,6 +42,7 @@ authForm.get('/vk', async (req: Request, res: Response) => {
    * return res.redirect(AuthUrl+"?"+queryParam)
    */
 
+  
   //if (!req.session
   //  || !req.session?.access_token
   //  || !req.session?.secret) {
