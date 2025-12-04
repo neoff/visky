@@ -9,13 +9,24 @@ This folder contains comprehensive documentation for the visky-api backend servi
 These documents preserve critical knowledge about VK's deprecated Audio API that is no longer available in official documentation:
 
 #### [VK-API-REFERENCE.md](./VK-API-REFERENCE.md) (9.2KB)
-**VK Audio API Methods Reference**
-- Complete reference for VK Audio API methods (`audio.get`, `audio.getById`, `audio.search`, etc.)
-- Method parameters, response formats, and return values
+**VK Audio API Methods Reference (Quick Overview)**
+- Quick reference for VK Audio API methods
+- Method categorization and usage status in visky-api
 - Code examples from visky-api implementation
 - `execute` method for batching requests
-- Error codes and rate limits
 - **Status**: Active reference (methods currently used in visky-api)
+
+#### [VK-API-METHODS-DETAILED.md](./VK-API-METHODS-DETAILED.md) (80KB) 🆕
+**Complete VK Audio API Methods Documentation**
+- **All 21 official VK Audio API methods** with full details
+- Complete parameter specifications with types and requirements
+- Full request/response examples for each method
+- Audio object structure and field descriptions
+- Complete audio genres list (22 genres)
+- Upload workflow step-by-step guide
+- Error codes reference
+- **Source**: Official VK API archives (Dec 2016 - Feb 2017)
+- **Status**: Complete reference documentation (for service development)
 
 #### [VK-AUTHENTICATION.md](./VK-AUTHENTICATION.md) (12KB)
 **Android App Emulation Authentication Flow**
@@ -54,11 +65,13 @@ These documents preserve critical knowledge about VK's deprecated Audio API that
 ### For Developers
 
 **Getting Started**:
-1. Read [VK-AUTHENTICATION.md](./VK-AUTHENTICATION.md) to understand auth flow
-2. Check [VK-API-REFERENCE.md](./VK-API-REFERENCE.md) for available API methods
-3. Use [openapi.yaml](./openapi.yaml) for endpoint specifications
+1. Read [VK-API-METHODS-DETAILED.md](./VK-API-METHODS-DETAILED.md) for complete API methods documentation
+2. Check [VK-AUTHENTICATION.md](./VK-AUTHENTICATION.md) to understand auth flow
+3. Use [VK-API-REFERENCE.md](./VK-API-REFERENCE.md) for quick reference and code examples
+4. Consult [openapi.yaml](./openapi.yaml) for endpoint specifications
 
 **Troubleshooting VK API Issues**:
+- API methods documentation → See [VK-API-METHODS-DETAILED.md](./VK-API-METHODS-DETAILED.md) for complete reference
 - Authentication failures → See [VK-AUTHENTICATION.md](./VK-AUTHENTICATION.md#troubleshooting)
 - API method errors → See [VK-API-REFERENCE.md](./VK-API-REFERENCE.md#error-handling)
 - URL decryption questions → See [VK-AUDIO-UNMASK.md](./VK-AUDIO-UNMASK.md) (not needed for visky-api)
@@ -123,11 +136,12 @@ VK API documentation is based on research from:
 
 | File | Size | Lines | Purpose |
 |------|------|-------|---------|
-| VK-API-REFERENCE.md | 9.2KB | 344 | API methods reference |
+| VK-API-METHODS-DETAILED.md | 80KB | 1100 | Complete API methods reference |
+| VK-API-REFERENCE.md | 9.2KB | 344 | Quick API methods overview |
 | VK-AUTHENTICATION.md | 12KB | 447 | Auth flow & signing |
 | VK-AUDIO-UNMASK.md | 11KB | 392 | URL decryption (historical) |
 | openapi.yaml | ~50KB | 1270 | REST API specification |
-| **Total VK Docs** | **~32KB** | **1183** | Core knowledge base |
+| **Total VK Docs** | **~162KB** | **3553** | Core knowledge base |
 
 ---
 
