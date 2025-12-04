@@ -212,16 +212,29 @@ paths:
               schema:
                 #Tracklist
                 $ref: '#/components/schemas/Tracklist'
-  /api/playlist/favorites:
+  /api/playlist/frisky/favorites:
     get:
       security:
         - SessionCookieAuth: []
         - HeaderTokenAuth: []
-      description: Get frisky-favorites playlist.
-      summary: Get list of tracks from frisky-favorites playlist.
-      operationId: getFavorites
+      description: Get tracks from Frisky-favorites playlist.
+      summary: Get list of tracks from Frisky-favorites playlist.
+      operationId: getFriskyFavorites
       tags:
         - playlist
+      parameters:
+        - name: count
+          in: query
+          schema:
+            type: integer
+            default: 100
+          description: Number of tracks to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Offset for pagination
       responses:
         '200':
           description: OK
@@ -229,30 +242,124 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Tracklist'
+        '404':
+          description: Frisky-favorites playlist not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errMessage:
+                    type: string
     put:
       security:
         - SessionCookieAuth: []
         - HeaderTokenAuth: []
-      description: NOT IMPLEMENTED Put track from `Frisky radio` group to favorites.
-      summary: Put track from `Frisky radio` group to favorites.
-      operationId: getFriskyRadio
+      description: Add track to Frisky-favorites playlist and main favorites.
+      summary: Add track to Frisky-favorites playlist.
+      operationId: addToFriskyFavorites
       tags:
         - playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                audio_id:
+                  type: integer
+                  description: ID of the audio track
+                owner_id:
+                  type: integer
+                  description: Owner ID of the track (default -42311167 for Frisky Radio)
+              required:
+                - audio_id
       responses:
         '200':
-          description: OK
+          description: Track added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: added
+                  message:
+                    type: string
+                  audio_id:
+                    type: integer
+        '404':
+          description: Frisky-favorites playlist not found
+  /api/playlist/frisky/favorites/{id}:
     delete:
       security:
         - SessionCookieAuth: []
         - HeaderTokenAuth: []
-      description: NOT IMPLEMENTED Delete track from favorites.
+      description: Delete track from Frisky-favorites playlist and main favorites.
       summary: Delete track from favorites.
-      operationId: getFriskyRadio
+      operationId: deleteFromFriskyFavorites
+      tags:
+        - playlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Audio track ID to delete
+        - name: owner_id
+          in: query
+          schema:
+            type: integer
+          description: Owner ID of the track
+      responses:
+        '200':
+          description: Track deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+                  message:
+                    type: string
+                  audio_id:
+                    type: string
+        '404':
+          description: Frisky-favorites playlist not found
+  /api/playlist/frisky/create-favorites:
+    post:
+      security:
+        - SessionCookieAuth: []
+        - HeaderTokenAuth: []
+      description: Create Frisky-favorites playlist and populate with all feelin_frisky tracks from user's main favorites.
+      summary: Create and populate Frisky-favorites playlist.
+      operationId: createFriskyFavorites
       tags:
         - playlist
       responses:
         '200':
-          description: OK
+          description: Playlist created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: created
+                  message:
+                    type: string
+                  playlistId:
+                    type: integer
+                  tracksAdded:
+                    type: integer
+                  totalFriskyTracks:
+                    type: integer
   /api/playlist/:
     get:
       security:

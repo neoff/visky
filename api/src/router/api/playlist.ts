@@ -3,10 +3,13 @@ import express from "express";
 import {Request, Response} from "@/types";
 import {checkAuthAndroid, vkMethod} from "@/helper/vk";
 import {cleanupDataAndSortPart, formatPlaylist} from "@/helper";
-import {Tracklist, type VkPlaylistResponse, VkResponse} from "@/__genedated__/openapi/vk";
+import {Tracklist, type VkPlaylistResponse, VkResponse, TrackItem} from "@/__genedated__/openapi/vk";
 
 
 export const api = express.Router();
+
+const FRISKY_OWNER_ID = -42311167;
+const FRISKY_FAVORITES_PLAYLIST_TITLE = "Frisky-favorites";
 
 const getPlaylistData =  async (req: Request, owner: number, count: number, offset: number): Promise<Tracklist> => {
   return await vkMethod(req, "audio.get", {
@@ -23,6 +26,42 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
     });
 }
 
+/**
+ * Find or create Frisky-favorites playlist
+ */
+const getFriskyFavoritesPlaylistId = async (req: Request): Promise<number | null> => {
+  try {
+    const searchResult = await vkMethod(req, "audio.searchPlaylists", {
+      q: FRISKY_FAVORITES_PLAYLIST_TITLE,
+      count: 1
+    }, false);
+    
+    if (searchResult.response && (searchResult.response as any).count > 0) {
+      return (searchResult.response as any).items[0].id;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error searching for Frisky-favorites playlist:", error);
+    return null;
+  }
+}
+
+/**
+ * Create Frisky-favorites playlist
+ */
+const createFriskyFavoritesPlaylist = async (req: Request): Promise<number> => {
+  try {
+    const createResult = await vkMethod(req, "audio.createPlaylist", {
+      title: FRISKY_FAVORITES_PLAYLIST_TITLE,
+      owner_id: req.session.user_id
+    }, false);
+    
+    return (createResult.response as any).id;
+  } catch (error: any) {
+    throw new Error(`Failed to create Frisky-favorites playlist: ${error.message}`);
+  }
+}
+
 
 
 /**
@@ -30,14 +69,11 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
  */
 api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
 
-  const owner: number = -42311167;
+  const owner: number = FRISKY_OWNER_ID;
   const count: number = parseInt(req.query?.count as string) || 1;
   const offset: number = parseInt(req.query.offset as string) || 0;
   try {
-    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
-    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
     const response: Tracklist = await getPlaylistData(req, owner, count, offset);
-    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
     res.status(200).send(response);
   } catch (error: Error | any) {
     res.status(500).send({errMessage: error.message});
@@ -45,54 +81,197 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
 });
 
 /**
- * add the frisky to the liked playlist
- * @unused
+ * Create Frisky-favorites playlist and populate with feelin_frisky tracks
+ * POST /api/playlist/frisky/create-favorites
  */
-// TODO: add song to the liked playlist
-api.get("/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
-  const count: number = parseInt(req.query?.count as string) || 1;
-  const offset: number = parseInt(req.query.offset as string) || 0;
-  const owner: number = parseInt(req.query.owner as string) || -42311167;
+api.post("/frisky/create-favorites", checkAuthAndroid, async (req: Request, res: Response) => {
   try {
-    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
-    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
-    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
-    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
-    res.status(200).send(response);
-  } catch (error: Error | any) {
-    res.status(500).send({errMessage: error.message});
-  }
-})
+    // Check if Frisky-favorites already exists
+    let playlistId = await getFriskyFavoritesPlaylistId(req);
+    
+    if (playlistId) {
+      res.status(200).send({
+        status: "exists",
+        message: "Frisky-favorites playlist already exists",
+        playlistId
+      });
+      return;
+    }
 
-api.put("/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
-  const count: number = parseInt(req.query?.count as string) || 1;
-  const offset: number = parseInt(req.query.offset as string) || 0;
-  const owner: number = parseInt(req.query.owner as string) || -42311167;
-  try {
-    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
-    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
-    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
-    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
-    res.status(200).send(response);
-  } catch (error: Error | any) {
-    res.status(500).send({errMessage: error.message});
-  }
-})
+    // Create new playlist
+    playlistId = await createFriskyFavoritesPlaylist(req);
 
-api.delete("/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
-  const count: number = parseInt(req.query?.count as string) || 1;
-  const offset: number = parseInt(req.query.offset as string) || 0;
-  const owner: number = parseInt(req.query.owner as string) || -42311167;
-  try {
-    //const playlistId = await checkFavoiteAndCreateIfNotExist(req, true)
-    //const exec = await makeQuery(req.query, playlistId); // {count:${count},offset:${offset}, owner_id:-42311167}
-    const response: Tracklist = await getPlaylistData(req, owner, count, offset);
-    //const response: PlayListResponse = await method(req, 'execute',{code:exec}, true)
-    res.status(200).send(response);
+    // Get all user's favorites to find feelin_frisky tracks
+    const userFavorites = await vkMethod(req, "audio.get", {
+      owner_id: req.session.user_id,
+      count: 6000, // VK max
+      offset: 0
+    }, false);
+
+    const favoritesResponse = userFavorites.response as VkPlaylistResponse;
+    
+    // Filter tracks with "feelin_frisky" in title or artist (case-insensitive)
+    const friskyTracks = favoritesResponse.items.filter((track: any) => {
+      const searchStr = `${track.artist} ${track.title}`.toLowerCase();
+      return searchStr.includes("feelin_frisky") || searchStr.includes("feelin frisky");
+    });
+
+    // Sort by date (oldest first)
+    friskyTracks.sort((a: any, b: any) => (a.date || 0) - (b.date || 0));
+
+    // Add tracks to Frisky-favorites playlist
+    const addedTracks: number[] = [];
+    for (const track of friskyTracks) {
+      try {
+        await vkMethod(req, "audio.add", {
+          audio_id: track.id,
+          owner_id: track.owner_id,
+          album_id: playlistId
+        }, false);
+        addedTracks.push(track.id);
+      } catch (error) {
+        console.error(`Failed to add track ${track.id} to playlist:`, error);
+      }
+    }
+
+    res.status(200).send({
+      status: "created",
+      message: "Frisky-favorites playlist created and populated",
+      playlistId,
+      tracksAdded: addedTracks.length,
+      totalFriskyTracks: friskyTracks.length
+    });
+
   } catch (error: Error | any) {
     res.status(500).send({errMessage: error.message});
   }
-})
+});
+
+/**
+ * Get Frisky favorites
+ * GET /api/playlist/frisky/favorites
+ */
+api.get("/frisky/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
+  try {
+    const playlistId = await getFriskyFavoritesPlaylistId(req);
+    
+    if (!playlistId) {
+      res.status(404).send({
+        errMessage: "Frisky-favorites playlist not found. Use POST /api/playlist/frisky/create-favorites to create it."
+      });
+      return;
+    }
+
+    const count: number = parseInt(req.query?.count as string) || 100;
+    const offset: number = parseInt(req.query.offset as string) || 0;
+
+    const response = await vkMethod(req, "audio.get", {
+      owner_id: req.session.user_id,
+      playlist_id: playlistId,
+      count,
+      offset
+    }, false);
+
+    const playlistResponse = response.response as VkPlaylistResponse;
+    const formatted = formatPlaylist(playlistResponse, offset);
+
+    res.status(200).send(formatted);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
+
+/**
+ * Add track to Frisky favorites
+ * PUT /api/playlist/frisky/favorites
+ */
+api.put("/frisky/favorites", checkAuthAndroid, async (req: Request, res: Response) => {
+  try {
+    const playlistId = await getFriskyFavoritesPlaylistId(req);
+    
+    if (!playlistId) {
+      res.status(404).send({
+        errMessage: "Frisky-favorites playlist not found. Use POST /api/playlist/frisky/create-favorites to create it."
+      });
+      return;
+    }
+
+    const audioId = req.body.audio_id || req.query.audio_id;
+    const ownerId = req.body.owner_id || req.query.owner_id || FRISKY_OWNER_ID;
+
+    if (!audioId) {
+      res.status(400).send({errMessage: "audio_id is required"});
+      return;
+    }
+
+    // Add to user's main favorites first
+    await vkMethod(req, "audio.add", {
+      audio_id: audioId,
+      owner_id: ownerId
+    }, false);
+
+    // Then add to Frisky-favorites playlist
+    await vkMethod(req, "audio.add", {
+      audio_id: audioId,
+      owner_id: ownerId,
+      album_id: playlistId
+    }, false);
+
+    res.status(200).send({
+      status: "added",
+      message: "Track added to favorites and Frisky-favorites playlist",
+      audio_id: audioId
+    });
+
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
+
+/**
+ * Delete track from Frisky favorites
+ * DELETE /api/playlist/frisky/favorites/:id
+ */
+api.delete("/frisky/favorites/:id", checkAuthAndroid, async (req: Request, res: Response) => {
+  try {
+    const playlistId = await getFriskyFavoritesPlaylistId(req);
+    
+    if (!playlistId) {
+      res.status(404).send({
+        errMessage: "Frisky-favorites playlist not found. Use POST /api/playlist/frisky/create-favorites to create it."
+      });
+      return;
+    }
+
+    const audioId = req.params.id;
+    const ownerId = req.query.owner_id as string || req.session.user_id?.toString() || "";
+
+    if (!audioId) {
+      res.status(400).send({errMessage: "audio_id is required"});
+      return;
+    }
+
+    if (!ownerId) {
+      res.status(400).send({errMessage: "owner_id is required or session user_id is missing"});
+      return;
+    }
+
+    // Delete from user's library (this also removes from playlists)
+    await vkMethod(req, "audio.delete", {
+      audio_id: audioId,
+      owner_id: ownerId
+    }, false);
+
+    res.status(200).send({
+      status: "deleted",
+      message: "Track deleted from favorites",
+      audio_id: audioId
+    });
+
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
 
 
 /**

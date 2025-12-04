@@ -151,10 +151,14 @@ gh workflow run deploy.yml --ref main --field ref=1.1.1
 
 ### API Endpoints (требуют аутентификации)
 
+#### Плейлисты
 - \`GET /api/playlist/frisky\` - Получить плейлист Frisky Radio
-- \`GET /api/playlist/favorites\` - Получить избранные треки
-- \`PUT /api/playlist/favorites\` - Добавить трек в избранное
-- \`DELETE /api/playlist/favorites/:id\` - Удалить трек из избранного
+
+#### Frisky Favorites (новые endpoints)
+- \`POST /api/playlist/frisky/create-favorites\` - Создать Frisky-favorites плейлист и заполнить треками с "feelin_frisky"
+- \`GET /api/playlist/frisky/favorites\` - Получить треки из Frisky-favorites
+- \`PUT /api/playlist/frisky/favorites\` - Добавить трек в Frisky-favorites (и в основное избранное)
+- \`DELETE /api/playlist/frisky/favorites/:id\` - Удалить трек из избранного
 
 Полная документация API: https://visky.envarg.com/v3/api-docs
 
