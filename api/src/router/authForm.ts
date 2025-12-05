@@ -22,36 +22,49 @@ const callBack = (html: string, url: string) => {
 
 /**
  * authorization page for android
- * get VK auth page and remove defended scripts
- * to fetch after auth token and secret
+ * Redirect directly to VK OAuth page - no proxying to avoid JS blocking
  */
 authForm.get('/vk', async (req: Request, res: Response) => {
-  const params = {
-    client_id: process.env.VK_ADMIN_ID,
-    scope: 1,
-    redirect_uri: "https://oauth.vk.com/blank.html",
-    display: "mobile",
-    lang: "en",
-    revoke: 1,
-    response_type: "token",
-    v: "5.103"
-  }
+  const vkAuthUrl = `${AuthUrl}?client_id=${process.env.VK_ADMIN_ID}&scope=1&redirect_uri=https://visky.envarg.com/auth/callback&display=mobile&response_type=token&revoke=1&v=5.103`;
   
-  console.log("<-------- auth.get =========", AuthUrl, params);
+  console.log("===Redirecting to VK OAuth:", vkAuthUrl);
+  res.redirect(vkAuthUrl);
+});
+
+/**
+ * Callback endpoint - VK will redirect here after auth
+ */
+authForm.get('/callback', async (req: Request, res: Response) => {
+  console.log("===OAuth callback received");
   
-  try {
-    const response = await AndroidClient.get(AuthUrl, { params });
-    console.log("===Admin auth page SUCCESS, status:", response.status);
-    
-    let html: string = response.data;
-    html = callBack(html, "/auth/vk");
-    
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.status(200).send(html);
-  } catch (error: any) {
-    console.error("===Admin auth page ERROR:", error.message);
-    res.status(500).send({ errMessage: error.message });
-  }
+  // VK redirects with hash (#access_token=...) but we can't read it on server
+  // So we return a simple HTML page that reads the hash and redirects to blank.html
+  const callbackHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Redirecting...</title>
+</head>
+<body>
+  <script>
+    // Get hash from URL (VK puts auth data here)
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token')) {
+      // Redirect to blank.html with the same hash
+      window.location.href = 'https://oauth.vk.com/blank.html' + hash;
+    } else {
+      // Auth failed
+      window.location.href = 'https://oauth.vk.com/blank.html#error=access_denied';
+    }
+  </script>
+  <p>Redirecting...</p>
+</body>
+</html>
+  `;
+  
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.status(200).send(callbackHtml);
 });
     }
     button:hover {
