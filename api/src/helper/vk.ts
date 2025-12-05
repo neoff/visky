@@ -7,9 +7,27 @@ import {VkResponse} from "@/__genedated__/openapi/vk";
 
 
 export const checkAuthAndroid = async(req: Request, res: Response, next: NextFunction) => {
-    console.log("===================checkAuthAndroid:",req.session)
-    if ((!req.session || !req.session.access_token || !req.session.user_id) 
-        && (!req.headers['x-auth-token'])) {
+    console.log("===================checkAuthAndroid:", req.session)
+
+    // Allow token/secret/user to come from headers when session is missing (mobile without cookies)
+    const headerToken = (req.headers['x-auth-token'] || req.headers['authorization']) as string | undefined;
+    const headerUser = req.headers['x-auth-user'] as string | undefined;
+    const headerSecret = req.headers['x-auth-secret'] as string | undefined;
+
+    if ((!req.session || !req.session.access_token || !req.session.user_id) && headerToken) {
+        // Normalize Bearer <token>
+        const token = headerToken.startsWith('Bearer ') ? headerToken.slice(7) : headerToken;
+        req.session.access_token = token;
+        if (headerUser) req.session.user_id = headerUser;
+        if (headerSecret) req.session.secret = headerSecret;
+        if (!req.session.device_id) req.session.device_id = deviceIDgen();
+        console.log("===checkAuthAndroid: restored session from headers", {
+            user_id: req.session.user_id,
+            has_secret: !!req.session.secret,
+        });
+    }
+
+    if ((!req.session || !req.session.access_token || !req.session.user_id)) {
         console.error("ERROR! checkAuth: No token or secret", req.session)
         res.status(403).send(new AxiosError("No token or secret"));
         return;
