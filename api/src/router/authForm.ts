@@ -26,78 +26,33 @@ const callBack = (html: string, url: string) => {
  * to fetch after auth token and secret
  */
 authForm.get('/vk', async (req: Request, res: Response) => {
-  // Return simple login form instead of proxying VK OAuth
-  const simpleForm = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VK Authorization</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .container {
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      padding: 40px;
-      width: 100%;
-      max-width: 400px;
-    }
-    h1 {
-      color: #333;
-      font-size: 24px;
-      margin-bottom: 8px;
-      text-align: center;
-    }
-    .subtitle {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 32px;
-      text-align: center;
-    }
-    .form-group {
-      margin-bottom: 20px;
-    }
-    label {
-      display: block;
-      color: #333;
-      font-size: 14px;
-      font-weight: 500;
-      margin-bottom: 8px;
-    }
-    input {
-      width: 100%;
-      padding: 12px 16px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      font-size: 16px;
-      transition: border-color 0.3s;
-    }
-    input:focus {
-      outline: none;
-      border-color: #667eea;
-    }
-    button {
-      width: 100%;
-      padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+  const params = {
+    client_id: process.env.VK_ADMIN_ID,
+    scope: 1,
+    redirect_uri: "https://oauth.vk.com/blank.html",
+    display: "mobile",
+    lang: "en",
+    revoke: 1,
+    response_type: "token",
+    v: "5.103"
+  }
+  
+  console.log("<-------- auth.get =========", AuthUrl, params);
+  
+  try {
+    const response = await AndroidClient.get(AuthUrl, { params });
+    console.log("===Admin auth page SUCCESS, status:", response.status);
+    
+    let html: string = response.data;
+    html = callBack(html, "/auth/vk");
+    
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.status(200).send(html);
+  } catch (error: any) {
+    console.error("===Admin auth page ERROR:", error.message);
+    res.status(500).send({ errMessage: error.message });
+  }
+});
     }
     button:hover {
       transform: translateY(-2px);
