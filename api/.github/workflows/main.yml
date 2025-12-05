@@ -4,7 +4,7 @@ name: Merge or push to default_branch
 on:
   push:
     branches:
-      - main
+      - main-off
 
 jobs:
   validate:

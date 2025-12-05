@@ -23,9 +23,10 @@ const callBack = (html: string, url: string) => {
 /**
  * authorization page for android
  * Redirect directly to VK OAuth page - no proxying to avoid JS blocking
+ * Use blank.html as redirect_uri (standard VK OAuth endpoint)
  */
 authForm.get('/vk', async (req: Request, res: Response) => {
-  const vkAuthUrl = `${AuthUrl}?client_id=${process.env.VK_ADMIN_ID}&scope=1&redirect_uri=https://visky.envarg.com/auth/callback&display=mobile&response_type=token&revoke=1&v=5.103`;
+  const vkAuthUrl = `${AuthUrl}?client_id=${process.env.VK_ADMIN_ID}&scope=1&redirect_uri=https://oauth.vk.com/blank.html&display=mobile&response_type=token&revoke=1&v=5.103`;
   
   console.log("===Redirecting to VK OAuth:", vkAuthUrl);
   res.redirect(vkAuthUrl);

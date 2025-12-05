@@ -28,9 +28,23 @@ permissions:
   contents: write
 
 jobs:
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_EMAIL: ${{ secrets.DOCKERHUB_EMAIL }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
+  wait-for-unlock:
+    uses: ./.github/workflows/wait-for-unlock.yml
   bump-version:
     name: Bump Version
     runs-on: ubuntu-latest
+    needs:
+      - wait-for-unlock
+      - validate
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
     steps:
