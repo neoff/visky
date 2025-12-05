@@ -40,9 +40,19 @@ authForm.get('/vk', async (req: Request, res: Response) => {
     const url = `${AuthUrl}?${new URLSearchParams(params).toString()}`;
     console.log("===Proxying VK OAuth page:", url);
 
-    // Fetch auth page as old Android client and rewrite form action to /vk
-    const response = await AndroidClient.get(url, { maxRedirects: 0, validateStatus: (status) => status < 400 });
-    const html = callBack(response.data, "vk");
+    // Fetch auth page as old Android client. VK may redirect (302) first; follow manually to ensure we get HTML.
+    const first = await AndroidClient.get(url, { maxRedirects: 0, validateStatus: (status) => status < 400 });
+    let htmlResponse = first;
+
+    // If first response is a redirect with Location, follow it to fetch the actual HTML
+    const loc = first.headers?.location;
+    if (first.status >= 300 && first.status < 400 && loc) {
+      const followUrl = new URL(loc, AuthUrl).toString();
+      console.log("===Following redirect to:", followUrl);
+      htmlResponse = await AndroidClient.get(followUrl, { maxRedirects: 0, validateStatus: (status) => status < 400 });
+    }
+
+    const html = callBack(htmlResponse.data, "vk");
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     return res.status(200).send(html);
