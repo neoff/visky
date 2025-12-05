@@ -202,55 +202,88 @@ authForm.post('/vk', async (req: Request, res: Response) => {
     res.status(500).send({errMessage: "No vkuser or vkpassword in post request"})
     return
   }
-  const params = {
-    client_id: process.env.OFFICIAL_APP_ID,
-    client_secret: process.env.OFFICIAL_APP_SECRET,
-    grant_type: "password",
-    scope: "nohttps,audio,offline",
-    validate_token: "true",
-    username: req.body.email,
-    password: req.body.pass,
-    token: req.body.token,
-    secret: req.body.secret,
-  }
-  // TODO: if not empty tocken and secret redirect to '/api/refresh'
-  if (!req.session
-    || !req.session?.access_token
-    || !req.session?.secret) {
-    //console.debug("<-------- auth.post =========", TokenUrl, params)
-    return await AndroidClient.get(TokenUrl, {params}).then((response) => {
-      console.debug("--------> auth.post RESPONSE DATA ============", response.data, "COOCIES:", req.session.cookie)
-      if (!response.data.secret || !response.data.access_token) {
-        res.status(500).send({errMessage: "Response data not contain secret or access_token"})
-        return;
-      }
-      const data = response.data
-      req.session.secret = data.secret
-      req.session.user_id = data.user_id.toString()
-      req.session.access_token = data.access_token
-      req.session.device_id = deviceIDgen()
-      response.data.created = new Date().toISOString()
-      if (req.session?.cookie) {
-        response.data.expired = req.session.cookie.expires
-      }
-      res.redirect(`blank.html#success=1&access_token=${data.access_token}&user_id=${data.user_id}&secret=${data.secret}`)
-      return;
-      //return res.status(200).send(response.data)
-    }).catch((error) => {
-      if (error.response?.data.redirect_uri !== undefined) {
-        console.warn("======> Android REDIREC =======", error.response?.data)
-        res.redirect(error.response?.data.redirect_uri)
-        return;
-        //return res.status(500).send({errMessage: error.message, errMessage: error.response.data.redirect_uri})
-      }
-      console.error("======> auth.post ERROR =======", error)
-      res.status(500).send({errMessage: error.message})
-      return;
-    })
 
+  // Check if already have valid session
+  if (req.session?.access_token && req.session?.secret) {
+    const data = req.session
+    return res.redirect(`blank.html#success=1&access_token=${data.access_token}&user_id=${data.user_id}&secret=${data.secret}`)
   }
-  const data = req.session
-  return res.redirect(`blank.html#success=1&access_token=${data.access_token}&user_id=${data.user_id}&secret=${data.secret}`)
+
+  try {
+    // Step 1: GET authorization page to get cookies and form data
+    const authPageUrl = `${AuthUrl}?client_id=${process.env.VK_ADMIN_ID}&scope=1&redirect_uri=${vkBlankUrl}&display=mobile&response_type=token&revoke=1`;
+    console.debug("Step 1: Getting auth page", authPageUrl);
+    
+    const authPageResponse = await AndroidClient.get(authPageUrl, {
+      maxRedirects: 0,
+      validateStatus: (status) => status < 400,
+    });
+
+    // Step 2: POST credentials to the authorization endpoint
+    const formData = new URLSearchParams();
+    formData.append('email', req.body.email);
+    formData.append('pass', req.body.pass);
+
+    console.debug("Step 2: Posting credentials");
+    const loginResponse = await AndroidClient.post(authPageUrl, formData.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': authPageUrl,
+      },
+      maxRedirects: 0,
+      validateStatus: (status) => status < 400,
+    });
+
+    // Check for redirect to blank.html with token in hash
+    const location = loginResponse.headers.location || '';
+    console.debug("Login response location:", location);
+
+    if (location.includes('blank.html#') || location.includes('access_token=')) {
+      // Parse token from redirect URL
+      const url = new URL(location, vkBlankUrl);
+      const hash = url.hash.substring(1); // Remove #
+      const params = new URLSearchParams(hash);
+      
+      const access_token = params.get('access_token');
+      const user_id = params.get('user_id');
+      const secret = params.get('secret');
+
+      if (access_token && user_id) {
+        req.session.secret = secret || '';
+        req.session.user_id = user_id;
+        req.session.access_token = access_token;
+        req.session.device_id = deviceIDgen();
+
+        console.debug("✅ Successfully authenticated:", { user_id, has_secret: !!secret });
+        return res.redirect(`blank.html#success=1&access_token=${access_token}&user_id=${user_id}&secret=${secret}`);
+      }
+    }
+
+    // If we got here, check if VK wants 2FA or other verification
+    if (location && location.includes('act=auth')) {
+      console.warn("🔐 2FA or additional verification required");
+      return res.redirect(location);
+    }
+
+    throw new Error('No access token in response');
+
+  } catch (error: any) {
+    console.error("======> auth.post ERROR =======", error.message);
+    if (error.response) {
+      console.error("Response status:", error.response.status);
+      console.error("Response location:", error.response.headers?.location);
+      
+      // Check if this is a redirect to 2FA or verification page
+      const location = error.response.headers?.location || '';
+      if (location && (location.includes('act=authcheck') || location.includes('act=security_check'))) {
+        console.warn("🔐 2FA verification required, redirecting...");
+        return res.redirect(location);
+      }
+    }
+    
+    res.status(500).send({errMessage: error.message || 'Authentication failed'});
+    return;
+  }
 })
 
 
