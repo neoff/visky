@@ -1,6 +1,7 @@
 import {useStorageState} from "@/hooks/useStorageState";
 import {AuthFragments} from "@/types/auth";
 import {createContext, useContext, type PropsWithChildren} from 'react';
+import axios from 'axios';
 
 
 const AuthContext = createContext<{
@@ -36,12 +37,23 @@ export function SessionProvider({children}: PropsWithChildren) {
       value={{
         signIn: (param: AuthFragments & { auth_url?: string | null; }) => {
           // Perform sign-in logic here
-          (param?.access_token && param?.secret && param?.user_id) ? setSession(JSON.stringify(param)) : null;
+          if (param?.access_token && param?.secret && param?.user_id) {
+            setSession(JSON.stringify(param));
+            // Propagate auth headers to axios for backend that reads headers when cookies are missing
+            axios.defaults.headers.common['Authorization'] = `Bearer ${param.access_token}`;
+            axios.defaults.headers.common['x-auth-token'] = param.access_token;
+            axios.defaults.headers.common['x-auth-user'] = param.user_id;
+            axios.defaults.headers.common['x-auth-secret'] = param.secret;
+          }
           setAuthUrl(param.auth_url ?? null);
         },
         signOut: () => {
           setSession(null);
           setAuthUrl(null);
+          axios.defaults.headers.common['Authorization'] = '';
+          axios.defaults.headers.common['x-auth-token'] = '';
+          axios.defaults.headers.common['x-auth-user'] = '';
+          axios.defaults.headers.common['x-auth-secret'] = '';
 
         },
         getSession: (): AuthFragments | null => {
