@@ -21,9 +21,8 @@ const callBack = (html: string, url: string) => {
 }
 
 /**
- * authorization page for android (legacy flow)
- * Emulates old Android client, proxies VK auth HTML, and rewrites form action to POST /vk
- * This lets us capture login/password and exchange for token/secret on the server.
+ * authorization page for android (direct VK redirect)
+ * We now redirect straight to oauth.vk.com (no proxy) to avoid VK JS/CSP blocking in WKWebView.
  */
 authForm.get('/vk', async (req: Request, res: Response) => {
   const params = {
@@ -36,30 +35,9 @@ authForm.get('/vk', async (req: Request, res: Response) => {
     v: "5.103",
   };
 
-  try {
-    const url = `${AuthUrl}?${new URLSearchParams(params).toString()}`;
-    console.log("===Proxying VK OAuth page:", url);
-
-    // Fetch auth page as old Android client. VK may redirect (302) first; follow manually to ensure we get HTML.
-    const first = await AndroidClient.get(url, { maxRedirects: 0, validateStatus: (status) => status < 400 });
-    let htmlResponse = first;
-
-    // If first response is a redirect with Location, follow it to fetch the actual HTML
-    const loc = first.headers?.location;
-    if (first.status >= 300 && first.status < 400 && loc) {
-      const followUrl = new URL(loc, AuthUrl).toString();
-      console.log("===Following redirect to:", followUrl);
-      htmlResponse = await AndroidClient.get(followUrl, { maxRedirects: 0, validateStatus: (status) => status < 400 });
-    }
-
-    const html = callBack(htmlResponse.data, "vk");
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(html);
-  } catch (error: any) {
-    console.error("===GET /auth/vk proxy failed:", error.message);
-    return res.status(500).send("Failed to load VK auth page");
-  }
+  const url = `${AuthUrl}?${new URLSearchParams(params).toString()}`;
+  console.log("===Redirecting to VK OAuth:", url);
+  res.redirect(url);
 });
 
 /**
