@@ -34,6 +34,10 @@ service:
   port: 80
   targetPort: 3000
 
+envFrom:
+  - secretRef:
+      name: visky-api-env
+
 ingress:
   enabled: true
   className: traefik
