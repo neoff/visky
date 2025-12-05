@@ -1,0 +1,203 @@
+---
+name: Manual Deploy
+
+# Single workflow for full deployment cycle:
+# 1. Bump version (patch/minor/major)
+# 2. Build and push Docker image
+# 3. Deploy to Kubernetes cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      ref:
+        description: 'Branch to deploy (default: main)'
+        required: false
+        type: string
+        default: main
+
+jobs:
+  bump-version:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get current version
+        id: current
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Bump version
+        id: bump
+        run: |
+          npm version ${{ inputs.version_bump }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      - name: Commit version bump
+        run: |
+          git add package.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }}"
+          git push origin ${{ inputs.ref || 'main' }}
+
+  build-and-push:
+    name: Build & Push Docker Image
+    needs: bump-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Pull latest changes
+        run: git pull origin ${{ inputs.ref || 'main' }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Run tests
+        run: |
+          npm ci
+          npm run test
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/visky-api:${{ steps.version.outputs.version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/visky-api:latest
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/visky-api:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/visky-api:buildcache,mode=max
+
+  deploy:
+    name: Deploy to Kubernetes
+    needs: [bump-version, build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Pull latest changes
+        run: git pull origin ${{ inputs.ref || 'main' }}
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Deploying version: $VERSION"
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBE_CONFIG" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify cluster access
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Update deployment image
+        run: |
+          kubectl set image deployment/visky-api \
+            visky-api=${{ secrets.DOCKERHUB_USERNAME }}/visky-api:${{ steps.version.outputs.version }} \
+            -n frisky
+          
+          echo "✅ Updated deployment to use image: ${{ secrets.DOCKERHUB_USERNAME }}/visky-api:${{ steps.version.outputs.version }}"
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/visky-api -n frisky --timeout=300s
+          echo "✅ Deployment successful!"
+
+      - name: Verify deployment
+        run: |
+          POD_NAME=$(kubectl get pods -n frisky -l app=visky-api -o jsonpath='{.items[0].metadata.name}')
+          echo "Active pod: $POD_NAME"
+          kubectl get pods -n frisky -l app=visky-api
+          
+          IMAGE=$(kubectl get pods -n frisky -l app=visky-api -o jsonpath='{.items[0].spec.containers[0].image}')
+          echo "Running image: $IMAGE"
+
+      - name: Get pod logs (last 20 lines)
+        if: always()
+        run: |
+          kubectl logs -n frisky deployment/visky-api --tail=20 || true
+
+  summary:
+    name: Deployment Summary
+    needs: [bump-version, build-and-push, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.bump-version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ inputs.ref || 'main' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version Bump**: ${{ inputs.version_bump }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: varg/visky-api:${{ needs.bump-version.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: frisky" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Bump Version: ${{ needs.bump-version.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build & Push: ${{ needs.build-and-push.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Deploy: ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
