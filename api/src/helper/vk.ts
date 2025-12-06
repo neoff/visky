@@ -1,6 +1,6 @@
 import { Request, Response } from "@/types";
 import { NextFunction } from "express";
-import { AndroidClient, md5 } from ".";
+import { AndroidClient, deviceIDgen, md5 } from ".";
 import { version } from "@/constants";
 import {AxiosError, AxiosResponse} from "axios";
 import {VkResponse} from "@/__genedated__/openapi/vk";
