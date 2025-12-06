@@ -1,9 +1,12 @@
 // src/helpers/network.tsx
-import {apiUrls, headers} from "@/constants";
-import {unknownTrackImageUri} from "@/constants/images";
-import {TrackWithPlaylist} from "@/helpers/types";
-import axios, {AxiosError, AxiosRequestConfig, Method} from "axios";
-import {TrackType} from "react-native-track-player";
+import { apiUrls, headers } from "@/constants";
+import { unknownTrackImageUri } from "@/constants/images";
+import { TrackWithPlaylist } from "@/helpers/types";
+import axios, { AxiosError, AxiosRequestConfig, Method } from "axios";
+import { TrackType } from "react-native-track-player";
+
+// Configure axios to send cookies with requests
+axios.defaults.withCredentials = true;
 
 
 const registerInterceptors = () => {
@@ -34,7 +37,10 @@ const apiRequest = async (url: string, method: Method | string, {data, next}:{da
     url: url,
     method: method,
     data: data,
-    headers: headers,
+    headers: {
+      ...axios.defaults.headers.common,
+      ...headers,
+    },
   }
   console.debug("==apiRequest config:", config);
 
@@ -119,6 +125,84 @@ export const loadPlayListData = async (owner: string, onLoad?: (fragments: any) 
   } catch (error) {
     console.error(`===ERROR! loadFavoriteData:${error}`);
     onError?.(error);
+    throw error;
+  }
+};
+
+// Get Frisky-favorites playlist
+export const getFavoritesData = async (onLoad?: (fragments: any) => any, onError?: (error: any) => void, offset: number = 0) : Promise<any> => {
+  const url = `${apiUrls.friskyListUrl}/favorites?count=100&offset=${offset}`;
+  console.info(`GET ${url}`);
+  try {
+    const data = await apiRequest(url, 'GET', {});
+    console.log("--->getFavoritesData-response:", data);
+    const items = data?.items?.map((item: TrackWithPlaylist) => ({
+      ...item,
+      date: item?.date?.toString(),
+      type: TrackType.HLS,
+      album: item?.album?.title ?? 'Unknown Album',
+      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+      favorite: true,
+    }))
+    return onLoad?.(items);
+  } catch (error) {
+    console.error(`===ERROR! getFavoritesData:${error}`);
+    throw onError?.(error);
+  }
+};
+
+// Add track to Frisky-favorites
+export const addToFavorites = async (audio_id: number, owner_id: number = -42311167) : Promise<any> => {
+  const url = `${apiUrls.friskyListUrl}/favorites`;
+  console.info(`PUT ${url}`, {audio_id, owner_id});
+  try {
+    const data = await apiRequest(url, 'PUT', {data: {audio_id, owner_id}});
+    console.log("--->addToFavorites-response:", data);
+    return data;
+  } catch (error) {
+    console.error(`===ERROR! addToFavorites:${error}`);
+    throw error;
+  }
+};
+
+// Remove track from Frisky-favorites
+export const removeFromFavorites = async (audio_id: number, owner_id: number = -42311167) : Promise<any> => {
+  const url = `${apiUrls.friskyListUrl}/favorites/${audio_id}?owner_id=${owner_id}`;
+  console.info(`DELETE ${url}`);
+  try {
+    const data = await apiRequest(url, 'DELETE', {});
+    console.log("--->removeFromFavorites-response:", data);
+    return data;
+  } catch (error) {
+    console.error(`===ERROR! removeFromFavorites:${error}`);
+    throw error;
+  }
+};
+
+// Create Frisky-favorites playlist
+export const createFavoritesPlaylist = async () : Promise<any> => {
+  const url = `${apiUrls.friskyListUrl}/create-favorites`;
+  console.info(`POST ${url}`);
+  try {
+    const data = await apiRequest(url, 'POST', {});
+    console.log("--->createFavoritesPlaylist-response:", data);
+    return data;
+  } catch (error) {
+    console.error(`===ERROR! createFavoritesPlaylist:${error}`);
+    throw error;
+  }
+};
+
+// Refresh Frisky-favorites playlist
+export const refreshFavoritesPlaylist = async () : Promise<any> => {
+  const url = `${apiUrls.friskyListUrl}/create-favorites`;
+  console.info(`PATCH ${url}`);
+  try {
+    const data = await apiRequest(url, 'PATCH', {});
+    console.log("--->refreshFavoritesPlaylist-response:", data);
+    return data;
+  } catch (error) {
+    console.error(`===ERROR! refreshFavoritesPlaylist:${error}`);
     throw error;
   }
 };

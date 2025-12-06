@@ -1,24 +1,76 @@
-import {unknownTrackImageUri} from "@/constants/images"
-import {colors, fonts, modifiers} from "@/constants"
-import {defaultStyles} from "@/styles"
-import {StyleSheet, Text, TouchableHighlight, View} from "react-native"
-import { Image } from 'expo-image';
-import LoaderKit from 'react-native-loader-kit'
-import {Track, useActiveTrack, useIsPlaying} from "react-native-track-player";
-import {Entypo, Ionicons} from "@expo/vector-icons";
+import { colors, fonts, modifiers } from "@/constants";
+import { unknownTrackImageUri } from "@/constants/images";
+import { addToFavorites, removeFromFavorites } from "@/helpers/network";
+import { defaultStyles } from "@/styles";
+import { Entypo, Ionicons } from "@expo/vector-icons";
+import { AxiosError } from "axios";
 import dayjs from "dayjs";
+import { Image } from 'expo-image';
+import { router } from "expo-router";
+import { useState } from "react";
+import { Alert, StyleSheet, Text, TouchableHighlight, View } from "react-native";
+import LoaderKit from 'react-native-loader-kit';
+import { Track, useActiveTrack, useIsPlaying } from "react-native-track-player";
 
 export type TracksListItemProps = {
   track: Track
   onTrackSelect: (track: Track) => void
+  isFavoritesScreen?: boolean
+  onFavoriteToggle?: (track: Track, isFavorite: boolean) => void
 }
 
 export const TrackListItem = ({
                                 track,
                                 onTrackSelect: handleTrackSelect,
+                                isFavoritesScreen = false,
+                                onFavoriteToggle,
                               }: TracksListItemProps) => {
   const {playing} = useIsPlaying()
   const isActiveTrack = useActiveTrack()?.url === track.url
+  const [isFavorite, setIsFavorite] = useState(track.favorite ?? false)
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
+
+  const handleFavoritePress = async () => {
+    if (isTogglingFavorite) return
+    
+    setIsTogglingFavorite(true)
+    try {
+      if (isFavorite || isFavoritesScreen) {
+        // Remove from favorites
+        await removeFromFavorites(track.id, track.owner_id)
+        setIsFavorite(false)
+        onFavoriteToggle?.(track, false)
+      } else {
+        // Add to favorites
+        await addToFavorites(track.id, track.owner_id)
+        setIsFavorite(true)
+        onFavoriteToggle?.(track, true)
+      }
+    } catch (error) {
+      const axiosError = error as AxiosError
+      console.error('Favorite toggle error:', axiosError)
+      
+      if (axiosError.status === 404) {
+        // Playlist doesn't exist
+        Alert.alert(
+          'Favorites Playlist Not Found',
+          'You need to create the Frisky Favorites playlist first. Would you like to go to Settings?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Go to Settings', 
+              onPress: () => router.push('/(app)/(tabs)/settings')
+            }
+          ]
+        )
+      } else {
+        const errorMessage = (axiosError.response?.data as { message?: string })?.message || axiosError.message
+        Alert.alert('Error', errorMessage)
+      }
+    } finally {
+      setIsTogglingFavorite(false)
+    }
+  }
 
   return (
     <TouchableHighlight onPress={() => handleTrackSelect(track)}>
@@ -58,7 +110,7 @@ export const TrackListItem = ({
           alignItems: 'center',
         }}>
           {/* Track title + artist */}
-          <View style={{width: '100%'}}>
+          <View style={{flex: 1, paddingRight: 8}}>
             <Text numberOfLines={1} style={{
               ...styles.trackTitleText,
               color: !track.url ? colors.textMuted : isActiveTrack ? colors.primary : colors.text,
@@ -68,30 +120,41 @@ export const TrackListItem = ({
             </Text>
 
             <View style={{
-              flex: 1,
               flexDirection: 'row',
-              justifyContent: 'space-between',
               alignItems: 'center',
             }}>
               {track.artist && (
                 <Text numberOfLines={1} style={{
                   ...styles.trackArtistText,
                   color: !track.url ? colors.textMutedDarker : colors.textMuted,
+                  flex: 1,
                 }}>
                   {track.artist}
                 </Text>
               )}
-              <View style={{alignItems: 'flex-end'}}>
-                <Text numberOfLines={1} style={{
-                  ...styles.trackArtistText,
-                  color: !track.url ? colors.textMutedDarker : colors.textMuted,
-                }}>
-                  {dayjs.unix(Number(track.date)).format('DD.MM.YYYY')}
-                </Text>
-              </View>
+              <Text style={{
+                ...styles.trackArtistText,
+                color: !track.url ? colors.textMutedDarker : colors.textMuted,
+                marginLeft: 8,
+              }}>
+                {dayjs.unix(Number(track.date)).format('DD.MM.YYYY')}
+              </Text>
             </View>
           </View>
-          <Entypo name="dots-three-horizontal" size={18} color={colors.icon}/>
+          <View style={styles.actionsContainer}>
+            <TouchableHighlight 
+              onPress={handleFavoritePress}
+              disabled={isTogglingFavorite}
+              style={styles.favoriteButton}
+            >
+              <Ionicons 
+                name={isFavorite || isFavoritesScreen ? "heart" : "heart-outline"} 
+                size={22} 
+                color={isFavorite || isFavoritesScreen ? colors.primary : colors.icon}
+              />
+            </TouchableHighlight>
+            <Entypo name="dots-three-horizontal" size={18} color={colors.icon}/>
+          </View>
         </View>
       </View>
     </TouchableHighlight>
@@ -103,23 +166,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     columnGap: 14 + modifiers.padding,
     alignItems: 'center',
-    paddingRight: 20 + modifiers.padding,
+    paddingHorizontal: 16 + modifiers.padding,
   },
   trackPlayingIconIndicator: {
     position: 'absolute',
     top: 18 + modifiers.top,
-    left: 28 + modifiers.left,
+    left: 18 + modifiers.left,
     width: 16 + modifiers.width,
     height: 16 + modifiers.height,
   },
   trackPausedIndicator: {
     position: 'absolute',
     top: 14 + modifiers.top,
-    left: 24 + modifiers.left,
+    left: 14 + modifiers.left,
   },
   trackArtworkImage: {
     borderRadius: 8,
-    marginLeft: 10 + modifiers.padding,
     width: 50 + modifiers.image,
     height: 50 + modifiers.image,
   },
@@ -127,12 +189,20 @@ const styles = StyleSheet.create({
     ...defaultStyles.text,
     fontSize: fonts.sm,
     fontWeight: '600',
-    maxWidth: '90%',
+    maxWidth: '100%',
   },
   trackArtistText: {
     ...defaultStyles.text,
     color: colors.textMuted,
     fontSize: 14 + modifiers.text,
     marginTop: 4 + modifiers.padding,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 10,
+  },
+  favoriteButton: {
+    padding: 4,
   },
 })

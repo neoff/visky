@@ -3,9 +3,16 @@ import PlayerRegisterService from "@/components/PlayerRegisterService";
 import { useEffect } from 'react';
 import TrackPlayer, {AppKilledPlaybackBehavior, Capability, RatingType, RepeatMode} from 'react-native-track-player';
 const setupPlayer = async () => {
-  //const [cachedState, setCachedState] = useMMKVStorage<IPlayerState>('player', storage, PlayerState);
-  //const cachedState: IPlayerState = await storage.getItem('player')
-  const repeatMode = /*cachedState?.repeatMode || */RepeatMode.Off
+  try {
+    // Check if player is already setup
+    const state = await TrackPlayer.getPlaybackState();
+    console.log('Player already initialized, skipping setup');
+    return;
+  } catch {
+    // Player not initialized yet, proceed with setup
+  }
+
+  const repeatMode = RepeatMode.Off
   await TrackPlayer.setupPlayer({
     maxCacheSize: 1024 * 20,
   })

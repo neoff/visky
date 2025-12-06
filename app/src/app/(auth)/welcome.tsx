@@ -1,43 +1,71 @@
-import React, {useState} from "react";
-import {Text, View} from "react-native";
+import { useSession } from "@/components/SessionProvider";
+import { apiUrls, fonts, modifiers, size } from "@/constants";
+import { defaultStyles, iconStyles, welcomeStyles } from "@/styles";
+import { Link, SplashScreen, useRouter } from "expo-router";
+import React from "react";
+import { Text, TouchableOpacity, View, Alert } from "react-native";
 import Icon from "react-native-vector-icons/FontAwesome";
-import {defaultStyles, iconStyles, welcomeStyles} from "@/styles";
-import {Link, SplashScreen} from "expo-router";
-import {fonts, modifiers, size} from "@/constants";
+import { storage } from "@/store/library";
 
 const WelcomeNavigation = () => {
   console.log("===WelcomeNavigation");
+  const {signIn, signOut} = useSession();
+  const router = useRouter();
+  
   SplashScreen.hideAsync()
+  
+  const clearAllData = () => {
+    Alert.alert(
+      "Clear all app data",
+      "This will delete all stored data including session and tracks. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Clear", 
+          style: "destructive",
+          onPress: async () => {
+            // Clear session
+            signOut();
+            // Clear MMKV storage
+            await storage.clearStore();
+            console.log("===All app data cleared");
+            Alert.alert("Success", "All app data has been cleared");
+          }
+        }
+      ]
+    );
+  };
+  
   return (
     <View style={welcomeStyles.container}>
+      {/* Debug: Clear all data button in top right */}
+      <TouchableOpacity 
+        onPress={clearAllData}
+        style={welcomeStyles.clearButton}>
+        <Icon name="trash-o" size={20} color="#fff" />
+      </TouchableOpacity>
+      
       <View style={welcomeStyles.content}>
         <Text style={welcomeStyles.header}>
-          Welcome Stranger!
+          Welcome to Visky
         </Text>
         <View style={welcomeStyles.avatar}>
-          <Icon name="user-circle" size={100 + size.image} color="rgba(255,255,255,.09)"/>
+          <Icon name="music" size={100 + size.image} color="rgba(255,255,255,.09)"/>
         </View>
         <Text style={welcomeStyles.text}>
-          Please log in to continue{'\n'}to continue work with app.
+          Login with your VK account
         </Text>
-        {/* Login buttons */}
-        <View style={welcomeStyles.buttons}>
-          <View style={welcomeStyles.login_button}>
-            <Link href="/login" asChild>
-              <Icon.Button
-                name="vk"
-                backgroundColor="rgba(255,255,255,.09)"
-                size={20 + modifiers.icons}
-                {...iconStyles}>
-                <Text style={{...defaultStyles.text, fontSize: fonts.xs}}>Login with Vk</Text>
-              </Icon.Button>
-            </Link>
-          </View>
-        </View>
+        
+        <Link href={"/(auth)/login"} asChild>
+          <TouchableOpacity style={welcomeStyles.button}>
+            <Text style={welcomeStyles.buttonText}>
+              Login with VK
+            </Text>
+          </TouchableOpacity>
+        </Link>
       </View>
     </View>
   )
 }
 
 export default WelcomeNavigation;
-

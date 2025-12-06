@@ -1,20 +1,22 @@
 // src/components/TrackList.tsx
+import unknownTrackImage from '@/assets/unknown_track.png';
 import { unknownTrackImageUri } from "@/constants/images";
+import { useQueue } from "@/store/queue";
 import { utilsStyles } from '@/styles';
-import {Text, View} from "react-native";
+import { FlashList, FlashListProps } from "@shopify/flash-list";
 import { Image } from 'expo-image';
-import TrackPlayer, {RepeatMode, Track, TrackType} from 'react-native-track-player';
+import { useRef } from "react";
+import { Text, View } from "react-native";
+import TrackPlayer, { Track, TrackType } from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
-import {useQueue} from "@/store/queue";
-import {useRef} from "react";
-import {FlashList, FlashListProps} from "@shopify/flash-list";
-import unknownTrackImage from '@/assets/unknown_track.png'
 
 export type TrackListProps = Partial<FlashListProps<unknown>> & {
   id: string
   tracks: Track[]
   refresh?: boolean
   hideQueueControls?: boolean
+  isFavoritesScreen?: boolean
+  onFavoriteToggle?: (track: Track, isFavorite: boolean) => void
 }
 
 export const TrackList = ({
@@ -22,6 +24,8 @@ export const TrackList = ({
                             tracks,
                             hideQueueControls = false,
                             refresh = false,
+                            isFavoritesScreen = false,
+                            onFavoriteToggle,
                             ...flatListProps
                           }: TrackListProps) => {
   const queueOffset = useRef(0)
@@ -86,7 +90,7 @@ export const TrackList = ({
     <FlashList
       data={tracks}
       estimatedItemSize={tracks.length || 1}
-      contentContainerStyle={{paddingTop: 10, paddingBottom: 128}}
+      contentContainerStyle={{paddingTop: 10, paddingBottom: 128, paddingHorizontal: 0}}
       /*ListHeaderComponent={
         !hideQueueControls ? (
           <QueueControls tracks={tracks} style={{ paddingBottom: 20 }} />
@@ -107,7 +111,12 @@ export const TrackList = ({
         </View>
       }
       renderItem={({ item: track }) => (
-        <TrackListItem  onTrackSelect={handleTrackSelect} track={track as Track} />
+        <TrackListItem  
+          onTrackSelect={handleTrackSelect} 
+          track={track as Track} 
+          isFavoritesScreen={isFavoritesScreen}
+          onFavoriteToggle={onFavoriteToggle}
+        />
       )}
       {...flatListProps}
     />

@@ -63,8 +63,24 @@ export const usePlaylistState = (name: string) => {
       //TODO: check if all fine remove null and call handleRefresh()
       return handleRefresh(loadFriskyListData);
     }
-    const errorMessage = (error.response?.data as { message?: string })?.message || error.message;
-    alert(errorMessage);
+    
+    const errorData = error.response?.data as { errMessage?: string; message?: string };
+    const errorMessage = errorData?.errMessage || errorData?.message || error.message;
+    
+    // Check if it's a VK IP address error
+    if (errorMessage.includes('access_token was given to another ip address') || 
+        errorMessage.includes('User authorization failed')) {
+      alert(
+        'Session Expired\n\n' +
+        'Your VK session has expired or is invalid.\n\n' +
+        'Please:\n' +
+        '1. Go to Settings tab\n' +
+        '2. Tap "Sign Out"\n' +
+        '3. Sign in again with VK'
+      );
+    } else {
+      alert(`Error: ${errorMessage}`);
+    }
     return error;
   }
 

@@ -15,17 +15,17 @@ export const colors = {
 }
 
 export const modifiers = {
-  text:(Platform.OS === "ios") ? 0 : 5,
-  icons:(Platform.OS === "ios") ? 0 : 5,
-  top:(Platform.OS === "ios") ? 0 : 8,
-  left:(Platform.OS === "ios") ? 0 : 12,
-  padding:(Platform.OS === "ios") ? 0 : 5,
-  margin:(Platform.OS === "ios") ? 0 : 25,
-  width:(Platform.OS === "ios") ? 0 : 10,
-  height:(Platform.OS === "ios") ? 0 : 10,
-  image:(Platform.OS === "ios") ? 0 : 20,
-  scroll:(Platform.OS === "ios") ? 0 : 60,
-  safe:(Platform.OS === "ios") ? 0 : 52,
+  text: (Platform.OS === "ios") ? 0 : 5,
+  icons: (Platform.OS === "ios") ? 0 : 5,
+  top: (Platform.OS === "ios") ? 0 : 8,
+  left: (Platform.OS === "ios") ? 0 : 12,
+  padding: (Platform.OS === "ios") ? 0 : 5,
+  margin: (Platform.OS === "ios") ? 0 : 25,
+  width: (Platform.OS === "ios") ? 0 : 10,
+  height: (Platform.OS === "ios") ? 0 : 10,
+  image: (Platform.OS === "ios") ? 0 : 20,
+  scroll: (Platform.OS === "ios") ? 0 : 60,
+  safe: (Platform.OS === "ios") ? 0 : 52,
 }
 
 export const size = {
@@ -84,7 +84,7 @@ if (__DEV) {
       baseHost = "http://10.0.2.2:3000";
       break;
     default:
-      baseHost = "http://localhost:3000";
+      baseHost = "http://127.0.0.1:3000";
   }
 }
 const redirectUrl: string = '?redirect=' + baseHost;
