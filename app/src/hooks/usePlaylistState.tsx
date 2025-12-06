@@ -11,9 +11,10 @@ import {NativeScrollEvent} from "react-native";
 import {trackTitleFilter} from "@/helpers/filter";
 import {AxiosError} from "axios";
 import {AuthFragments} from "@/types/auth";
+import axios from 'axios';
 
 export const usePlaylistState = (name: string) => {
-  const {getSession, signIn} = useSession();
+  const {getSession, signIn, isLoading: sessionLoading} = useSession();
   const userSession: AuthFragments = getSession() as AuthFragments;
   const [refreshing, setRefreshing] = useState(false);
   const [cachedTrack, setCachedTrack] = useMMKVStorage<TrackWithPlaylist[]>(name, storage, []);
@@ -35,6 +36,20 @@ export const usePlaylistState = (name: string) => {
   }
 
   const handleRefresh = (refreshFn: (owner: string | null, mergeTracks: any, loadError: any, offset: number) => Promise<any>): void => {
+    // Wait for session to load before making API requests
+    console.log('-->handleRefresh called, sessionLoading:', sessionLoading);
+    if (sessionLoading) {
+      console.log('-->SongsScreen Session still loading, skipping refresh');
+      return;
+    }
+    
+    console.log('-->handleRefresh userSession:', userSession);
+    console.log('-->handleRefresh axios headers:', {
+      token: axios.defaults.headers.common['x-auth-token'],
+      user: axios.defaults.headers.common['x-auth-user'],
+      secret: axios.defaults.headers.common['x-auth-secret']
+    });
+    
     setRefreshing(true);
     console.log('-->SongsScreen refreshing')
     /*loadPlaylistData({
@@ -58,7 +73,8 @@ export const usePlaylistState = (name: string) => {
 
     if (error.status === 403) {
       console.error("==ERROR loadError REDIRECT: 403 error:", error);
-      const resp = refreshToken({onLoad: logRefresh, onError: loadError,}, getSession());
+      // Call GET /api/auth/refresh to get new token from VK API
+      const resp = refreshToken({onLoad: logRefresh, onError: loadError}, null);
       console.log("==ERROR loadError REDIRECT: 403 resp:", resp);
       //TODO: check if all fine remove null and call handleRefresh()
       return handleRefresh(loadFriskyListData);
@@ -98,5 +114,5 @@ export const usePlaylistState = (name: string) => {
   };
 
 
-  return {refreshing, tracks, search, filteredTracks, handleRefresh, isCloseToBottom, setRefreshing}
+  return {refreshing, tracks, search, filteredTracks, handleRefresh, isCloseToBottom, setRefreshing, sessionLoading}
 }

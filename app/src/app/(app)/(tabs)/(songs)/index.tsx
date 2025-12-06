@@ -25,7 +25,7 @@ const SongsScreen = () => {
     const insets = useSafeAreaInsets()
     return { top: insets.top + modifiers.safe, bottom: insets.bottom + modifiers.safe }
   })()
-  const {refreshing, search, tracks, filteredTracks, handleRefresh} = usePlaylistState('tracks')
+  const {refreshing, search, tracks, filteredTracks, handleRefresh, sessionLoading} = usePlaylistState('tracks')
   //const updateOffset = useRef<boolean>(false)
 
 
@@ -116,12 +116,17 @@ const SongsScreen = () => {
   }
 
   useEffect(() => {
+    // Wait for session to load before initial refresh
+    if (sessionLoading) {
+      return;
+    }
+    
     if (tracks.length < 1) {
       //setRefreshing(true)
       refreshFn();
     }
 
-  }, []);
+  }, [sessionLoading]);
 
   const searchs = useNavigationSearch({
     searchBarOptions: {

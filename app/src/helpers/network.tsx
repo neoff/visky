@@ -5,9 +5,6 @@ import { TrackWithPlaylist } from "@/helpers/types";
 import axios, { AxiosError, AxiosRequestConfig, Method } from "axios";
 import { TrackType } from "react-native-track-player";
 
-// Configure axios to send cookies with requests
-axios.defaults.withCredentials = true;
-
 
 const registerInterceptors = () => {
   console.log("registerAuth");
@@ -74,9 +71,10 @@ export const getAuth = ({onLoad}: {onLoad?: (fragments: any) => void}, url?: str
 }
 
 export const refreshToken = ({onLoad, onError}: {onLoad?: (res: any) => void, onError?: (error: any) => void}, data: any) => {
-  console.debug("===refreshToken data:", data);
-  if (!data) return;
-  return apiRequest(apiUrls.refreshUrl, 'POST', {data:data})
+  console.debug("===refreshToken - calling GET to refresh VK token");
+  // Use GET to call VK API auth.refreshToken on backend
+  // Backend will return updated session with new token/secret
+  return apiRequest(apiUrls.refreshUrl, 'GET', {})
     .then((data) => {
       console.log("--->refreshToken-response:", data);
       return onLoad?.(data);

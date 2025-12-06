@@ -1,9 +1,7 @@
 import {useStorageState} from "@/hooks/useStorageState";
 import {AuthFragments} from "@/types/auth";
-import {createContext, useContext, useEffect, type PropsWithChildren} from 'react';
+import {createContext, useContext, useEffect, useLayoutEffect, type PropsWithChildren} from 'react';
 import axios from 'axios';
-import CookieManager from '@react-native-cookies/cookies';
-import {apiUrls} from "@/constants";
 
 
 const AuthContext = createContext<{
@@ -34,10 +32,22 @@ export function SessionProvider({children}: PropsWithChildren) {
   const [[, auth_url], setAuthUrl] = useStorageState('auth_url');
   const [[isLoading, session], setSession] = useStorageState('session');
 
-  // Rehydrate session from storage on mount
-  useEffect(() => {
+  // Synchronously update headers when session or isLoading changes
+  // useLayoutEffect runs synchronously BEFORE children render
+  // This ensures headers are set BEFORE any component can make API calls
+  useLayoutEffect(() => {
+    console.log('===SessionProvider useLayoutEffect triggered, session:', session);
+    console.log('===SessionProvider isLoading:', isLoading);
+    
+    // Don't update headers while still loading
+    if (isLoading) {
+      console.log('===SessionProvider still loading, skipping header update');
+      return;
+    }
+    
     if (!session) {
       // Clear headers if no session
+      console.log('===SessionProvider clearing headers (no session)');
       axios.defaults.headers.common['x-auth-token'] = '';
       axios.defaults.headers.common['x-auth-user'] = '';
       axios.defaults.headers.common['x-auth-secret'] = '';
@@ -46,67 +56,57 @@ export function SessionProvider({children}: PropsWithChildren) {
 
     try {
       const parsed: AuthFragments = JSON.parse(session);
+      console.log('===SessionProvider parsed session:', parsed);
+      
       if (parsed?.access_token && parsed?.secret && parsed?.user_id) {
-        // Keep headers as fallback for backward compatibility
+        // Set headers immediately for API requests
+        console.log('===SessionProvider setting headers:', {
+          token: parsed.access_token.substring(0, 20) + '...',
+          user: parsed.user_id,
+          secret: parsed.secret.substring(0, 20) + '...'
+        });
         axios.defaults.headers.common['x-auth-token'] = parsed.access_token;
         axios.defaults.headers.common['x-auth-user'] = parsed.user_id;
         axios.defaults.headers.common['x-auth-secret'] = parsed.secret;
-        
-        // Restore session on backend via cookie
-        restoreSessionCookie(parsed);
+        console.log('===SessionProvider headers set, verify:', {
+          token: axios.defaults.headers.common['x-auth-token'],
+          user: axios.defaults.headers.common['x-auth-user'],
+          secret: axios.defaults.headers.common['x-auth-secret']
+        });
+      } else {
+        console.log('===SessionProvider missing required fields:', {
+          hasToken: !!parsed?.access_token,
+          hasSecret: !!parsed?.secret,
+          hasUser: !!parsed?.user_id
+        });
       }
     } catch (error) {
+      console.error('===SessionProvider error parsing session:', error);
       axios.defaults.headers.common['x-auth-token'] = '';
       axios.defaults.headers.common['x-auth-user'] = '';
       axios.defaults.headers.common['x-auth-secret'] = '';
     }
-  }, [session]);
-
-  const restoreSessionCookie = async (sessionData: AuthFragments) => {
-    try {
-      await axios.post(apiUrls.refreshUrl, sessionData);
-      console.log('✅ Session cookie restored');
-    } catch (error) {
-      console.error('❌ Failed to restore session cookie:', error);
-    }
-  };
+  }, [session, isLoading]);
 
   return (
     <AuthContext.Provider
       value={{
-        signIn: async (param: AuthFragments & { auth_url?: string | null; }) => {
+        signIn: (param: AuthFragments & { auth_url?: string | null; }) => {
           if (param?.access_token && param?.secret && param?.user_id) {
             setSession(JSON.stringify(param));
-            // Keep headers as fallback
+            // Set headers immediately
             axios.defaults.headers.common['x-auth-token'] = param.access_token;
             axios.defaults.headers.common['x-auth-user'] = param.user_id;
             axios.defaults.headers.common['x-auth-secret'] = param.secret;
-            
-            // Establish session cookie on backend
-            try {
-              await axios.post(apiUrls.refreshUrl, param);
-              console.log('✅ Session cookie established');
-            } catch (error) {
-              console.error('❌ Failed to establish session cookie:', error);
-            }
           }
           setAuthUrl(param.auth_url ?? null);
         },
-        signOut: async () => {
+        signOut: () => {
           setSession(null);
           setAuthUrl(null);
           axios.defaults.headers.common['x-auth-token'] = '';
           axios.defaults.headers.common['x-auth-user'] = '';
           axios.defaults.headers.common['x-auth-secret'] = '';
-          
-          // Clear cookies
-          try {
-            const baseUrl = new URL(apiUrls.baseUrl);
-            await CookieManager.clearAll();
-            console.log('✅ Cookies cleared');
-          } catch (error) {
-            console.error('❌ Failed to clear cookies:', error);
-          }
         },
         getSession: (): AuthFragments | null => {
           return session ? JSON.parse(session) : null;
