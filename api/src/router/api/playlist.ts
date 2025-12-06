@@ -76,7 +76,17 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
     const response: Tracklist = await getPlaylistData(req, owner, count, offset);
     res.status(200).send(response);
   } catch (error: Error | any) {
-    res.status(500).send({errMessage: error.message});
+    const errorMessage = error.message || error.error_msg || '';
+    
+    // VK IP address error means token needs refresh - return 403
+    if (errorMessage.includes('access_token was given to another ip address') || 
+        errorMessage.includes('User authorization failed')) {
+      console.error("VK IP address error - token needs refresh:", errorMessage);
+      res.status(403).send({errMessage: errorMessage});
+      return;
+    }
+    
+    res.status(500).send({errMessage: errorMessage});
   }
 });
 
