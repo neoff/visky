@@ -104,22 +104,29 @@ auth.post("/token", async (req: Request, res: Response) => {
 })
 
 auth.post("/refresh", async (req: Request, res: Response) => {
-  console.log("=== POST Refresh======================= req", req.body)
-  //if(!req.body || !req.body.session || !req.body.session.access_token || !req.body.session.secret) {
+  console.log("=== POST Refresh (establish session):", req.body)
+  
   if (!req.body || !req.body.access_token || !req.body.secret) {
     console.error("===Refresh ERROR: No session data in post request")
-    res.status(400).send({errMessage: "No `session` in request"}).end()
+    res.status(400).send({errMessage: "No access_token/secret in request"}).end()
     return;
   }
-  //req.session = req.body
+  
+  // Restore session from request body
   req.session.user_id = req.body.user_id
   req.session.access_token = req.body.access_token
   req.session.secret = req.body.secret
   req.session.created = req.body.created
   req.session.maxAge = req.body.maxAge
   req.session.expires = req.body.expires
-  console.log("=== POST Refresh redirect -> refresh =========== req.session", req.session)
-  res.redirect(`refresh`)
+  req.session.device_id = req.body.device_id || deviceIDgen()
+  
+  console.log("✅ Session restored, cookie will be set:", req.session.id)
+  res.status(200).send({
+    success: true,
+    session_id: req.session.id,
+    user_id: req.session.user_id
+  }).end()
 })
 
 

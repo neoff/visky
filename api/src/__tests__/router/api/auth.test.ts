@@ -122,10 +122,10 @@ describe('/api/auth/refresh', () => {
   it('should return 400 if session data is missing in POST', async () => {
     const res = await request(app).post('/api/auth/refresh').send({});
     expect(res.status).toBe(400);
-    expect(res.body.errMessage).toContain('No `session`');
+    expect(res.body.errMessage).toContain('No access_token/secret');
   });
 
-  it('should redirect to /refresh when session data is provided', async () => {
+  it('should establish session and return success when session data is provided', async () => {
     const sessionData = {
       access_token: 'mock_token',
       secret: 'mock_secret',
@@ -136,8 +136,9 @@ describe('/api/auth/refresh', () => {
     };
 
     const res = await request(app).post('/api/auth/refresh').send(sessionData);
-    expect(res.status).toBe(302);
-    expect(res.header.location).toBe('refresh');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.user_id).toBe('123456');
   });
 });
 
