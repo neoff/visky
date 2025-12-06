@@ -21,59 +21,24 @@ const callBack = (html: string, url: string) => {
 }
 
 /**
- * authorization page for android (direct VK redirect)
- * We now redirect straight to oauth.vk.com (no proxy) to avoid VK JS/CSP blocking in WKWebView.
+ * authorization page for production (shows login form)
+ * Displays the same login form as /auth/local but POSTs to /auth/vk for backend token acquisition
  */
 authForm.get('/vk', async (req: Request, res: Response) => {
-  const params = {
-    client_id: process.env.VK_ADMIN_ID,
-    scope: 1,
-    redirect_uri: "https://oauth.vk.com/blank.html",
-    display: "mobile",
-    response_type: "token",
-    revoke: 1,
-    v: "5.103",
-  };
-
-  const url = `${AuthUrl}?${new URLSearchParams(params).toString()}`;
-  console.log("===Redirecting to VK OAuth:", url);
-  res.redirect(url);
-});
-
-/**
- * Callback endpoint - VK will redirect here after auth
- */
-authForm.get('/callback', async (req: Request, res: Response) => {
-  console.log("===OAuth callback received");
+  const authHtmlPath = path.resolve(process.cwd(), 'docs/auth.html');
+  if (!fs.existsSync(authHtmlPath)) {
+    console.error('❌ auth.html not found at:', authHtmlPath);
+    return res.status(500).send('Authentication form not found');
+  }
   
-  // VK redirects with hash (#access_token=...) but we can't read it on server
-  // So we return a simple HTML page that reads the hash and redirects to blank.html
-  const callbackHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Redirecting...</title>
-</head>
-<body>
-  <script>
-    // Get hash from URL (VK puts auth data here)
-    const hash = window.location.hash;
-    if (hash && hash.includes('access_token')) {
-      // Redirect to blank.html with the same hash
-      window.location.href = 'https://oauth.vk.com/blank.html' + hash;
-    } else {
-      // Auth failed
-      window.location.href = 'https://oauth.vk.com/blank.html#error=access_denied';
-    }
-  </script>
-  <p>Redirecting...</p>
-</body>
-</html>
-  `;
+  console.log("===Serving VK login form from:", authHtmlPath);
+  const file: string = readFileSync(authHtmlPath, 'utf-8');
+  
+  // Replace form action to POST to /auth/vk (backend will emulate Android and get token)
+  const html: string = callBack(file, "/auth/vk");
   
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.status(200).send(callbackHtml);
+  res.send(html).end();
 });
 
 // TODO: replace - /helper/request-secret-and-token-by-login-and-password
@@ -131,7 +96,8 @@ authForm.post('/vk', async (req: Request, res: Response) => {
       
       const access_token = params.get('access_token');
       const user_id = params.get('user_id');
-      const secret = params.get('secret');
+      // VK OAuth doesn't return secret separately - use access_token as secret for Android client emulation
+      const secret = access_token;
 
       if (access_token && user_id) {
         req.session.secret = secret || '';
