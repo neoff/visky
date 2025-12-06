@@ -59,11 +59,17 @@ export const vkMethod = async (req: Request, method: string, params : {}, sign: 
 
     return await AndroidClient.get(`https://api.vk.com${url}`).then((response: AxiosResponse<VkResponse, any>) => {
         console.debug(`======== /method/${method} RESPONSE:`, JSON.stringify(response.data, null, 2))
+        // Check if VK returned an error in the response body
+        if (response.data && 'error' in response.data) {
+            const vkError = (response.data as any).error;
+            const errorMsg = vkError.error_msg || vkError.error_text || 'VK API error';
+            throw new Error(errorMsg);
+        }
         return response.data ?? response;
     })
     .catch((error) => {
         console.error(`ERROR ======== /method/${method} ERROR:`, JSON.stringify(error, null, 2))
-        throw new Error(error.error_msg)
+        throw error instanceof Error ? error : new Error(error.error_msg || 'Unknown error')
     })
 }
 
