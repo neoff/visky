@@ -5,7 +5,6 @@ import React from "react";
 import { Platform, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { WebViewNavigation } from "react-native-webview/src/WebViewTypes";
-import axios from "axios";
 
 
 const LoginPage = () => {
@@ -19,66 +18,37 @@ const LoginPage = () => {
     signOut();
   }, []);
 
-  // Establish session on backend and get refreshed token from VK API
-  const establishBackendSession = async (authUrl: string) => {
-    try {
-      console.log("===Establishing backend session with VK token");
-      const response = await axios.post(`${apiUrls.authUrl}/token`, {
-        vkurl: authUrl
-      });
-      console.log("===Backend session established:", response.data);
-      return response.data;
-    } catch (error) {
-      console.error("===Failed to establish backend session:", error);
-      throw error;
-    }
-  };
-
   const _onNavigationStateChange = (event: WebViewNavigation) => {
     console.log("===Navigation changed:", event.url, "loading:", event.loading, "canGoBack:", event.canGoBack, "title:", event.title)
     const redirectUrl: string = event.url;
     
-    // Check if we got redirected to blank.html with hash
+    // Check if we got redirected to blank.html with hash containing auth data
     if (redirectUrl.includes('blank.html') && redirectUrl.includes('#')) {
       const hash = redirectUrl.split('#')[1];
       const params = new URLSearchParams(hash);
       
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
+      const secret = params.get('secret'); // Backend includes secret in redirect
       const expiresIn = params.get('expires_in');
       
-      console.log("===Auth response:", {userId: userId?.substring(0, 5), hasToken: !!accessToken, expiresIn});
+      console.log("===Auth response:", {userId: userId?.substring(0, 5), hasToken: !!accessToken, hasSecret: !!secret, expiresIn});
       
       if (accessToken && userId) {
-        // VK OAuth doesn't return 'secret' in standard flow, generate it from access_token
-        const secret = accessToken.split('.').pop() || '';
+        console.log("===Auth success - token obtained through backend (server IP)");
         
-        // Establish session on backend - this calls VK API to refresh token from server IP
-        try {
-          const backendSession = await establishBackendSession(redirectUrl);
-          
-          // Save refreshed session from backend (token is now valid from server IP)
-          signIn({
-            user_id: backendSession.user_id || userId,
-            access_token: backendSession.access_token || backendSession.token || accessToken,
-            secret: backendSession.secret || secret,
-            auth_url: redirectUrl
-          });
-        } catch (error) {
-          console.error("===Failed to get refreshed token from backend, using original:", error);
-          // Fallback to original token (will need manual refresh later)
-          signIn({
-            user_id: userId, 
-            access_token: accessToken,
-            secret: secret,
-            auth_url: redirectUrl
-          });
-        }
+        // Save session from backend response
+        signIn({
+          user_id: userId, 
+          access_token: accessToken,
+          secret: secret || undefined, // Use secret from backend
+          auth_url: redirectUrl
+        });
         
         router.replace('/(app)/(tabs)/(songs)');
         return;
       } else {
-        console.error("===Auth failed:", redirectUrl);
+        console.error("===Auth failed or incomplete data:", redirectUrl);
         alert("Authorization failed. Please try again.");
         return;
       }
@@ -86,44 +56,40 @@ const LoginPage = () => {
   }
   
   const _onMessage = (event: any) => {
-    // Handle messages from injected JS
+    // Handle messages from injected JS (fallback if navigation interception doesn't work)
     const message = event.nativeEvent.data;
     console.log("===WebView message:", message);
+    
+    // Ignore DEBUG messages
+    if (message.startsWith('DEBUG:')) {
+      console.log("===Ignoring debug message");
+      return;
+    }
     
     // Check if message contains auth data
     if (message.includes('access_token=')) {
       const params = new URLSearchParams(message);
       const accessToken = params.get('access_token');
       const userId = params.get('user_id');
+      const secret = params.get('secret');
       
       if (accessToken && userId) {
-        const secret = accessToken.split('.').pop() || '';
         console.log("===Auth success via message:", {userId: userId.substring(0, 5)});
         
-        // Establish session on backend - this calls VK API to refresh token from server IP
         const authUrl = `blank.html#${message}`;
-        try {
-          const backendSession = await establishBackendSession(authUrl);
-          
-          // Save refreshed session from backend
-          signIn({
-            user_id: backendSession.user_id || userId,
-            access_token: backendSession.access_token || backendSession.token || accessToken,
-            secret: backendSession.secret || secret,
-            auth_url: authUrl
-          });
-        } catch (error) {
-          console.error("===Failed to get refreshed token from backend, using original:", error);
-          // Fallback to original token
-          signIn({
-            user_id: userId,
-            access_token: accessToken,
-            secret: secret,
-            auth_url: authUrl
-          });
-        }
+        
+        // Save session from backend response
+        signIn({
+          user_id: userId,
+          access_token: accessToken,
+          secret: secret || undefined,
+          auth_url: authUrl
+        });
         
         router.replace('/(app)/(tabs)/(songs)');
+        return;
+      } else {
+        console.error("===Auth message incomplete:", message);
       }
     }
   }

@@ -35,7 +35,6 @@ const apiRequest = async (url: string, method: Method | string, {data, next}:{da
     method: method,
     data: data,
     headers: {
-      ...axios.defaults.headers.common,
       ...headers,
     },
   }

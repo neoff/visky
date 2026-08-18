@@ -16,18 +16,17 @@ const AuthLayout = () => {
     return null;
   }
   console.log(`"===AuthLayout, session: ${userSession}, authorized: ${authorized}, auth_url: ${auth_url!=null} ||| auth_url=${auth_url}`);
-  if (userSession?.access_token && userSession?.secret && userSession?.user_id) {
-    console.log("---AuthLayout has token: ", userSession);
-    //const router = useRouter();
-    //router.replace("/");
-    return <Redirect href="/"/>;
+  // On auth screen check if user already authenticated
+  if (userSession?.access_token && userSession?.user_id) {
+    console.log("===Auth layout : Redirecting to app, session exists", {userId: userSession?.user_id});
+    return <Redirect href="/(app)/(tabs)/(songs)" />;
   }
 
   const getAnswer = (fragments: AuthFragments) => {
     setAuthorized(true)
     //signOut();
     console.warn("=======LOADED getAnswer=========", fragments)
-    if (fragments?.access_token && fragments?.secret && fragments?.user_id) {
+    if (fragments?.access_token && fragments?.user_id) {
       //signIn({session:fragments, auth_url: null});
       signIn(fragments);
     }
