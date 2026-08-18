@@ -1,7 +1,7 @@
 {
   "name": "visky",
   "main": "expo-router/entry",
-  "version": "1.0.4",
+  "version": "1.0.4-alpha.0",
   "scripts": {
     "generate:client": "apigen-ts https://visky.envarg.com/v3/api-docs ./src/__genedated__/openapi/backend.ts",
     "generate:backend": "npx openapi-typescript-codegen --input https://visky.envarg.com/v3/api-docs --output ./src/__genedated__/openapi/backend --useOptions --client axios",
