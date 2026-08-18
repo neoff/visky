@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visky - Frisky Radio Music Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #e0e0e0;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            padding: 60px 20px 40px;
+        }
+
+        .logo {
+            font-size: 4em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .tagline {
+            font-size: 1.3em;
+            opacity: 0.95;
+            margin-bottom: 10px;
+        }
+
+        .main-content {
+            background: #1e1e2e;
+            border-radius: 20px;
+            padding: 50px;
+            margin: 30px auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .description {
+            font-size: 1.2em;
+            line-height: 1.8;
+            margin-bottom: 40px;
+            text-align: center;
+            color: #b8b8d0;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+
+        .feature {
+            text-align: center;
+            padding: 30px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            transition: transform 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .feature:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            background: rgba(255,255,255,0.08);
+        }
+
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .feature h3 {
+            color: #8b9eff;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .vk-info {
+            background: linear-gradient(135deg, #2a3a5a 0%, #3a4a6a 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 40px 0;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .vk-info h2 {
+            margin-bottom: 15px;
+            font-size: 2em;
+        }
+
+        .vk-info p {
+            font-size: 1.1em;
+            line-height: 1.8;
+        }
+
+        .vk-info a {
+            color: #ffd700;
+            text-decoration: none;
+            font-weight: bold;
+            border-bottom: 2px solid #ffd700;
+            padding-bottom: 2px;
+        }
+
+        .vk-info a:hover {
+            border-bottom-color: #fff;
+            color: #fff;
+        }
+
+        .download-section {
+            text-align: center;
+            margin: 50px 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #2d2d4a 0%, #3d3d5a 100%);
+            border-radius: 15px;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .download-section h2 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+
+        .platform-message {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            background: rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .qr-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 50px;
+            flex-wrap: wrap;
+            margin: 30px 0;
+        }
+
+        .qr-item {
+            text-align: center;
+        }
+
+        .qr-code {
+            width: 200px;
+            height: 200px;
+            background: white;
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .qr-placeholder {
+            color: #999;
+            font-size: 0.9em;
+            padding: 20px;
+        }
+
+        .store-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px 30px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            margin: 10px;
+            min-width: 200px;
+        }
+
+        .store-button:hover {
+            background: rgba(0,0,0,0.95);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+
+        .store-icon {
+            font-size: 1.5em;
+            margin-right: 10px;
+        }
+
+        .mobile-only {
+            display: none;
+        }
+
+        .desktop-only {
+            display: block;
+        }
+
+        .important-notice {
+            background: rgba(255, 193, 7, 0.15);
+            border-left: 5px solid #ffc107;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 5px;
+            color: #e0e0e0;
+        }
+
+        .important-notice h3 {
+            color: #ffd54f;
+            margin-bottom: 10px;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            padding: 40px 20px;
+            margin-top: 50px;
+        }
+
+        footer a {
+            color: #ffd700;
+            text-decoration: none;
+            margin: 0 15px;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            .main-content {
+                padding: 30px 20px;
+            }
+
+            .logo {
+                font-size: 3em;
+            }
+
+            .tagline {
+                font-size: 1.1em;
+            }
+
+            .mobile-only {
+                display: block;
+            }
+
+            .desktop-only {
+                display: none;
+            }
+
+            .qr-container {
+                gap: 20px;
+            }
+
+            .store-button {
+                display: block;
+                margin: 10px auto;
+            }
+        }
+
+        .privacy-link {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .privacy-link a {
+            color: #8b9eff;
+            text-decoration: none;
+            font-size: 1.1em;
+            border-bottom: 2px solid #8b9eff;
+            padding-bottom: 3px;
+        }
+
+        .privacy-link a:hover {
+            color: #a5b4ff;
+            border-bottom-color: #a5b4ff;
+        }
+
+        .screenshots-section {
+            margin: 50px 0;
+            padding: 40px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .screenshots-section h2 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            color: #e0e0e0;
+        }
+
+        .screenshots-description {
+            text-align: center;
+            font-size: 1.2em;
+            color: #b8b8d0;
+            margin-bottom: 40px;
+        }
+
+        .screenshots-carousel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            margin: 30px 0;
+        }
+
+        .screenshot-item {
+            text-align: center;
+        }
+
+        .screenshot-placeholder {
+            background: rgba(255,255,255,0.05);
+            border: 2px dashed rgba(255,255,255,0.2);
+            border-radius: 20px;
+            padding: 60px 20px;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .screenshot-placeholder:hover {
+            background: rgba(255,255,255,0.08);
+            border-color: rgba(255,255,255,0.3);
+        }
+
+        .screenshot-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .screenshot-placeholder p {
+            font-size: 1.2em;
+            color: #8b9eff;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .qr-code img {
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">🎵</div>
+            <h1>Visky</h1>
+            <p class="tagline">Your Gateway to Frisky Radio</p>
+        </header>
+
+        <div class="main-content">
+            <div class="description">
+                <p>
+                    <strong>Visky</strong> is a mobile music streaming application that brings the best electronic music 
+                    from <strong>Frisky Radio</strong> directly to your mobile device. Stream your favorite DJ sets, 
+                    radio shows, and curated playlists anytime, anywhere.
+                </p>
+            </div>
+
+            <div class="vk-info">
+                <h2>🔐 VK.com Authentication Required</h2>
+                <p>
+                    To use Visky, you need an active <strong>VK.com (VKontakte)</strong> account. 
+                    The app accesses music content from the official Frisky Radio VK group:
+                </p>
+                <p style="margin-top: 15px;">
+                    <a href="https://vk.com/audios-42311167" target="_blank">https://vk.com/audios-42311167</a>
+                </p>
+                <p style="margin-top: 15px; font-size: 0.95em; opacity: 0.9;">
+                    Visky acts as a convenient proxy - we don't host any music content, 
+                    we simply provide a beautiful mobile experience for VK.com's Frisky Radio collection.
+                </p>
+            </div>
+
+            <div class="feature-grid">
+                <div class="feature">
+                    <div class="feature-icon">🎧</div>
+                    <h3>High-Quality Streaming</h3>
+                    <p>Enjoy crystal-clear audio streaming powered by VK.com's infrastructure</p>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-icon">📱</div>
+                    <h3>Mobile-First Design</h3>
+                    <p>Beautiful, intuitive interface optimized for iOS and Android devices</p>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Privacy-Focused</h3>
+                    <p>We only store your VK user ID and device ID - no personal data collection</p>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Fast & Lightweight</h3>
+                    <p>Minimal resource usage, maximum performance</p>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-icon">❤️</div>
+                    <h3>Favorites & Playlists</h3>
+                    <p>Save your favorite tracks and create custom playlists</p>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-icon">📻</div>
+                    <h3>Radio Shows</h3>
+                    <p>Access the full archive of Frisky Radio shows and DJ sets</p>
+                </div>
+            </div>
+
+            <div class="important-notice">
+                <h3>⚠️ Important Information</h3>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li>This app requires an active VK.com account for authentication</li>
+                    <li>Only registered VK.com users can access the content</li>
+                    <li>The app does not provide registration - you must have a VK.com account</li>
+                    <li>All music content belongs to VK.com and respective copyright holders</li>
+                    <li>The app is designed for personal, non-commercial use</li>
+                </ul>
+            </div>
+
+            <div class="screenshots-section">
+                <h2>📱 App Preview</h2>
+                <p class="screenshots-description">
+                    Experience the best of Frisky Radio on your mobile device
+                </p>
+                <div class="screenshots-carousel">
+                    <div class="screenshot-item">
+                        <div class="screenshot-placeholder">
+                            <span class="screenshot-icon">🎵</span>
+                            <p>Music Library</p>
+                        </div>
+                    </div>
+                    <div class="screenshot-item">
+                        <div class="screenshot-placeholder">
+                            <span class="screenshot-icon">❤️</span>
+                            <p>Favorites</p>
+                        </div>
+                    </div>
+                    <div class="screenshot-item">
+                        <div class="screenshot-placeholder">
+                            <span class="screenshot-icon">📻</span>
+                            <p>Radio Shows</p>
+                        </div>
+                    </div>
+                    <div class="screenshot-item">
+                        <div class="screenshot-placeholder">
+                            <span class="screenshot-icon">🎧</span>
+                            <p>Now Playing</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="download-section">
+                <h2>📲 Download Visky</h2>
+                
+                <div class="platform-message mobile-only">
+                    <p>Scan the QR code below to download from your device's app store:</p>
+                </div>
+
+                <div class="platform-message desktop-only">
+                    <p>Scan one of the QR codes below with your mobile device, or click the buttons to visit the app stores:</p>
+                </div>
+
+                <div class="qr-container">
+                    <div class="qr-item">
+                        <div class="qr-code">
+                            <img src="/qr/ios" alt="iOS App Store QR Code" style="width: 100%; height: 100%; object-fit: contain;">
+                        </div>
+                        <a href="/download/ios" class="store-button">
+                            <span class="store-icon">🍎</span>
+                            Download on App Store
+                        </a>
+                    </div>
+
+                    <div class="qr-item">
+                        <div class="qr-code">
+                            <img src="/qr/android" alt="Android Google Play QR Code" style="width: 100%; height: 100%; object-fit: contain;">
+                        </div>
+                        <a href="/download/android" class="store-button">
+                            <span class="store-icon">🤖</span>
+                            Download on Google Play
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="privacy-link">
+                <a href="/privacy">🔒 Privacy Policy</a>
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                <a href="/eula">📄 End User License Agreement (EULA)</a>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Visky Music Player</strong> - A VK.com Frisky Radio Proxy Service</p>
+            <p style="margin-top: 15px;">
+                <a href="/privacy">Privacy Policy</a>
+                <a href="/eula">EULA</a>
+                <a href="https://vk.com/audios-42311167" target="_blank">Frisky Radio on VK</a>
+                <a href="https://frisky.fm" target="_blank">Official Frisky.fm</a>
+            </p>
+            <p style="margin-top: 20px; opacity: 0.8; font-size: 0.9em;">
+                &copy; 2025 Visky. All rights reserved.<br>
+                This application is not affiliated with VK.com or Frisky Radio.
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // Detect platform and show appropriate download option
+        function detectPlatform() {
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            
+            // iOS detection
+            if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+                return 'ios';
+            }
+            
+            // Android detection
+            if (/android/i.test(userAgent)) {
+                return 'android';
+            }
+            
+            // Desktop
+            return 'desktop';
+        }
+
+        const platform = detectPlatform();
+        
+        // You can add platform-specific behavior here
+        console.log('Detected platform:', platform);
+        
+        // Example: Auto-redirect mobile users to store
+        // if (platform !== 'desktop') {
+        //     // Uncomment when ready to redirect
+        //     // window.location.href = `/download/${platform}`;
+        // }
+    </script>
+</body>
+</html>

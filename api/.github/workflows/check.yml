@@ -1,0 +1,45 @@
+# .github/workflows/check.yml
+---
+name: Check any push before merge
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+      DOCKERHUB_EMAIL:
+        required: true
+      KUBECONFIG:
+        required: true
+    inputs:
+      DOMAIN:
+        required: true
+        type: string
+
+jobs:
+  check-config:
+    runs-on: ubuntu-latest
+    #runs-on: main-n
+    steps:
+      - name: Check required config
+        run: |
+          [[ -z "${{ vars.DOMAIN }}" ]] && echo "❌ Missing vars.DOMAIN" && exit 1
+          [[ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]] && echo "❌ Missing secrets.DOCKERHUB_USERNAME" && exit 1
+          [[ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]] && echo "❌ Missing secrets.DOCKERHUB_TOKEN" && exit 1
+          [[ -z "${{ secrets.DOCKERHUB_EMAIL }}" ]] && echo "❌ Missing secrets.DOCKERHUB_EMAIL" && exit 1
+          [[ -z "${{ secrets.KUBECONFIG }}" ]] && echo "❌ Missing secrets.KUBECONFIG\n create one base64 -i ~/.kube/config | pbcopy" && exit 1
+          echo "✅ All required secrets and vars are set"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.ref_name }}
+      - name: Cleanup workspace
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workspace files..."
+          find . -mindepth 1 -delete

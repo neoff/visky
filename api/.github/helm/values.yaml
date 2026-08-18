@@ -1,0 +1,56 @@
+replicaCount: 1
+name: sandbox
+appVersion: ""
+version: 0.0.0
+
+image:
+  repository: ""
+  tag: "latest" # Current deployed: 1.1.1 in namespace frisky (multi-platform: linux/amd64, linux/arm64)
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: regcred  # Required for pulling from Docker Hub private repo. Must exist in target namespace.
+
+# Resources optimized for micro-s or mini-s nodes
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector for mini-n or micro-n nodes
+# Selected mini-n based on resource availability analysis
+# Mini-n runs amd64 architecture, requires multi-platform Docker image
+nodeSelector:
+  kubernetes.io/hostname: mini-n
+  # Alternative: micro-n (also amd64)
+  # kubernetes.io/hostname: micro-n
+  # To deploy on any node, set: nodeSelector: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+envFrom:
+  - secretRef:
+      name: visky-api-env
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+  hosts:
+    - host: visky.envarg.com
+      paths:
+        - path: /
+          pathType: Prefix
+  issuerName: letsencrypt-prod
+  tls:
+    - secretName: visky-api-tls
+      hosts:
+        - visky.envarg.com
