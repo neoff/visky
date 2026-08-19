@@ -155,3 +155,8 @@ auth.get("/profile", checkAuthAndroid, async (req: Request, res: Response) => {
       res.status(500).send({errMessage: msg}).end()
     })
 })
+
+auth.get('/vk', async (req: Request, res: Response) => {
+  console.log("===Redirect =====> /auth/vk")
+  res.redirect("/auth/vk")
+})

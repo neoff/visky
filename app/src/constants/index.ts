@@ -96,7 +96,7 @@ export const apiUrls = {
   playlistUrl: playlistUrl,
   playerUrl: playerUrl,
   oAuthUrl: `${authUrl}/vk-oauth`,
-  authAppUrl: (__DEV) ? `${authUrl}/local${redirectUrl}` : `${authUrl}/vk`,
+  authAppUrl: (__DEV) ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk`,
   authAdminAppUrl_: `${authUrl}/vk`,
   tokenUrl: `${authUrl}/token`,
   refreshUrl: `${authUrl}/refresh`,
