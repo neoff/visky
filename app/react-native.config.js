@@ -2,7 +2,10 @@ module.exports = {
     dependencies: {
         'react-native-fast-image': {
             platforms: {
-                android: null,
+                android: {
+                    packageImportPath: 'import com.dylanvann.fastimage.FastImageViewPackage;',
+                    packageInstance: 'new FastImageViewPackage()',
+                },
             },
         },
         'react-native-loader-kit': {
@@ -22,12 +25,18 @@ module.exports = {
         },
         'react-native-track-player': {
             platforms: {
-                android: null,
+                android: {
+                    packageImportPath: 'import com.doublesymmetry.trackplayer.TrackPlayer;',
+                    packageInstance: 'new TrackPlayer()',
+                },
             },
         },
         'react-native-webview': {
             platforms: {
-                android: null,
+                android: {
+                    packageImportPath: 'import com.reactnativecommunity.webview.RNCWebViewPackage;',
+                    packageInstance: 'new RNCWebViewPackage()',
+                },
             },
         },
     },
