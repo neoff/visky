@@ -1,9 +1,8 @@
 import {unknownTrackImageUri} from "@/constants/images"
 import {colors} from "@/constants"
 import {trackListStyles} from "@/styles"
-import {Text, TouchableHighlight, View} from "react-native"
+import {ActivityIndicator, Text, TouchableHighlight, View} from "react-native"
 import FastImage from "react-native-fast-image"
-import LoaderKit from 'react-native-loader-kit'
 import {Track, useActiveTrack, useIsPlaying} from "react-native-track-player";
 import {Entypo, Ionicons} from "@expo/vector-icons";
 import dayjs from "dayjs";
@@ -37,10 +36,10 @@ export const TrackListItem = ({
 
           {isActiveTrack &&
             (playing ? (
-              <LoaderKit
+              <ActivityIndicator
                 style={trackListStyles.trackPlayingIconIndicator}
-                name="LineScaleParty"
                 color={colors.icon}
+                size="small"
               />
             ) : (
               <Ionicons

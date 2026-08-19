@@ -45,12 +45,23 @@ const BigPlayPauseButton = ({ playing, iconSize = 48 }: PlayerButtonProps) => {
 
 export const PlayPauseButton = ({ style, type, iconSize = 78 }: PlayerButtonProps) => {
   const { playing } = useIsPlaying()
+  const handlePlayPause = async () => {
+    try {
+      if (playing) {
+        await TrackPlayer.pause()
+      } else {
+        await TrackPlayer.play()
+      }
+    } catch (error) {
+      console.warn('Unable to change playback state', error)
+    }
+  }
 
   return (
     <View style={[{ height: iconSize }, style]}>
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={playing ? TrackPlayer.pause : TrackPlayer.play}
+        onPress={handlePlayPause}
       >
         {type === PlayerButtonType.SMALL
           ? <SmallPlayPauseButton playing={playing} iconSize={iconSize} />
@@ -62,8 +73,16 @@ export const PlayPauseButton = ({ style, type, iconSize = 78 }: PlayerButtonProp
 }
 
 export const SkipToNextButton = ({ type, iconSize = 40 }: PlayerButtonProps) => {
+  const handleSkipToNext = async () => {
+    try {
+      await TrackPlayer.skipToNext()
+    } catch (error) {
+      console.warn('Unable to skip to the next track', error)
+    }
+  }
+
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={() => TrackPlayer.skipToNext()}>
+    <TouchableOpacity activeOpacity={0.7} onPress={handleSkipToNext}>
       {type === PlayerButtonType.SMALL
         ? <FontAwesome6 name="forward" size={iconSize} color={colors.text} />
         : <Ionicons name={"play-skip-forward"} size={iconSize} color={colors.text} />
@@ -74,8 +93,16 @@ export const SkipToNextButton = ({ type, iconSize = 40 }: PlayerButtonProps) => 
 
 
 export const SkipToPreviousButton = ({ iconSize = 40 }: PlayerButtonProps) => {
+  const handleSkipToPrevious = async () => {
+    try {
+      await TrackPlayer.skipToPrevious()
+    } catch (error) {
+      console.warn('Unable to skip to the previous track', error)
+    }
+  }
+
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={() => TrackPlayer.skipToPrevious()}>
+    <TouchableOpacity activeOpacity={0.7} onPress={handleSkipToPrevious}>
       <Ionicons name={'play-skip-back'} size={iconSize} color={colors.text} />
     </TouchableOpacity>
   )

@@ -34,36 +34,43 @@ export const TrackList = ({
   }*/
   const handleTrackSelect = async (selectedTrack: Track) => {
     console.log('Selected track', selectedTrack)
-    if (selectedTrack.url === '') return
-    const trackIndex = tracks.findIndex((track) => track.url === selectedTrack.url)
-    console.log('trackIndex', trackIndex)
-    if (trackIndex === -1) return
+    const playableTracks = tracks.filter(
+      (track) => typeof track.url === 'string' && track.url.trim().length > 0,
+    )
+    const trackIndex = playableTracks.findIndex((track) => track.url === selectedTrack.url)
+    if (trackIndex === -1) {
+      console.warn('Selected track has no playable URL', selectedTrack.id)
+      return
+    }
 
     const isChangingQueue = id !== activeQueueId
     console.log(`isChangingQueue:${isChangingQueue} id:${id} activeQueueId:${activeQueueId}`)
-    if (isChangingQueue) {
-      const beforeTracks = tracks.slice(0, trackIndex)
-      const afterTracks = tracks.slice(trackIndex + 1)
+    try {
+      if (isChangingQueue) {
+        const beforeTracks = playableTracks.slice(0, trackIndex)
+        const afterTracks = playableTracks.slice(trackIndex + 1)
+        const queue = [selectedTrack, ...afterTracks, ...beforeTracks].map((track) => ({
+          ...track,
+          type: TrackType.HLS,
+        }))
 
-      await TrackPlayer.reset()
+        await TrackPlayer.reset()
+        await TrackPlayer.add(queue)
+        await TrackPlayer.play()
 
-      // we construct the new queue
-      await TrackPlayer.add({...selectedTrack, type: TrackType.HLS})
-      await TrackPlayer.add(afterTracks)
-      await TrackPlayer.add(beforeTracks)
+        queueOffset.current = trackIndex
+        setActiveQueueId(id)
+      } else {
+        const nextTrackIndex =
+          trackIndex - queueOffset.current < 0
+            ? playableTracks.length + trackIndex - queueOffset.current
+            : trackIndex - queueOffset.current
 
-      await TrackPlayer.play()
-
-      queueOffset.current = trackIndex
-      setActiveQueueId(id)
-    } else {
-      const nextTrackIndex =
-        trackIndex - queueOffset.current < 0
-          ? tracks.length + trackIndex - queueOffset.current
-          : trackIndex - queueOffset.current
-
-      await TrackPlayer.skip(nextTrackIndex)
-      await TrackPlayer.play()
+        await TrackPlayer.skip(nextTrackIndex)
+        await TrackPlayer.play()
+      }
+    } catch (error) {
+      console.warn('Unable to start selected track', error)
     }
   }
   console.log('TrackList', unknownTrackImageUri, unknownTrackImage)
