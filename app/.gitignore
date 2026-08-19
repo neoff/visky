@@ -310,7 +310,7 @@ iOSInjectionProject/
 
 ### yarn template
 # https://yarnpkg.com/getting-started/qa#which-files-should-be-gitignored
-yarn.lock
+# Keep the dependency graph reproducible in EAS Build.
 .yarn/*
 !.yarn/releases
 !.yarn/patches

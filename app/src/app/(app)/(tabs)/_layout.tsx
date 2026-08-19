@@ -2,7 +2,7 @@ import {colors, fonts, modifiers, size} from "@/constants"
 import {SplashScreen, Tabs} from "expo-router"
 import React, {useCallback, useEffect, useState} from "react"
 import {BlurView} from "expo-blur";
-import {StyleSheet} from "react-native";
+import {ColorValue, StyleSheet} from "react-native";
 import {FontAwesome, FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {FloatingPlayer} from "@/components/FloatingPlayer";
 import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
@@ -36,12 +36,14 @@ export default function TabsLayout(){
               intensity={95}
               tint={'dark'}
               experimentalBlurMethod={'dimezisBlurView'}
-              style={{
-                ...StyleSheet.absoluteFillObject,
+              style={[
+                StyleSheet.absoluteFill,
+                {
                 overflow: 'hidden',
                 borderTopLeftRadius: 20,
                 borderTopRightRadius: 20,
-              }}
+                },
+              ]}
             />
           ),
         }}
@@ -51,7 +53,7 @@ export default function TabsLayout(){
           name="favorites"
           options={{
             title: 'Favorites',
-            tabBarIcon: ({color}: {color: string}) => (
+            tabBarIcon: ({color}: {color: ColorValue}) => (
               <FontAwesome name="heart" size={20 + modifiers.icons} color={color}/>
             ),
           }}
@@ -60,7 +62,7 @@ export default function TabsLayout(){
           name="(songs)"
           options={{
             title: 'Songs',
-            tabBarIcon: ({color}: {color: string}) => (
+            tabBarIcon: ({color}: {color: ColorValue}) => (
               <Ionicons name="musical-notes-sharp" size={24 + modifiers.icons} color={color}/>
             ),
           }}
@@ -69,14 +71,14 @@ export default function TabsLayout(){
           name="artists"
           options={{
             title: 'Artists',
-            tabBarIcon: ({color}: {color: string}) => <FontAwesome6 name="users-line" size={20 + modifiers.icons} color={color}/>,
+            tabBarIcon: ({color}: {color: ColorValue}) => <FontAwesome6 name="users-line" size={20 + modifiers.icons} color={color}/>,
           }}
         />
         <Tabs.Screen
           name="settings"
           options={{
             title: 'Settings',
-            tabBarIcon: ({color}: {color: string}) => (
+            tabBarIcon: ({color}: {color: ColorValue}) => (
               <MaterialCommunityIcons name="account" size={28 + modifiers.icons} color={color}/>
             ),
           }}

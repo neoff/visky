@@ -100,7 +100,10 @@ export const loadFriskyListData = async (owner: string | null, onLoad?: (res: an
   }
 };
 
-export const loadPlayListData = async (owner: string, onLoad?: (fragments: any) => any, onError?: (error: any) => void, offset: number = 0) => {
+export const loadPlayListData = async (owner: string | null, onLoad?: (fragments: any) => any, onError?: (error: any) => void, offset: number = 0) => {
+  if (!owner) {
+    throw new Error('A playlist owner is required');
+  }
   const url = `${apiUrls.playListUrl}?count=100&offset=${offset}&owner=${owner}`;
   console.info(`GET ${url}`);
   try {

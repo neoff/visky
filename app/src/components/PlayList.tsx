@@ -35,7 +35,6 @@ export const PlayList = ({
 
   return (
     <FlashList
-      estimatedItemSize={playlists.length}
       contentContainerStyle={{paddingTop: 10, paddingBottom: 128}}
       ItemSeparatorComponent={ItemDivider}
       ListFooterComponent={ItemDivider}

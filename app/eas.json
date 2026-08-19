@@ -4,6 +4,7 @@
 	},
 	"build": {
 		"base": {
+			"node": "22.13.0",
 			"distribution": "internal",
 			"autoIncrement": true,
 			"android": {
@@ -29,7 +30,18 @@
 			"extends": "base"
 		},
 		"production": {
-			"extends": "base"
+			"extends": "base",
+			"distribution": "store",
+			"android": {
+				"buildType": "app-bundle"
+			}
+		}
+	},
+	"submit": {
+		"production": {
+			"android": {
+				"track": "internal"
+			}
 		}
 	}
 }

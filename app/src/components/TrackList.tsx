@@ -70,7 +70,6 @@ export const TrackList = ({
   return (
     <FlashList
       data={tracks}
-      estimatedItemSize={tracks.length}
       contentContainerStyle={{paddingTop: 10, paddingBottom: 128}}
       /*ListHeaderComponent={
         !hideQueueControls ? (

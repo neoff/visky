@@ -44,7 +44,7 @@ export function SessionProvider({children}: PropsWithChildren) {
           setAuthUrl(null);
 
         },
-        getSession: (): AuthFragments => {
+        getSession: (): AuthFragments | null => {
           return  session?JSON.parse(session):null;
         },
         auth_url,

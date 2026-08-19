@@ -18,15 +18,17 @@ interface AnimatedSearchHeaderProps {
   title: string;
   placeholder?: string;
   onSearchChange?: (text: string) => void;
-  scrollY: SharedValue<number>;
+  scrollY?: SharedValue<number>;
 }
 
 export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
                                                                             title,
                                                                             placeholder,
                                                                             onSearchChange,
-                                                                            scrollY,
+                                                                            scrollY: externalScrollY,
                                                                           }) => {
+  const localScrollY = useSharedValue(0);
+  const scrollY = externalScrollY ?? localScrollY;
   const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState('');
   const [query, setQuery] = useState('')
