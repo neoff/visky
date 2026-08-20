@@ -24,6 +24,28 @@ export const alphabet = "abcdefghijklmnopqrstuvwxyz0987654321"
 const v1="5.95"
 export const version = "5.103"
 
+/**
+ * Direct token grant (password grant) app credentials.
+ * VK ID web-OAuth never returns `secret` and has no `audio` scope, so audio
+ * access requires emulating a legacy audio-capable app via oauth.vk.com/token.
+ * client_id and client_secret MUST be a matching pair (else invalid_client).
+ * Configurable via env; defaults to Kate Mobile (most reliable for audio).
+ */
+export const directGrant = {
+  appId: process.env.VK_DIRECT_APP_ID
+    || process.env.OFFICIAL_APP_ID
+    || process.env.VK_ADMIN_ID
+    || "2685278", // Kate Mobile
+  appSecret: process.env.VK_DIRECT_APP_SECRET
+    || process.env.OFFICIAL_APP_SECRET
+    || "lxhD8OD7dMsqtXIm5IUY", // Kate Mobile
+  scope: process.env.VK_DIRECT_SCOPE || "nohttps,audio,offline",
+  // User-Agent used for the token request; Kate Mobile UA pairs with its app id.
+  userAgent: process.env.VK_DIRECT_UA
+    || "KateMobileAndroid/56 lite-460 (Android 4.4.2; SDK 19; x86; unknown Android SDK built for x86; en)",
+}
+
+
 // API urls
 const baseHost: string = process.env.EXPO_PUBLIC_API_URL || "https://localhost:3000";
 const baseUrl: string =  `${baseHost}/api`

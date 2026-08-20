@@ -1,11 +1,116 @@
 // src/router/api/auth.ts
-import {deviceIDgen} from "@/helper"
+import {AndroidClient, deviceIDgen, TokenUrl} from "@/helper"
 import {checkAuthAndroid, vkMethod} from "@/helper/vk"
+import {directGrant, version} from "@/constants"
 import {Request, Response} from "@/types"
 import express from "express"
 import type {VkRefreshTokenResponse, VkUserInfoResponse} from "@/__genedated__/openapi/vk";
 
 export const auth = express.Router()
+
+/**
+ * Direct token grant (password grant) — the only way to obtain an audio-capable
+ * token + signing `secret`. Emulates a legacy Android app; VK ID is bypassed.
+ *
+ * POST /api/auth/direct
+ *  body: { login, password, code?, captcha_sid?, captcha_key?, device_id? }
+ *
+ * Responses:
+ *  200 { access_token, secret, user_id, device_id }        -> success
+ *  401 { error:'need_validation', validation_type, phone_mask, validation_sid, device_id }
+ *  401 { error:'need_captcha', captcha_sid, captcha_img, device_id }
+ *  400 { errMessage }                                        -> bad creds / other
+ *
+ * On need_validation the client resends the SAME body plus `code` (and the
+ * returned `device_id`). On need_captcha it resends plus `captcha_sid`+`captcha_key`.
+ */
+auth.post("/direct", async (req: Request, res: Response) => {
+  const {login, password} = req.body || {}
+  if (!login || !password) {
+    res.status(400).send({errMessage: "No login or password"}).end()
+    return
+  }
+
+  // device_id must stay stable across the 2FA/captcha retry and later refreshes.
+  const device_id: string = req.body.device_id || deviceIDgen()
+
+  const params: Record<string, string> = {
+    grant_type: "password",
+    client_id: directGrant.appId,
+    client_secret: directGrant.appSecret,
+    username: login,
+    password: password,
+    scope: directGrant.scope,
+    "2fa_supported": "1",
+    v: version,
+    device_id,
+    lang: "en",
+  }
+  // Ask VK to send the SMS code on the first challenge.
+  if (!req.body.code) params.force_sms = "1"
+  if (req.body.code) params.code = String(req.body.code)
+  if (req.body.captcha_sid) params.captcha_sid = String(req.body.captcha_sid)
+  if (req.body.captcha_key) params.captcha_key = String(req.body.captcha_key)
+
+  try {
+    const response = await AndroidClient.get(TokenUrl, {
+      params,
+      headers: {"User-Agent": directGrant.userAgent},
+      validateStatus: () => true, // VK returns 401 with JSON body for challenges
+    })
+    const data: any = response.data || {}
+
+    if (data.access_token) {
+      req.session.access_token = data.access_token
+      req.session.secret = data.secret || ""
+      req.session.user_id = data.user_id?.toString()
+      req.session.device_id = device_id
+      req.session.created = new Date().toISOString()
+      req.session.maxAge = req.session.cookie?.originalMaxAge
+      req.session.expires = req.session.cookie?.expires?.getDate() ?? null
+      console.log("✅ direct grant ok:", {user_id: req.session.user_id, has_secret: !!data.secret})
+      res.status(200).send({
+        access_token: data.access_token,
+        secret: data.secret || "",
+        user_id: req.session.user_id,
+        device_id,
+      }).end()
+      return
+    }
+
+    if (data.error === "need_validation") {
+      console.warn("🔐 direct grant: 2FA required", data.validation_type)
+      res.status(401).send({
+        error: "need_validation",
+        validation_type: data.validation_type,       // 2fa_sms | 2fa_app | 2fa_callreset
+        phone_mask: data.phone_mask,
+        validation_sid: data.validation_sid,
+        redirect_uri: data.redirect_uri,
+        device_id,
+      }).end()
+      return
+    }
+
+    if (data.error === "need_captcha") {
+      console.warn("🧩 direct grant: captcha required")
+      res.status(401).send({
+        error: "need_captcha",
+        captcha_sid: data.captcha_sid,
+        captcha_img: data.captcha_img,
+        device_id,
+      }).end()
+      return
+    }
+
+    console.error("❌ direct grant failed:", data)
+    res.status(400).send({
+      errMessage: data.error_description || data.error || "Authentication failed",
+    }).end()
+  } catch (error: any) {
+    console.error("❌ direct grant exception:", error?.message)
+    res.status(500).send({errMessage: error?.message || "Direct grant failed"}).end()
+  }
+})
 
 /** OAUTH */
 /*auth.get('/vk-oauth', passport.authenticate('vkontakte'))

@@ -13,6 +13,7 @@ export const checkAuthAndroid = async(req: Request, res: Response, next: NextFun
     const headerToken = (req.headers['x-auth-token'] || req.headers['authorization']) as string | undefined;
     const headerUser = req.headers['x-auth-user'] as string | undefined;
     const headerSecret = req.headers['x-auth-secret'] as string | undefined;
+    const headerDevice = req.headers['x-auth-device'] as string | undefined;
 
     if ((!req.session || !req.session.access_token || !req.session.user_id) && headerToken) {
         // Normalize Bearer <token>
@@ -20,6 +21,9 @@ export const checkAuthAndroid = async(req: Request, res: Response, next: NextFun
         req.session.access_token = token;
         if (headerUser) req.session.user_id = headerUser;
         if (headerSecret) req.session.secret = headerSecret;
+        // device_id must match the one issued at direct-grant time; it is part of
+        // the signed audio request (md5(url+secret)). Only mint a new one if absent.
+        if (headerDevice) req.session.device_id = headerDevice;
         if (!req.session.device_id) req.session.device_id = deviceIDgen();
         console.log("===checkAuthAndroid: restored session from headers", {
             user_id: req.session.user_id,

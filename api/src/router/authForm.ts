@@ -1,5 +1,5 @@
 import {vkTokenAncor} from "@/configurations"
-import {AndroidClient, AuthUrl, deviceIDgen, encodeQueryData, TokenUrl} from "@/helper"
+import {AndroidClient, AuthUrl, deviceIDgen, encodeQueryData, TokenUrl, vkBlankUrl} from "@/helper"
 import {Request, Response} from "@/types"
 import express from "express"
 import fs, {readFileSync} from 'fs'

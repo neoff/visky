@@ -1,6 +1,7 @@
 import { useStorageState } from "@/hooks/useStorageState";
+import { setAuthHeaders } from "@/helpers/network";
 import { AuthFragments } from "@/types/auth";
-import { createContext, useContext, type PropsWithChildren } from 'react';
+import { createContext, useContext, useEffect, type PropsWithChildren } from 'react';
 
 
 const AuthContext = createContext<{
@@ -30,6 +31,12 @@ export function useSession() {
 export function SessionProvider({children}: PropsWithChildren) {
   const [[, auth_url], setAuthUrl] = useStorageState('auth_url');
   const [[isLoading, session], setSession] = useStorageState('session');
+
+  // Mirror the stored session into the network layer's auth headers (RN has no
+  // cookie jar). Runs on login, on sign-out, and on cold-start once storage loads.
+  useEffect(() => {
+    setAuthHeaders(session ? (JSON.parse(session) as AuthFragments) : null);
+  }, [session]);
 
   return (
     <AuthContext.Provider

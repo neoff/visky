@@ -3,7 +3,28 @@ import {unknownTrackImageUri} from "@/constants/images";
 import {TrackWithPlaylist} from "@/helpers/types";
 import axios, {AxiosError, AxiosRequestConfig, Method} from "axios";
 import {TrackType} from "react-native-track-player";
+import {AuthFragments} from "@/types/auth";
 
+/**
+ * RN axios does not persist the server session cookie, so authenticated calls
+ * carry the token/secret/device_id as headers instead. `checkAuthAndroid` on the
+ * backend restores the session from these. device_id MUST match the one issued at
+ * direct-grant time — the audio request signature (md5(url+secret)) includes it.
+ */
+let authHeaders: Record<string, string> = {};
+export const setAuthHeaders = (session: AuthFragments | null): void => {
+  if (session?.access_token) {
+    authHeaders = {
+      "x-auth-token": session.access_token,
+      ...(session.user_id ? {"x-auth-user": String(session.user_id)} : {}),
+      ...(session.secret ? {"x-auth-secret": session.secret} : {}),
+      ...(session.device_id ? {"x-auth-device": session.device_id} : {}),
+    };
+  } else {
+    authHeaders = {};
+  }
+  console.debug("==setAuthHeaders:", Object.keys(authHeaders));
+};
 
 const registerInterceptors = () => {
   console.log("registerAuth");
@@ -33,7 +54,7 @@ const apiRequest = async (url: string, method: Method | string, {data, next}:{da
     url: url,
     method: method,
     data: data,
-    headers: headers,
+    headers: {...headers, ...authHeaders},
   }
   console.debug("==apiRequest config:", config);
 
@@ -64,6 +85,36 @@ export const getAuth = ({onLoad}: {onLoad?: (fragments: any) => void}, url?: str
       console.error(`===ERROR! getAuth:${error}`);
       throw error;
     });
+}
+
+/**
+ * Direct token grant. Sends VK login/password (+ optional 2FA code / captcha)
+ * to the backend, which emulates a legacy Android app to obtain an
+ * audio-capable access_token + secret. Resolves with:
+ *   { access_token, secret, user_id, device_id }                -> success
+ *   { error:'need_validation', validation_type, phone_mask, device_id, ... }
+ *   { error:'need_captcha', captcha_sid, captcha_img, device_id }
+ * Challenge responses come back as HTTP 401 (rejected axios) — normalized here
+ * to a resolved object so the caller can branch on `.error`.
+ */
+export const directAuth = async (payload: {
+  login: string,
+  password: string,
+  code?: string,
+  captcha_sid?: string,
+  captcha_key?: string,
+  device_id?: string,
+}): Promise<any> => {
+  try {
+    return await apiRequest(apiUrls.directUrl, 'POST', {data: payload});
+  } catch (error) {
+    const e = error as AxiosError;
+    const body = e.response?.data as any;
+    if (e.response?.status === 401 && body?.error) {
+      return body; // need_validation | need_captcha
+    }
+    throw error;
+  }
 }
 
 export const refreshToken = ({onLoad, onError}: {onLoad?: (res: any) => void, onError?: (error: any) => void}, data: any) => {

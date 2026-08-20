@@ -98,6 +98,7 @@ export const apiUrls = {
   oAuthUrl: `${authUrl}/vk-oauth`,
   authAppUrl: (__DEV) ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk`,
   authAdminAppUrl_: `${authUrl}/vk`,
+  directUrl: `${authUrl}/direct`,
   tokenUrl: `${authUrl}/token`,
   refreshUrl: `${authUrl}/refresh`,
   profileUrl: `${authUrl}/profile`,
