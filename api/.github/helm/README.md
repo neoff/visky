@@ -134,7 +134,9 @@ REPO_NAME=visky-api NAMESPACE=frisky helmfile --file .github/helm/helmfile.yaml.
   --set image.repository=varg/visky-api \
   --set image.tag=1.1.1 \
   --set "ingress.hosts[0].host=visky.envarg.com" \
+  --set "ingress.hosts[1].host=frisky.envarg.com" \
   --set "ingress.tls[0].hosts[0]=visky.envarg.com" \
+  --set "ingress.tls[0].hosts[1]=frisky.envarg.com" \
   --set "ingress.tls[0].secretName=visky-api-tls" \
   apply
 
@@ -153,7 +155,11 @@ helm upgrade --install visky-api .github/helm \
   --set 'ingress.hosts[0].host=visky.envarg.com' \
   --set 'ingress.hosts[0].paths[0].path=/' \
   --set 'ingress.hosts[0].paths[0].pathType=Prefix' \
+  --set 'ingress.hosts[1].host=frisky.envarg.com' \
+  --set 'ingress.hosts[1].paths[0].path=/' \
+  --set 'ingress.hosts[1].paths[0].pathType=Prefix' \
   --set 'ingress.tls[0].hosts[0]=visky.envarg.com' \
+  --set 'ingress.tls[0].hosts[1]=frisky.envarg.com' \
   --set 'ingress.tls[0].secretName=visky-api-tls'
 
 # Деплой на конкретную ноду (mini-n)

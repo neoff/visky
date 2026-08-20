@@ -37,8 +37,13 @@ if ! npm version ${VERSION_NEW} > /dev/null 2>&1; then
 fi
 git stash pop
 
-docker build -t varg/vk-frisky-parser:latest -t varg/vk-frisky-parser:${VERSION_NEW} .
+docker buildx build --platform linux/amd64 \
+ -t varg/visky-api:${VERSION_NEW} \
+ -t varg/visky-api:latest \
+ --push .
 
-docker push varg/vk-frisky-parser:latest && docker push varg/vk-frisky-parser:${VERSION_NEW}
+#docker build -t varg/vk-api:latest -t varg/vk-api:${VERSION_NEW} .
+
+#docker push varg/vk-api:latest && docker push varg/vk-api:${VERSION_NEW}
 
 #helm upgrade frisky-api ./helm --set image.tag=${VERSION_NEW}

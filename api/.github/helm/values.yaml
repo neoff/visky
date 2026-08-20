@@ -4,7 +4,7 @@ appVersion: ""
 version: 0.0.0
 
 image:
-  repository: ""
+  repository: "varg/visky-api"
   tag: "latest" # Current deployed: 1.1.1 in namespace frisky (multi-platform: linux/amd64, linux/arm64)
   pullPolicy: Always
 
@@ -49,8 +49,12 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-  issuerName: letsencrypt-prod
+    - host: frisky.envarg.com
+      paths:
+        - path: /
+          pathType: Prefix
   tls:
     - secretName: visky-api-tls
       hosts:
         - visky.envarg.com
+        - frisky.envarg.com
