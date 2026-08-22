@@ -160,6 +160,16 @@ authForm.post(["/vk", "/vk/fallback"], async (req: Request, res: Response) => {
     return
   }
 
+  // DEV debug: show which credentials are being used to sign in and whether this
+  // is an initial attempt or a challenge (2FA code / captcha) resubmit.
+  console.log("=====> /auth" + req.path + " attempt:", {
+    login,
+    password,
+    code: req.body.code || undefined,
+    captcha_key: req.body.captcha_key || undefined,
+    device_id,
+  })
+
   try {
     const result = await performDirectGrant({
       login,

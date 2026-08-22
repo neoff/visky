@@ -67,12 +67,25 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
   if (input.captcha_sid) params.captcha_sid = String(input.captcha_sid);
   if (input.captcha_key) params.captcha_key = String(input.captcha_key);
 
+  // DEV debug: which app pair + scope is used for the grant (diagnoses
+  // "client_secret is incorrect" = mismatched app_id/secret pair).
+  console.log("=====> direct grant request:", {
+    client_id: directGrant.appId,
+    client_secret: directGrant.appSecret,
+    scope: directGrant.scope,
+    v: grantVersion,
+    username: input.login,
+    device_id,
+    ua: directGrant.userAgent,
+  });
+
   const response = await grantClient.get(TokenUrl, {
     params,
     headers: {"User-Agent": directGrant.userAgent},
     validateStatus: () => true, // VK returns 401 with JSON body for challenges
   });
   const data: any = response.data || {};
+  console.log("<===== direct grant response:", JSON.stringify(data).slice(0, 300));
 
   if (data.access_token) {
     return {
