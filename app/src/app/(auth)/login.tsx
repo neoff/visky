@@ -1,247 +1,141 @@
 import { useSession } from "@/components/SessionProvider";
-import { colors, fonts } from "@/constants";
-import { directAuth } from "@/helpers/network";
+import { apiUrls, colors } from "@/constants";
+import { getAuth } from "@/helpers/network";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useRef, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { WebView } from "react-native-webview";
+import { WebViewNavigation } from "react-native-webview/src/WebViewTypes";
 
-type Challenge =
-  | { kind: "none" }
-  | { kind: "2fa"; validation_type?: string; phone_mask?: string; device_id?: string }
-  | { kind: "captcha"; captcha_sid: string; captcha_img: string; device_id?: string };
-
+/**
+ * Auth is done in a WebView pointed at the backend /auth/vk.
+ *
+ *  - Primary (relay OAuth): backend 302s to VK's real authorize page, so 2FA
+ *    and human-check work natively. VK redirects to blank.html#access_token=...
+ *    WITHOUT a secret; we POST that URL to the backend (/api/auth/token) to
+ *    upgrade it to token+secret before signing in.
+ *  - Fallback (hybrid direct grant): backend serves a login form that returns
+ *    blank.html#...&secret=... directly; we sign in with those fragments as-is.
+ *
+ * We detect the final redirect by "blank.html" + "access_token=" in the URL,
+ * then branch on whether a secret is already present in the hash.
+ */
 const LoginPage = () => {
   const { signIn } = useSession();
   const router = useRouter();
 
-  const [login, setLogin] = useState("");
-  const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-  const [captchaKey, setCaptchaKey] = useState("");
-  const [challenge, setChallenge] = useState<Challenge>({ kind: "none" });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uri, setUri] = useState<string>(apiUrls.authAppUrl);
+  const [busy, setBusy] = useState<boolean>(false);
+  const handled = useRef<boolean>(false);
 
-  const submit = async () => {
-    if (!login || !password) {
-      setError("Enter login and password");
+  const finish = (fragments: Record<string, string>) => {
+    signIn({
+      user_id: fragments.user_id ?? null,
+      access_token: fragments.access_token,
+      secret: fragments.secret,
+      device_id: fragments.device_id,
+      auth_url: null,
+    });
+    router.dismiss();
+  };
+
+  const _onNavigationStateChange = (event: WebViewNavigation) => {
+    const url: string = event.url || "";
+    const isBlank = url.includes("blank.html");
+    const hasToken = url.includes("access_token=");
+    if (!isBlank || !hasToken || handled.current) return;
+
+    handled.current = true; // guard against duplicate nav events
+
+    const hash = url.includes("#") ? url.split("#")[1] : url.split("?")[1] || "";
+    const fragments: Record<string, string> = {};
+    hash.split("&").forEach((pair) => {
+      const [k, v] = pair.split("=");
+      if (k) fragments[k] = decodeURIComponent(v ?? "");
+    });
+
+    // Fallback path already carries a secret -> sign in directly.
+    if (fragments.access_token && fragments.secret) {
+      finish(fragments);
       return;
     }
-    setLoading(true);
-    setError(null);
-    try {
-      const payload: any = { login, password };
-      if (challenge.kind === "2fa") {
-        payload.code = code;
-        payload.device_id = challenge.device_id;
-      }
-      if (challenge.kind === "captcha") {
-        payload.captcha_sid = challenge.captcha_sid;
-        payload.captcha_key = captchaKey;
-        payload.device_id = challenge.device_id;
-      }
 
-      const data = await directAuth(payload);
-
-      if (data?.error === "need_validation") {
-        setChallenge({
-          kind: "2fa",
-          validation_type: data.validation_type,
-          phone_mask: data.phone_mask,
-          device_id: data.device_id,
-        });
-        setError(null);
-        return;
-      }
-      if (data?.error === "need_captcha") {
-        setChallenge({
-          kind: "captcha",
-          captcha_sid: data.captcha_sid,
-          captcha_img: data.captcha_img,
-          device_id: data.device_id,
-        });
-        setCaptchaKey("");
-        setError(null);
-        return;
-      }
-
-      if (data?.access_token && data?.secret && data?.user_id) {
-        signIn({
-          user_id: data.user_id,
-          access_token: data.access_token,
-          secret: data.secret,
-          device_id: data.device_id,
-          auth_url: null,
-        });
-        router.dismiss();
-        return;
-      }
-
-      setError("Unexpected response from server");
-    } catch (e: any) {
-      const msg =
-        e?.response?.data?.errMessage ||
-        e?.message ||
-        "Authentication failed";
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
+    // Relay-OAuth path: no secret in hash. Upgrade via backend /api/auth/token.
+    setBusy(true);
+    getAuth(
+      {
+        onLoad: (data: any) => {
+          setBusy(false);
+          if (data?.access_token && data?.secret) {
+            finish({
+              user_id: data.user_id,
+              access_token: data.access_token,
+              secret: data.secret,
+              device_id: data.device_id,
+            });
+          } else {
+            // Could not obtain a secret (VK ID forced?) — offer the fallback.
+            handled.current = false;
+            setUri(apiUrls.authFallbackUrl);
+          }
+        },
+        onError: () => {
+          setBusy(false);
+          handled.current = false;
+          setUri(apiUrls.authFallbackUrl);
+        },
+      },
+      url
+    );
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <View style={styles.form}>
-        <Text style={styles.title}>Sign in to VK</Text>
+    <View style={styles.container}>
+      <WebView
+        key={uri}
+        originWhitelist={["*"]}
+        source={{ uri }}
+        onNavigationStateChange={_onNavigationStateChange}
+        incognito // fresh cookies each attempt: avoids stale VK ID sessions
+        style={styles.web}
+      />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Phone or email"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          value={login}
-          onChangeText={setLogin}
-          editable={!loading}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={colors.textMuted}
-          secureTextEntry
-          autoCapitalize="none"
-          value={password}
-          onChangeText={setPassword}
-          editable={!loading}
-        />
+      {busy && (
+        <View style={styles.overlay}>
+          <ActivityIndicator color={colors.text} size="large" />
+        </View>
+      )}
 
-        {challenge.kind === "2fa" && (
-          <>
-            <Text style={styles.hint}>
-              {challenge.phone_mask
-                ? `Code sent to ${challenge.phone_mask}`
-                : "Enter the 2FA code"}
-            </Text>
-            <TextInput
-              style={styles.input}
-              placeholder="2FA code"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              value={code}
-              onChangeText={setCode}
-              editable={!loading}
-            />
-          </>
-        )}
-
-        {challenge.kind === "captcha" && (
-          <>
-            <Text style={styles.hint}>Enter the captcha</Text>
-            <Image
-              source={{ uri: challenge.captcha_img }}
-              style={styles.captcha}
-              resizeMode="contain"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Captcha"
-              placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              value={captchaKey}
-              onChangeText={setCaptchaKey}
-              editable={!loading}
-            />
-          </>
-        )}
-
-        {error && <Text style={styles.error}>{error}</Text>}
-
+      {uri !== apiUrls.authFallbackUrl && (
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={submit}
-          disabled={loading}
+          style={styles.fallbackBtn}
+          onPress={() => {
+            handled.current = false;
+            setUri(apiUrls.authFallbackUrl);
+          }}
         >
-          {loading ? (
-            <ActivityIndicator color={colors.text} />
-          ) : (
-            <Text style={styles.buttonText}>
-              {challenge.kind === "none" ? "Sign in" : "Confirm"}
-            </Text>
-          )}
+          <Text style={styles.fallbackText}>Проблемы со входом? Войти через форму</Text>
         </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
+  container: { flex: 1, backgroundColor: colors.background },
+  web: { flex: 1, marginTop: 20 },
+  overlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
     justifyContent: "center",
   },
-  form: {
-    paddingHorizontal: 24,
-    gap: 14,
-  },
-  title: {
-    color: colors.text,
-    fontSize: fonts.lg,
-    fontWeight: "600",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  input: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    color: colors.text,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: fonts.sm,
-  },
-  hint: {
-    color: colors.textMuted,
-    fontSize: fonts.xs,
-  },
-  captcha: {
-    width: "100%",
-    height: 70,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-  },
-  error: {
-    color: colors.primary,
-    fontSize: fonts.xs,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 16,
-    alignItems: "center",
-    marginTop: 6,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: colors.text,
-    fontSize: fonts.sm,
-    fontWeight: "600",
-  },
+  fallbackBtn: { paddingVertical: 14, alignItems: "center", backgroundColor: colors.background },
+  fallbackText: { color: colors.textMuted, fontSize: 13 },
 });
 
 export default LoginPage;

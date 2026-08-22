@@ -1,7 +1,7 @@
 // src/router/api/auth.ts
-import {AndroidClient, deviceIDgen, TokenUrl} from "@/helper"
+import {deviceIDgen} from "@/helper"
 import {checkAuthAndroid, vkMethod} from "@/helper/vk"
-import {directGrant, version} from "@/constants"
+import {performDirectGrant} from "@/helper/directGrant"
 import {Request, Response} from "@/types"
 import express from "express"
 import type {VkRefreshTokenResponse, VkUserInfoResponse} from "@/__genedated__/openapi/vk";
@@ -31,81 +31,59 @@ auth.post("/direct", async (req: Request, res: Response) => {
     return
   }
 
-  // device_id must stay stable across the 2FA/captcha retry and later refreshes.
-  const device_id: string = req.body.device_id || deviceIDgen()
-
-  const params: Record<string, string> = {
-    grant_type: "password",
-    client_id: directGrant.appId,
-    client_secret: directGrant.appSecret,
-    username: login,
-    password: password,
-    scope: directGrant.scope,
-    "2fa_supported": "1",
-    v: version,
-    device_id,
-    lang: "en",
-  }
-  // Ask VK to send the SMS code on the first challenge.
-  if (!req.body.code) params.force_sms = "1"
-  if (req.body.code) params.code = String(req.body.code)
-  if (req.body.captcha_sid) params.captcha_sid = String(req.body.captcha_sid)
-  if (req.body.captcha_key) params.captcha_key = String(req.body.captcha_key)
-
   try {
-    const response = await AndroidClient.get(TokenUrl, {
-      params,
-      headers: {"User-Agent": directGrant.userAgent},
-      validateStatus: () => true, // VK returns 401 with JSON body for challenges
+    const result = await performDirectGrant({
+      login,
+      password,
+      code: req.body.code,
+      captcha_sid: req.body.captcha_sid,
+      captcha_key: req.body.captcha_key,
+      device_id: req.body.device_id, // stable across the 2FA/captcha retry
     })
-    const data: any = response.data || {}
 
-    if (data.access_token) {
-      req.session.access_token = data.access_token
-      req.session.secret = data.secret || ""
-      req.session.user_id = data.user_id?.toString()
-      req.session.device_id = device_id
+    if (result.kind === "ok") {
+      req.session.access_token = result.access_token
+      req.session.secret = result.secret
+      req.session.user_id = result.user_id
+      req.session.device_id = result.device_id
       req.session.created = new Date().toISOString()
       req.session.maxAge = req.session.cookie?.originalMaxAge
       req.session.expires = req.session.cookie?.expires?.getDate() ?? null
-      console.log("✅ direct grant ok:", {user_id: req.session.user_id, has_secret: !!data.secret})
+      console.log("✅ direct grant ok:", {user_id: result.user_id, has_secret: !!result.secret})
       res.status(200).send({
-        access_token: data.access_token,
-        secret: data.secret || "",
-        user_id: req.session.user_id,
-        device_id,
+        access_token: result.access_token,
+        secret: result.secret,
+        user_id: result.user_id,
+        device_id: result.device_id,
       }).end()
       return
     }
 
-    if (data.error === "need_validation") {
-      console.warn("🔐 direct grant: 2FA required", data.validation_type)
+    if (result.kind === "need_validation") {
+      console.warn("🔐 direct grant: 2FA required", result.validation_type)
       res.status(401).send({
         error: "need_validation",
-        validation_type: data.validation_type,       // 2fa_sms | 2fa_app | 2fa_callreset
-        phone_mask: data.phone_mask,
-        validation_sid: data.validation_sid,
-        redirect_uri: data.redirect_uri,
-        device_id,
+        validation_type: result.validation_type,       // 2fa_sms | 2fa_app | 2fa_callreset
+        phone_mask: result.phone_mask,
+        validation_sid: result.validation_sid,
+        device_id: result.device_id,
       }).end()
       return
     }
 
-    if (data.error === "need_captcha") {
+    if (result.kind === "need_captcha") {
       console.warn("🧩 direct grant: captcha required")
       res.status(401).send({
         error: "need_captcha",
-        captcha_sid: data.captcha_sid,
-        captcha_img: data.captcha_img,
-        device_id,
+        captcha_sid: result.captcha_sid,
+        captcha_img: result.captcha_img,
+        device_id: result.device_id,
       }).end()
       return
     }
 
-    console.error("❌ direct grant failed:", data)
-    res.status(400).send({
-      errMessage: data.error_description || data.error || "Authentication failed",
-    }).end()
+    console.error("❌ direct grant failed:", result.message)
+    res.status(400).send({errMessage: result.message}).end()
   } catch (error: any) {
     console.error("❌ direct grant exception:", error?.message)
     res.status(500).send({errMessage: error?.message || "Direct grant failed"}).end()
@@ -192,7 +170,10 @@ auth.post("/token", async (req: Request, res: Response) => {
   req.session.maxAge = req.session.cookie.originalMaxAge
   req.session.created = new Date().toISOString()
 
-  if (req.session.secret !== undefined && (req.session.secret !== null || req.session.secret !== "")) {
+  // device_id must exist before refreshSession: it is baked into the audio
+  // request signature (md5(url+secret)) and MUST stay stable for the session.
+  // The relay-OAuth hash carries no secret, so mint one here if absent.
+  if (!req.session.device_id) {
     req.session.device_id = deviceIDgen()
     console.info("===Token: set session new device_id: ", req.session.device_id)
   }

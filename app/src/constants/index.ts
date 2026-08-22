@@ -97,6 +97,7 @@ export const apiUrls = {
   playerUrl: playerUrl,
   oAuthUrl: `${authUrl}/vk-oauth`,
   authAppUrl: (__DEV) ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk`,
+  authFallbackUrl: (__DEV) ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk/fallback`,
   authAdminAppUrl_: `${authUrl}/vk`,
   directUrl: `${authUrl}/direct`,
   tokenUrl: `${authUrl}/token`,

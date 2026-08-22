@@ -21,5 +21,5 @@ COPY --from=build /app/dist ./
 COPY --from=build /swagger-static ./node_modules/swagger-ui-dist/
 COPY --from=build /app/docs ./docs
 COPY --from=build /app/public ./public
-COPY --from=build /app/.env ./
+#COPY --from=build /app/.env ./
 CMD ["node", "index.js"]

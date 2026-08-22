@@ -70,20 +70,20 @@ const apiRequest = async (url: string, method: Method | string, {data, next}:{da
     });
 }
 
-export const getAuth = ({onLoad}: {onLoad?: (fragments: any) => void}, url?: string | null) => {
+export const getAuth = ({onLoad, onError}: {onLoad?: (fragments: any) => void, onError?: (error: any) => void}, url?: string | null) => {
   console.debug("getAuth url:", url);
   if (!url) return;
   apiRequest(apiUrls.tokenUrl, 'POST', {data:{"vkurl": url}})
     .then((data) => {
       console.log("--->getAuth-response:", data);
       if(data.redirect){
-        return getAuth({onLoad: onLoad}, data.redirect);
+        return getAuth({onLoad, onError}, data.redirect);
       }
       onLoad?.(data);
     })
     .catch((error: AxiosError) => {
       console.error(`===ERROR! getAuth:${error}`);
-      throw error;
+      onError?.(error);
     });
 }
 
