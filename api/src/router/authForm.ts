@@ -192,14 +192,9 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
   serveLoginError(req, res, result.message)
 }
 
-// GET /vk: the clean built-in login form (inline CSS, native submit, ZERO
-// external deps). We deliberately do NOT serve the VK snapshot (docs/auth.html):
-// it pulls 11 external CSS + 34 JS bundles from st*.vk.com and its "Log in"
-// button submits via VK's own JS. On older WebViews (Samsung Android 9 ships
-// Chromium ~66; the API-31 emulator ~91) that CSS/JS fails to load/parse, so the
-// page renders UNSTYLED and the button does nothing. The clean form works on
-// every WebView and posts to the SAME grant endpoint. Use ?real=1 to opt back
-// into the snapshot for debugging. ?reset=1 clears in-progress challenge state.
+// GET /vk: show VK's real login page (falls back to the clean form if the
+// snapshot is missing). GET /vk/fallback: the clean built-in form.
+// ?reset=1 clears any in-progress challenge state.
 authForm.get("/vk", async (req: Request, res: Response) => {
   if (req.query.reset) delete (req.session as any).fb
   // The app passes its stable, real device_id (persisted in SecureStore). A
@@ -207,8 +202,7 @@ authForm.get("/vk", async (req: Request, res: Response) => {
   // device to VK's anti-fraud (a new random id every attempt reads as many
   // devices and escalates to captcha faster). Stored for the POST/resume below.
   if (req.query.device_id) (req.session as any).dev = String(req.query.device_id)
-  if (req.query.real && serveVkLoginPage(res)) return
-  html(res, loginForm())
+  if (!serveVkLoginPage(res)) html(res, loginForm())
 })
 
 authForm.get("/vk/fallback", async (req: Request, res: Response) => {
@@ -216,9 +210,11 @@ authForm.get("/vk/fallback", async (req: Request, res: Response) => {
   html(res, loginForm(undefined, "/auth/vk/fallback"))
 })
 
-// Re-render the clean login form with an error (works on every WebView).
+// Re-render the login page with an error — real VK page for /vk, clean form for
+// the fallback path.
 const serveLoginError = (req: Request, res: Response, message: string) => {
   const action = req.path.includes("/fallback") ? "/auth/vk/fallback" : "/auth/vk"
+  if (action === "/auth/vk" && serveVkLoginPage(res, message)) return
   html(res, loginForm(message, action))
 }
 

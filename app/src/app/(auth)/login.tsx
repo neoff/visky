@@ -272,8 +272,14 @@ const LoginPage = () => {
     console.log("[login nav]", url);
     const hasToken = url.includes("access_token=");
 
-    // Back on VK's captcha page — allow a fresh resume cycle.
-    if (url.includes("not_robot_captcha")) resuming.current = false;
+    // Back on VK's captcha page — allow a fresh resume cycle AND drop the busy
+    // overlay. The overlay is absolutely positioned over the WebView, so leaving
+    // it up while the captcha renders looks like an endless spinner and swallows
+    // every tap on the checkbox (the reported "crutilka" hang).
+    if (url.includes("not_robot_captcha")) {
+      resuming.current = false;
+      setBusy(false);
+    }
 
     // Terminal success — ANY redirect carrying the token (matches the original
     // lenient handler; not tied to a "blank.html" path).
