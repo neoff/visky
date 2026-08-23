@@ -1,6 +1,6 @@
 import {vkTokenAncor} from "@/configurations"
 import {deviceIDgen} from "@/helper"
-import {performDirectGrant} from "@/helper/directGrant"
+import {performDirectGrant, requestValidationResend} from "@/helper/directGrant"
 import {Request, Response} from "@/types"
 import express from "express"
 import fs, {readFileSync} from "fs"
@@ -64,56 +64,125 @@ const serveVkLoginPage = (res: Response, error?: string): boolean => {
   return true
 }
 
+// VK-styled shell for the pages we render ourselves (2FA, captcha fallback,
+// errors). It deliberately mirrors the look of VK's own mobile login page —
+// light grey backdrop, white card, VK logo, blue primary button — so the flow
+// does not jump from VK's page into an unrelated black screen.
+//
+// Everything is inline: no external CSS/JS. VK's real page pulls ~11 stylesheets
+// and 34 bundles from st*.vk.com, which older WebViews fail to load, and we must
+// not repeat that here.
+//
+// The card sits at the TOP, not vertically centred: on a phone the on-screen
+// keyboard covers the lower half, and a centred card pushes the submit button
+// under it so taps land on the keyboard instead.
 const PAGE = (inner: string) => `<!doctype html>
 <html lang="ru"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Вход VK</title>
+<title>VK</title>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
-  body { margin:0; background:#000; color:#fff; font-family:-apple-system,Segoe UI,Roboto,sans-serif;
-         min-height:100vh; display:flex; align-items:center; justify-content:center; }
-  .card { width:100%; max-width:360px; padding:24px; }
-  h1 { font-size:22px; font-weight:600; margin:0 0 16px; text-align:center; }
-  .hint { color:#9ca3af; font-size:13px; margin:0 0 12px; }
-  input { width:100%; background:rgba(255,255,255,.08); color:#fff; border:0; border-radius:10px;
-          padding:14px 16px; font-size:16px; margin-bottom:12px; }
-  button { width:100%; background:#fc3c44; color:#fff; border:0; border-radius:10px; padding:16px;
-           font-size:16px; font-weight:600; }
-  .err { color:#fc3c44; font-size:13px; margin:0 0 12px; }
-  .captcha { width:100%; background:#fff; border-radius:8px; margin-bottom:12px; }
-  a { color:#9ca3af; font-size:13px; display:block; text-align:center; margin-top:16px; }
-</style></head><body><div class="card">${inner}</div></body></html>`
+  body { margin:0; background:#edeef0; color:#000;
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+         min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:24px 12px; }
+  .card { width:100%; max-width:360px; background:#fff; border-radius:12px; padding:24px 20px 20px; }
+  .logo { display:block; margin:0 auto 16px; width:44px; height:44px; border-radius:10px; background:#07f;
+          color:#fff; font-weight:700; font-size:19px; line-height:44px; text-align:center; letter-spacing:-.5px; }
+  h1 { font-size:17px; font-weight:500; margin:0 0 4px; text-align:center; color:#000; }
+  .hint { color:#818c99; font-size:14px; line-height:19px; margin:0 0 16px; text-align:center; }
+  label { display:block; color:#818c99; font-size:13px; margin:0 0 6px; }
+  input { width:100%; background:#f2f3f5; color:#000; border:1px solid transparent; border-radius:10px;
+          padding:13px 14px; font-size:16px; margin-bottom:14px; }
+  input:focus { outline:none; border-color:#3f8ae0; background:#fff; }
+  button { width:100%; background:#3f8ae0; color:#fff; border:0; border-radius:10px; padding:14px;
+           font-size:15px; font-weight:500; }
+  button:active { background:#3576c0; }
+  button[disabled] { background:#c4c8cc; }
+  .err { background:#fdecec; color:#e64646; font-size:14px; border-radius:8px; padding:10px 12px; margin:0 0 14px; }
+  .ok { background:#eaf4ff; color:#3f8ae0; font-size:14px; border-radius:8px; padding:10px 12px; margin:0 0 14px; }
+  .captcha { width:100%; border-radius:8px; margin-bottom:14px; }
+  a { color:#3f8ae0; font-size:14px; display:block; text-align:center; margin-top:14px; text-decoration:none; }
+</style></head><body><div class="card"><div class="logo">VK</div>${inner}</div></body></html>`
 
 const loginForm = (error?: string, action: string = "/auth/vk") => PAGE(`
-  <h1>Вход в VK</h1>
+  <h1>Вход</h1>
+  <p class="hint">Введите данные аккаунта VK</p>
   ${error ? `<p class="err">${error}</p>` : ""}
   <form method="post" action="${action}">
-    <input name="email" type="text" inputmode="email" autocapitalize="none" autocorrect="off"
-           placeholder="Телефон или email" autofocus>
-    <input name="pass" type="password" placeholder="Пароль">
+    <label>Телефон или email</label>
+    <input name="email" type="text" inputmode="email" autocapitalize="none" autocorrect="off" autofocus>
+    <label>Пароль</label>
+    <input name="pass" type="password" enterkeyhint="go">
     <button type="submit">Войти</button>
   </form>`)
 
-const smsForm = (phoneMask?: string) => PAGE(`
-  <h1>Код подтверждения</h1>
-  <p class="hint">${phoneMask ? `Код отправлен на ${phoneMask}` : "Введите код из SMS / приложения"}</p>
+// Wording for every 2FA channel VK can pick. This matters: for `2fa_callreset`
+// VK places a FLASH CALL and the code is the last 4 digits of the CALLING
+// number — no SMS is ever sent, so a "введите код из SMS" prompt leaves the user
+// waiting for a message that will never arrive.
+const validationCopy = (type?: string): {title: string; hint: string; len: number} => {
+  switch (type) {
+    case "2fa_callreset":
+    case "callreset":
+      return {
+        title: "Подтверждение входа",
+        hint: "Сейчас поступит звонок. Введите последние 4 цифры номера, с которого звонят — отвечать не нужно.",
+        len: 4,
+      }
+    case "2fa_app":
+      return {title: "Код из приложения", hint: "Введите код из приложения-аутентификатора.", len: 6}
+    case "2fa_sms":
+      return {title: "Код из SMS", hint: "Введите код из SMS.", len: 6}
+    default:
+      return {title: "Подтверждение входа", hint: "Введите код подтверждения.", len: 6}
+  }
+}
+
+type ValState = {sid?: string; type?: string; mask?: string; resend?: string}
+
+const smsForm = (v: ValState, notice?: string, delay?: number) => {
+  const c = validationCopy(v.type)
+  // VK returns `delay` seconds before it will actually re-deliver; asking sooner
+  // just returns the same countdown, so keep the button disabled until then.
+  const wait = typeof delay === "number" && delay > 0 ? delay : 0
+  const canResend = !!v.sid && !!v.resend
+  return PAGE(`
+  <h1>${c.title}</h1>
+  <p class="hint">${c.hint}${v.mask ? `<br>${v.mask}` : ""}</p>
+  ${notice ? `<p class="ok">${notice}</p>` : ""}
   <form method="post" action="/auth/vk">
+    <label>Код</label>
     <input name="code" type="text" inputmode="numeric" autocomplete="one-time-code"
-           placeholder="6-значный код" autofocus>
+           maxlength="${c.len}" placeholder="${"•".repeat(c.len)}" autofocus>
     <button type="submit">Подтвердить</button>
   </form>
+  ${canResend ? `<a id="rs" href="/auth/vk/validate-resend">Запросить код повторно${v.resend === "sms" ? " по SMS" : ""}</a>
+  <script>
+    (function(){
+      var left = ${wait}, a = document.getElementById('rs'), t = a.textContent;
+      if (!left) return;
+      a.style.color = '#818c99';
+      a.removeAttribute('href');
+      var tick = function(){
+        a.textContent = left > 0 ? t + ' (' + left + ')' : t;
+        if (left-- <= 0) { a.href = '/auth/vk/validate-resend'; a.style.color = '#3f8ae0'; return; }
+        setTimeout(tick, 1000);
+      };
+      tick();
+    })();
+  </script>` : ""}
   <a href="/auth/vk?reset=1">Начать заново</a>`)
+}
 
 const captchaForm = (captchaImg: string, captchaSid: string) => PAGE(`
-  <h1>Проверка</h1>
+  <h1>Подтвердите, что вы не робот</h1>
   <p class="hint">Введите символы с картинки</p>
   <img class="captcha" src="${captchaImg}" alt="captcha">
   <form method="post" action="/auth/vk">
     <input type="hidden" name="captcha_sid" value="${captchaSid}">
-    <input name="captcha_key" type="text" autocapitalize="none" autocorrect="off"
-           placeholder="Символы с картинки" autofocus>
+    <input name="captcha_key" type="text" autocapitalize="none" autocorrect="off" autofocus>
     <button type="submit">Подтвердить</button>
   </form>
   <a href="/auth/vk?reset=1">Начать заново</a>`)
@@ -147,8 +216,21 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
   }
 
   if (result.kind === "need_validation") {
-    console.warn("🔐 2FA required", result.validation_type)
-    html(res, smsForm(result.phone_mask))
+    console.warn("🔐 2FA required", {
+      type: result.validation_type,
+      resend: result.validation_resend,
+      vk_says: result.description,
+    })
+    // Keep the challenge details around so /validate-resend can ask VK to send
+    // the code again (and so the form keeps showing the right instructions).
+    const val: ValState = {
+      sid: result.validation_sid,
+      type: result.validation_type,
+      mask: result.phone_mask,
+      resend: result.validation_resend,
+    }
+    ;(req.session as any).val = val
+    html(res, smsForm(val))
     return
   }
 
@@ -305,6 +387,27 @@ authForm.get(["/vk/resume", "/vk/fallback/resume"], async (req: Request, res: Re
     console.error("======> resume grant ERROR:", error?.message)
     serveLoginError(req, res, error?.message || "Ошибка авторизации")
   }
+})
+
+// Ask VK to re-deliver the 2FA code (e.g. switch a flash call over to SMS).
+// VK enforces its own countdown: calling early just returns the remaining
+// `delay`, which we render as a disabled link with a timer.
+authForm.get("/vk/validate-resend", async (req: Request, res: Response) => {
+  const val = (req.session as any).val as ValState | undefined
+  if (!val?.sid) {
+    serveLoginError(req, res, "Сессия истекла. Войдите заново.")
+    return
+  }
+  const r = await requestValidationResend(val.sid)
+  if (r.validation_type) val.type = `2fa_${r.validation_type}`.replace("2fa_2fa_", "2fa_")
+  if (r.validation_resend) val.resend = r.validation_resend
+  ;(req.session as any).val = val
+  const notice = r.error
+    ? undefined
+    : r.delay
+      ? `Код можно запросить снова через ${r.delay} с.`
+      : "Код отправлен повторно."
+  html(res, smsForm(val, notice ?? `Не удалось запросить код: ${r.error}`, r.delay))
 })
 
 authForm.get('/blank.html', async (req: Request, res: Response) => {

@@ -84,7 +84,19 @@ export type GrantInput = {
 
 export type GrantResult =
   | {kind: "ok"; access_token: string; secret: string; user_id: string; device_id: string}
-  | {kind: "need_validation"; validation_type?: string; phone_mask?: string; validation_sid?: string; device_id: string}
+  | {
+      kind: "need_validation"
+      // `2fa_callreset` (code = last 4 digits of an INCOMING CALL — no SMS is
+      // sent at all), `2fa_sms`, `2fa_app`, ...
+      validation_type?: string
+      phone_mask?: string
+      validation_sid?: string
+      // VK's own wording, e.g. "use last 4 digits from incoming call"
+      description?: string
+      // Channel a resend would switch to (e.g. "sms")
+      validation_resend?: string
+      device_id: string
+    }
   | {kind: "need_captcha"; captcha_sid: string; captcha_img: string; redirect_uri?: string; device_id: string}
   | {kind: "error"; message: string; raw?: any};
 
@@ -162,6 +174,8 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
       validation_type: data.validation_type,
       phone_mask: data.phone_mask,
       validation_sid: data.validation_sid,
+      description: data.error_description,
+      validation_resend: data.validation_resend,
       device_id,
     };
   }
@@ -183,4 +197,44 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
     message: data.error_description || data.error || "Authentication failed",
     raw: data,
   };
+}
+
+/**
+ * Ask VK to re-send the 2FA challenge for an in-flight validation session.
+ *
+ * VK does NOT always use SMS: for `2fa_callreset` it places a flash call and the
+ * code is the last 4 digits of the CALLING number, so waiting for an SMS is
+ * pointless. `validation_resend` in the grant reply names the channel a resend
+ * switches to, and the reply here carries `delay` — seconds VK wants us to wait
+ * before it will actually re-deliver (calling earlier just returns the same
+ * countdown). Returns whatever VK reports so the UI can show a real timer.
+ */
+export async function requestValidationResend(
+  sid: string,
+): Promise<{validation_type?: string; validation_resend?: string; delay?: number; error?: string}> {
+  const qp = new URLSearchParams({
+    sid,
+    client_id: directGrant.appId,
+    client_secret: directGrant.appSecret,
+    v: grantVersion,
+    lang: "ru",
+  });
+  try {
+    const data = await h2GetJson("https://api.vk.com", `/method/auth.validatePhone?${qp.toString()}`, {
+      "user-agent": directGrant.userAgent,
+      accept: "*/*",
+    });
+    console.log("<===== validatePhone:", JSON.stringify(data).slice(0, 200));
+    if (data?.response) {
+      return {
+        validation_type: data.response.validation_type,
+        validation_resend: data.response.validation_resend,
+        delay: data.response.delay,
+      };
+    }
+    return {error: data?.error?.error_msg || data?.error || "resend failed"};
+  } catch (e: any) {
+    console.error("======> validatePhone ERROR:", e?.message);
+    return {error: e?.message || "resend failed"};
+  }
 }
