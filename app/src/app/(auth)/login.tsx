@@ -182,6 +182,7 @@ const LoginPage = () => {
   // Returns true when the URL was a terminal redirect we consumed.
   const processUrl = (url: string): boolean => {
     if (!url) return false;
+    console.log("[login nav]", url);
     const hasToken = url.includes("access_token=");
 
     // Back on VK's captcha page — allow a fresh resume cycle.
@@ -190,14 +191,17 @@ const LoginPage = () => {
     // Terminal success — ANY redirect carrying the token (matches the original
     // lenient handler; not tied to a "blank.html" path).
     if (hasToken && !handled.current) {
+      console.log("[login] -> token found, finishing");
       handled.current = true;
       parseAndFinish(url);
       return true;
     }
 
-    // Captcha solved but no success_token captured via the bridge — keyless
-    // resume (best effort).
+    // Captcha solved (blank.html?success=1, no token): continue the grant via
+    // /resume. If the bridge success_token was captured, _onMessage already fired
+    // a keyed resume; otherwise this keyless resume advances (e.g. to 2FA).
     if (url.includes("blank.html") && url.includes("success=1") && !resuming.current) {
+      console.log("[login] -> captcha solved (success=1), resuming grant");
       resuming.current = true;
       setBusy(true);
       setUri(apiUrls.authResumeUrl);
