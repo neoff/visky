@@ -98,6 +98,9 @@ export const apiUrls = {
   oAuthUrl: `${authUrl}/vk-oauth`,
   authAppUrl: (__DEV) ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk`,
   authFallbackUrl: (__DEV) ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk/fallback`,
+  // After the user solves VK's real captcha, VK lands on blank.html?success=1;
+  // the WebView loads this to retry the grant (same device_id) and get the token.
+  authResumeUrl: (__DEV) ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk/resume`,
   authAdminAppUrl_: `${authUrl}/vk`,
   directUrl: `${authUrl}/direct`,
   tokenUrl: `${authUrl}/token`,

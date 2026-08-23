@@ -79,7 +79,7 @@ export type GrantInput = {
 export type GrantResult =
   | {kind: "ok"; access_token: string; secret: string; user_id: string; device_id: string}
   | {kind: "need_validation"; validation_type?: string; phone_mask?: string; validation_sid?: string; device_id: string}
-  | {kind: "need_captcha"; captcha_sid: string; captcha_img: string; device_id: string}
+  | {kind: "need_captcha"; captcha_sid: string; captcha_img: string; redirect_uri?: string; device_id: string}
   | {kind: "error"; message: string; raw?: any};
 
 /**
@@ -161,6 +161,11 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
       kind: "need_captcha",
       captcha_sid: data.captcha_sid,
       captcha_img: data.captcha_img,
+      // The real interactive VK captcha ("not_robot"). captcha_img is dead for
+      // source=api-oauth (302 -> image_not_supported). redirect_uri renders the
+      // solvable widget; with &blank=1 it navigates to
+      // https://oauth.vk.com/blank.html?success=1 on success.
+      redirect_uri: data.redirect_uri,
       device_id,
     };
   }

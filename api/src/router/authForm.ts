@@ -118,11 +118,59 @@ const captchaForm = (captchaImg: string, captchaSid: string) => PAGE(`
   </form>
   <a href="/auth/vk?reset=1">Начать заново</a>`)
 
-type FbState = {login: string; password: string; device_id: string}
+type FbState = {login: string; password: string; device_id: string; captcha_sid?: string}
 
 const html = (res: Response, body: string) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8")
   res.send(body).end()
+}
+
+// Turn a grant result into the right WebView response, shared by the initial
+// POST and the post-captcha /resume. On success -> blank.html#... (app catches
+// the hash). On need_captcha -> redirect the WebView to VK's REAL interactive
+// captcha (redirect_uri); the snapshot image captcha is dead for api-oauth. With
+// &blank=1 VK navigates to oauth.vk.com/blank.html?success=1 after the user
+// solves it, which the app catches and calls /auth/vk/resume to finish the grant.
+const finalizeGrant = (req: Request, res: Response, result: any): void => {
+  if (result.kind === "ok") {
+    delete (req.session as any).fb
+    req.session.access_token = result.access_token
+    req.session.secret = result.secret
+    req.session.user_id = result.user_id
+    req.session.device_id = result.device_id
+    console.log("✅ grant ok:", {user_id: result.user_id, has_secret: !!result.secret})
+    res.redirect(
+      `blank.html#success=1&access_token=${result.access_token}` +
+      `&user_id=${result.user_id}&secret=${result.secret}&device_id=${result.device_id}`
+    )
+    return
+  }
+
+  if (result.kind === "need_validation") {
+    console.warn("🔐 2FA required", result.validation_type)
+    html(res, smsForm(result.phone_mask))
+    return
+  }
+
+  if (result.kind === "need_captcha") {
+    console.warn("🧩 captcha required; redirect_uri?", !!result.redirect_uri)
+    // Remember captcha_sid so /resume can retry the same challenge.
+    const fb = (req.session as any).fb as FbState | undefined
+    if (fb) fb.captcha_sid = result.captcha_sid
+    if (result.redirect_uri) {
+      // Send the WebView straight to VK's real captcha page (blank=1 => it lands
+      // on oauth.vk.com/blank.html?success=1 when solved).
+      res.redirect(result.redirect_uri)
+      return
+    }
+    // Fallback (no redirect_uri): the legacy image page (usually broken now).
+    html(res, captchaForm(result.captcha_img, result.captcha_sid))
+    return
+  }
+
+  console.error("❌ grant failed:", result.message)
+  delete (req.session as any).fb
+  serveLoginError(req, res, result.message)
 }
 
 // GET /vk: show VK's real login page (falls back to the clean form if the
@@ -170,6 +218,10 @@ authForm.post(["/vk", "/vk/fallback"], async (req: Request, res: Response) => {
     device_id,
   })
 
+  // Persist creds + device_id BEFORE the attempt so a challenge (captcha/2FA)
+  // can resume the grant with the SAME device_id. finalizeGrant clears fb on ok.
+  ;(req.session as any).fb = {login, password, device_id} as FbState
+
   try {
     const result = await performDirectGrant({
       login,
@@ -179,42 +231,40 @@ authForm.post(["/vk", "/vk/fallback"], async (req: Request, res: Response) => {
       captcha_sid: req.body.captcha_sid,
       captcha_key: req.body.captcha_key,
     })
-
-    if (result.kind === "ok") {
-      delete (req.session as any).fb
-      req.session.access_token = result.access_token
-      req.session.secret = result.secret
-      req.session.user_id = result.user_id
-      req.session.device_id = result.device_id
-      console.log("✅ fallback grant ok:", {user_id: result.user_id, has_secret: !!result.secret})
-      // WebView catches this hash and stores the session (secret already present).
-      res.redirect(
-        `blank.html#success=1&access_token=${result.access_token}` +
-        `&user_id=${result.user_id}&secret=${result.secret}&device_id=${result.device_id}`
-      )
-      return
-    }
-
-    // Persist creds + device_id so the challenge submit can resume the grant.
-    // (device_id is stable; the ok-branch already returned above.)
-    ;(req.session as any).fb = {login, password, device_id} as FbState
-
-    if (result.kind === "need_validation") {
-      console.warn("🔐 fallback: 2FA required", result.validation_type)
-      html(res, smsForm(result.phone_mask))
-      return
-    }
-    if (result.kind === "need_captcha") {
-      console.warn("🧩 fallback: captcha required")
-      html(res, captchaForm(result.captcha_img, result.captcha_sid))
-      return
-    }
-
-    console.error("❌ grant failed:", result.message)
-    delete (req.session as any).fb
-    serveLoginError(req, res, result.message)
+    finalizeGrant(req, res, result)
   } catch (error: any) {
     console.error("======> grant ERROR:", error?.message)
+    serveLoginError(req, res, error?.message || "Ошибка авторизации")
+  }
+})
+
+// After the user solves VK's real captcha, VK navigates the WebView to
+// oauth.vk.com/blank.html?success=1 (no token). The app catches that and loads
+// this endpoint, which retries the SAME grant (same device_id) — VK has cleared
+// the not_robot flag for this session/device, so the token is now issued.
+authForm.get(["/vk/resume", "/vk/fallback/resume"], async (req: Request, res: Response) => {
+  const prev = (req.session as any).fb as FbState | undefined
+  if (!prev?.login || !prev?.password) {
+    console.warn("⚠️ /resume without session creds")
+    serveLoginError(req, res, "Сессия истекла. Войдите заново.")
+    return
+  }
+  console.log("=====> /auth" + req.path + " (post-captcha resume):", {
+    login: prev.login,
+    device_id: prev.device_id,
+    captcha_sid: prev.captcha_sid,
+  })
+  try {
+    // Retry with the same device_id; no captcha params — solving the not_robot
+    // challenge clears the flag server-side.
+    const result = await performDirectGrant({
+      login: prev.login,
+      password: prev.password,
+      device_id: prev.device_id,
+    })
+    finalizeGrant(req, res, result)
+  } catch (error: any) {
+    console.error("======> resume grant ERROR:", error?.message)
     serveLoginError(req, res, error?.message || "Ошибка авторизации")
   }
 })

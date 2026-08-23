@@ -27,6 +27,7 @@ const LoginPage = () => {
   const [uri, setUri] = useState<string>(apiUrls.authAppUrl);
   const [busy, setBusy] = useState<boolean>(false);
   const handled = useRef<boolean>(false);
+  const resuming = useRef<boolean>(false);
 
   const finish = (fragments: Record<string, string>) => {
     signIn({
@@ -43,6 +44,19 @@ const LoginPage = () => {
     const url: string = event.url || "";
     const isBlank = url.includes("blank.html");
     const hasToken = url.includes("access_token=");
+
+    // Re-entering VK's real captcha (e.g. a second challenge) — allow another resume.
+    if (url.includes("not_robot_captcha")) resuming.current = false;
+
+    // Captcha solved: VK lands on oauth.vk.com/blank.html?success=1 (NO token).
+    // Retry the grant via the backend (same device_id kept in the server session).
+    if (isBlank && !hasToken && url.includes("success=1") && !resuming.current) {
+      resuming.current = true;
+      setBusy(true);
+      setUri(apiUrls.authResumeUrl);
+      return;
+    }
+
     if (!isBlank || !hasToken || handled.current) return;
 
     handled.current = true; // guard against duplicate nav events
@@ -92,7 +106,6 @@ const LoginPage = () => {
   return (
     <View style={styles.container}>
       <WebView
-        key={uri}
         originWhitelist={["*"]}
         source={{ uri }}
         onNavigationStateChange={_onNavigationStateChange}
