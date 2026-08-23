@@ -29,20 +29,23 @@ export const version = "5.103"
  * VK ID web-OAuth never returns `secret` and has no `audio` scope, so audio
  * access requires emulating a legacy audio-capable app via oauth.vk.com/token.
  * client_id and client_secret MUST be a matching pair (else invalid_client).
- * Configurable via env; defaults to Kate Mobile (most reliable for audio).
+ *
+ * Default = VK Android (2274003). Kate Mobile (2685278) is heavily abused and
+ * its client is globally rate-limited: the password grant returns 9;Flood
+ * control even from a clean IP with correct creds. VK Android is not throttled
+ * that way (verified 2026-08-23: 2274003 -> 200 + token + secret + working
+ * audio.get, while 2685278 flooded with the SAME creds from the same IP in the
+ * same second). Override via VK_DIRECT_* env only — no OFFICIAL_APP_ID/
+ * VK_ADMIN_ID fallbacks (VK_ADMIN_ID 6121396 is a blocked app; OFFICIAL_APP_ID
+ * silently forced the flooded Kate pair when set).
  */
 export const directGrant = {
-  appId: process.env.VK_DIRECT_APP_ID
-    || process.env.OFFICIAL_APP_ID
-    || process.env.VK_ADMIN_ID
-    || "2685278", // Kate Mobile
-  appSecret: process.env.VK_DIRECT_APP_SECRET
-    || process.env.OFFICIAL_APP_SECRET
-    || "lxhD8OD7dMsqtXIm5IUY", // Kate Mobile
+  appId: process.env.VK_DIRECT_APP_ID || "2274003", // VK Android (audio-capable, not rate-limited)
+  appSecret: process.env.VK_DIRECT_APP_SECRET || "hHbZxrka2uZ6jB1inYsH",
   scope: process.env.VK_DIRECT_SCOPE || "nohttps,audio,offline",
-  // User-Agent used for the token request; Kate Mobile UA pairs with its app id.
+  // User-Agent MUST pair with the app id (VK Android UA for the VK Android app).
   userAgent: process.env.VK_DIRECT_UA
-    || "KateMobileAndroid/56 lite-460 (Android 4.4.2; SDK 19; x86; unknown Android SDK built for x86; en)",
+    || "VKAndroidApp/7.7-9034 (Android 12; SDK 31; arm64-v8a; ru)",
 }
 
 

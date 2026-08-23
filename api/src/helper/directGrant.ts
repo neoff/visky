@@ -3,24 +3,69 @@
 // ONLY path that yields an audio-capable access_token + signing `secret`
 // (VK ID web-OAuth returns neither). Used by both the JSON endpoint
 // (/api/auth/direct) and the webview HTML fallback flow (/auth/vk/fallback).
-import axios from "axios";
+import * as http2 from "http2";
 import {TokenUrl, deviceIDgen} from ".";
 import {directGrant} from "@/constants";
 
-// A COOKIELESS client for the token grant. The shared AndroidClient is wrapped
-// with a cookie jar and accumulates VK anti-fraud/session cookies across the
-// process's many audio calls; sending those on the password grant makes VK see
-// an established "session" and apply stricter bruteforce/flood throttling.
-// A fresh cookieless request looks like a clean device and is NOT flood-locked
-// (verified 2026-08-22: identical params flood via AndroidClient but succeed via
-// a cookieless request within the same second).
-const grantClient = axios.create();
+// !!! THE GRANT MUST GO OVER HTTP/2 !!!
+// VK's anti-bot on oauth.vk.com/token HARD-floods HTTP/1.1 requests
+// (`9;Flood control` / `password_bruteforce_attempt`) but only soft-challenges
+// HTTP/2 requests (`need_captcha`, which is recoverable). Node's axios and the
+// `https` module speak HTTP/1.1, so an axios-based grant floods on EVERY attempt
+// even with correct creds, the right app pair, and a clean IP. This is NOT an
+// IP or account rate-limit — it is a protocol/fingerprint check.
+// Proven 2026-08-23 from one machine, same creds, within the same second:
+//   curl --http1.1  -> 9;Flood control        (hard)
+//   curl --http2    -> need_captcha / token    (soft, passes)
+//   node axios/https-> 9;Flood control         (HTTP/1.1, hard)
+//   node http2      -> need_captcha / token    (soft, passes)
+// So we issue the grant with the native `http2` module. Do NOT swap this back to
+// axios/got/https or the flood returns.
 
 // Grant API version is INDEPENDENT of the global `version` (5.103) used for
 // audio signing. Old versions (5.103) make oauth.vk.com/token demand a captcha
-// on password grant, which then trips flood control; 5.131+ returns the token
-// directly. Kept overridable via env.
+// on password grant; 5.131+ returns the token directly. Kept overridable.
 const grantVersion = process.env.VK_DIRECT_V || "5.131";
+
+// Minimal HTTP/2 GET. VK returns a JSON body even on 401 (challenges), so we
+// always parse the body regardless of status.
+function h2GetJson(
+  origin: string,
+  path: string,
+  headers: Record<string, string>,
+  timeoutMs = 20000,
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const client = http2.connect(origin);
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      try {
+        client.close();
+      } catch {}
+      fn();
+    };
+    client.on("error", (e) => finish(() => reject(e)));
+
+    const req = client.request({":method": "GET", ":path": path, ...headers});
+    req.setEncoding("utf8");
+    req.setTimeout(timeoutMs, () => finish(() => reject(new Error("grant request timeout"))));
+    let data = "";
+    req.on("data", (c) => (data += c));
+    req.on("error", (e) => finish(() => reject(e)));
+    req.on("end", () =>
+      finish(() => {
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          resolve({error: "parse_error", error_description: data.slice(0, 200)});
+        }
+      }),
+    );
+    req.end();
+  });
+}
 
 export type GrantInput = {
   login: string;
@@ -46,7 +91,7 @@ export type GrantResult =
 export async function performDirectGrant(input: GrantInput): Promise<GrantResult> {
   const device_id: string = input.device_id || deviceIDgen();
 
-  const params: Record<string, string> = {
+  const qp = new URLSearchParams({
     grant_type: "password",
     client_id: directGrant.appId,
     client_secret: directGrant.appSecret,
@@ -57,15 +102,15 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
     v: grantVersion,
     device_id,
     lang: "en",
-  };
+  });
   // NOTE: do NOT send force_sms=1 on the first attempt. It forces VK into the
   // SMS-2FA flow and repeated forced sends trip the bruteforce/flood protection
   // (password_bruteforce_attempt). Without it a password-only account returns
   // the token immediately; VK still replies need_validation on its own when the
   // account genuinely requires 2FA, and we resend with `code` then.
-  if (input.code) params.code = String(input.code);
-  if (input.captcha_sid) params.captcha_sid = String(input.captcha_sid);
-  if (input.captcha_key) params.captcha_key = String(input.captcha_key);
+  if (input.code) qp.set("code", String(input.code));
+  if (input.captcha_sid) qp.set("captcha_sid", String(input.captcha_sid));
+  if (input.captcha_key) qp.set("captcha_key", String(input.captcha_key));
 
   // DEV debug: which app pair + scope is used for the grant (diagnoses
   // "client_secret is incorrect" = mismatched app_id/secret pair).
@@ -77,14 +122,20 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
     username: input.login,
     device_id,
     ua: directGrant.userAgent,
+    proto: "h2",
   });
 
-  const response = await grantClient.get(TokenUrl, {
-    params,
-    headers: {"User-Agent": directGrant.userAgent},
-    validateStatus: () => true, // VK returns 401 with JSON body for challenges
-  });
-  const data: any = response.data || {};
+  const u = new URL(TokenUrl); // https://oauth.vk.com/token
+  let data: any = {};
+  try {
+    data = await h2GetJson(u.origin, `${u.pathname}?${qp.toString()}`, {
+      "user-agent": directGrant.userAgent,
+      accept: "*/*",
+    });
+  } catch (e: any) {
+    console.error("======> grant transport ERROR:", e?.message);
+    return {kind: "error", message: e?.message || "Grant request failed"};
+  }
   console.log("<===== direct grant response:", JSON.stringify(data).slice(0, 300));
 
   if (data.access_token) {
