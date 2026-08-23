@@ -118,7 +118,7 @@ const captchaForm = (captchaImg: string, captchaSid: string) => PAGE(`
   </form>
   <a href="/auth/vk?reset=1">Начать заново</a>`)
 
-type FbState = {login: string; password: string; device_id: string; captcha_sid?: string}
+type FbState = {login: string; password: string; device_id: string; captcha_sid?: string; captcha_redirect?: string}
 
 const html = (res: Response, body: string) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8")
@@ -154,19 +154,28 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
 
   if (result.kind === "need_captcha") {
     console.warn("🧩 captcha required; redirect_uri?", !!result.redirect_uri)
-    // Remember captcha_sid so /resume can retry the same challenge.
+    // Remember captcha_sid + the VK captcha URL so /captcha can host it and
+    // /resume can redeem the same challenge.
     const fb = (req.session as any).fb as FbState | undefined
-    if (fb) fb.captcha_sid = result.captcha_sid
+    if (fb) {
+      fb.captcha_sid = result.captcha_sid
+      fb.captcha_redirect = result.redirect_uri
+    }
     if (result.redirect_uri) {
-      // Send the WebView straight to VK's real captcha page. Append &redirect=1:
-      // the widget maps the `redirect` query param to isOldClient, and WITHOUT it
-      // a solved captcha calls the bridge sendCloseEvent (no listener top-level)
-      // and just HANGS with no navigation. With isOldClient=true the solve does
-      // window.location.href="oauth.vk.com/blank.html?success=1" instead, so the
-      // WebView actually navigates. The success_token still fires first via the
-      // bridge postMessage (caught by the app's injected wrapper) before this.
+      // Send the WebView top-level to VK's real captcha (VK forbids framing it,
+      // so no iframe). Append two params:
+      //  &origin=<host>  — the widget only emits its result via postMessage when
+      //     config.origin is truthy (bundle: `this.config.origin && window.parent
+      //     .postMessage(...)`, origin read from the `origin` query param). The
+      //     app's injected window.postMessage wrapper captures that call (the
+      //     success_token) regardless of the targetOrigin the browser would drop.
+      //  &redirect=1     — sets isOldClient so a solved captcha navigates to
+      //     blank.html?success=1 instead of hanging on the bridge sendCloseEvent.
+      const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol
+      const origin = `${proto}://${req.get("host")}`
       const sep = result.redirect_uri.includes("?") ? "&" : "?"
-      res.redirect(`${result.redirect_uri}${sep}redirect=1`)
+      const url = `${result.redirect_uri}${sep}origin=${encodeURIComponent(origin)}&redirect=1`
+      res.redirect(url)
       return
     }
     // Fallback (no redirect_uri): the legacy image page (usually broken now).
