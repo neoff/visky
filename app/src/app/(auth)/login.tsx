@@ -47,6 +47,24 @@ const CAPTURE_JS = `(function(){
     try { console.log('[vkcap]', tag, typeof data === 'string' ? data : JSON.stringify(data)); } catch(e){}
     try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({__cap:tag, data:data})); } catch(e){}
   };
+  // 0) VK's not_robot bundle uses ES2022 syntax (class static blocks). WebViews
+  //    older than Chromium 94 throw "SyntaxError: Unexpected token '{'" while
+  //    parsing it, so the widget never mounts and the page stays blank. Detect
+  //    that up front and tell RN, so we can show a real explanation instead of
+  //    an empty screen (Samsung Android 9 ships ~Chromium 66; API-31 emu ~91).
+  try {
+    // No regex here on purpose: this whole script lives in a TS template
+    // literal, where a backslash-d escape collapses to a plain 'd' and quietly
+    // corrupts the pattern
+    // (it produced a SyntaxError that killed the entire injection, including
+    // the success_token hooks below).
+    var ua = navigator.userAgent || '';
+    var i = ua.indexOf('Chrome/');
+    var major = i === -1 ? 0 : parseInt(ua.substring(i + 7), 10) || 0;
+    if (location.href.indexOf('not_robot_captcha') !== -1 && major && major < 94) {
+      send('oldwv', {chrome: major});
+    }
+  } catch(e){}
   // 1) postMessage bridge (the widget's sendGetResultEvent channel).
   try {
     var _pm = window.postMessage.bind(window);
@@ -137,6 +155,9 @@ const LoginPage = () => {
   // So we wait briefly for the token; _onMessage cancels this timer and does the
   // keyed resume if the token arrives, otherwise this fires as a last resort.
   const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Chromium major version of the WebView, reported from the captcha page when
+  // it is too old to run VK's widget (<94). Drives the explanation banner.
+  const [oldWebView, setOldWebView] = useState<number | null>(null);
 
   const resumeWith = (successToken?: string) => {
     if (resuming.current) return;
@@ -211,6 +232,13 @@ const LoginPage = () => {
       return;
     }
     if (!payload || !payload.__cap) return;
+    if (payload.__cap === "oldwv") {
+      const v = payload.data?.chrome;
+      console.log("[login] WebView too old for VK captcha: Chromium", v);
+      setBusy(false);
+      setOldWebView(typeof v === "number" ? v : 0);
+      return;
+    }
     // Log the FULL raw payload (not truncated) so `adb logcat` reveals the exact
     // message shape the not_robot widget uses on a real device — we need this to
     // confirm which field carries the success_token.
@@ -330,9 +358,28 @@ const LoginPage = () => {
         />
       )}
 
-      {(busy || !uri) && (
+      {(busy || !uri) && !oldWebView && (
         <View style={styles.overlay}>
           <ActivityIndicator color={colors.text} size="large" />
+        </View>
+      )}
+
+      {/* VK's captcha widget needs Chromium >= 94. On older WebViews its bundle
+          throws a SyntaxError and the page just stays blank, which looks like a
+          hang — say what is actually wrong and how to fix it. */}
+      {oldWebView !== null && (
+        <View style={styles.overlay}>
+          <View style={styles.notice}>
+            <Text style={styles.noticeTitle}>Нужно обновить WebView</Text>
+            <Text style={styles.noticeText}>
+              Проверка VK «я не робот» не запускается: системный компонент
+              Android System WebView устарел
+              {oldWebView ? ` (Chromium ${oldWebView})` : ""}, нужен 94 или новее.
+              {"\n\n"}
+              Откройте Google Play, обновите «Android System WebView» (и Chrome),
+              затем войдите снова.
+            </Text>
+          </View>
         </View>
       )}
 
@@ -365,6 +412,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  notice: { margin: 24, padding: 20, borderRadius: 12, backgroundColor: "#1c1c1e" },
+  noticeTitle: { color: colors.text, fontSize: 17, fontWeight: "600", marginBottom: 10 },
+  noticeText: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
   fallbackBtn: { paddingVertical: 14, alignItems: "center", backgroundColor: colors.background },
   fallbackText: { color: colors.textMuted, fontSize: 13 },
 });
