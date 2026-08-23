@@ -76,21 +76,33 @@ const LoginPage = () => {
   const resuming = useRef<boolean>(false);
 
   // Resolve a stable device_id, then point the WebView at the backend with it.
+  // Guarded by a timeout so a slow/hanging SecureStore never leaves the WebView
+  // unmounted — device_id is only an optimization (backend generates one if
+  // absent), it must never block login.
   useEffect(() => {
+    let set = false;
+    const point = (d: string) => {
+      if (set) return;
+      set = true;
+      const sep = apiUrls.authAppUrl.includes("?") ? "&" : "?";
+      setUri(`${apiUrls.authAppUrl}${sep}device_id=${d}`);
+    };
+    const fallback = setTimeout(() => point(genDeviceId()), 700);
     (async () => {
-      let d: string | null = null;
       try {
-        d = await SecureStore.getItemAsync(DEVICE_KEY);
+        let d = await SecureStore.getItemAsync(DEVICE_KEY);
         if (!d) {
           d = genDeviceId();
           await SecureStore.setItemAsync(DEVICE_KEY, d);
         }
+        clearTimeout(fallback);
+        point(d);
       } catch {
-        d = genDeviceId();
+        clearTimeout(fallback);
+        point(genDeviceId());
       }
-      const sep = apiUrls.authAppUrl.includes("?") ? "&" : "?";
-      setUri(`${apiUrls.authAppUrl}${sep}device_id=${d}`);
     })();
+    return () => clearTimeout(fallback);
   }, []);
 
   const finish = (fragments: Record<string, string>) => {
@@ -123,26 +135,9 @@ const LoginPage = () => {
     }
   };
 
-  const _onNavigationStateChange = (event: WebViewNavigation) => {
-    const url: string = event.url || "";
-    const isBlank = url.includes("blank.html");
-    const hasToken = url.includes("access_token=");
-
-    // Back on VK's captcha page — allow a new resume cycle.
-    if (url.includes("not_robot_captcha")) resuming.current = false;
-
-    // Captcha solved but we never captured a success_token (bridge missed):
-    // fall back to a keyless resume (best effort).
-    if (isBlank && !hasToken && url.includes("success=1") && !resuming.current) {
-      resuming.current = true;
-      setBusy(true);
-      setUri(apiUrls.authResumeUrl);
-      return;
-    }
-
-    if (!isBlank || !hasToken || handled.current) return;
-    handled.current = true;
-
+  // Parse the final blank.html#access_token&secret&... and sign in (or upgrade
+  // via /token if the hash has no secret).
+  const parseAndFinish = (url: string) => {
     const hash = url.includes("#") ? url.split("#")[1] : url.split("?")[1] || "";
     const fragments: Record<string, string> = {};
     hash.split("&").forEach((pair) => {
@@ -155,7 +150,6 @@ const LoginPage = () => {
       return;
     }
 
-    // No secret in hash (legacy relay leftover) — upgrade via backend /token.
     setBusy(true);
     getAuth(
       {
@@ -183,6 +177,40 @@ const LoginPage = () => {
     );
   };
 
+  // Single URL interception, shared by onShouldStartLoadWithRequest (reliable on
+  // iOS incl. redirects) and onNavigationStateChange (fires on Android redirects).
+  // Returns true when the URL was a terminal redirect we consumed.
+  const processUrl = (url: string): boolean => {
+    if (!url) return false;
+    const hasToken = url.includes("access_token=");
+
+    // Back on VK's captcha page — allow a fresh resume cycle.
+    if (url.includes("not_robot_captcha")) resuming.current = false;
+
+    // Terminal success — ANY redirect carrying the token (matches the original
+    // lenient handler; not tied to a "blank.html" path).
+    if (hasToken && !handled.current) {
+      handled.current = true;
+      parseAndFinish(url);
+      return true;
+    }
+
+    // Captcha solved but no success_token captured via the bridge — keyless
+    // resume (best effort).
+    if (url.includes("blank.html") && url.includes("success=1") && !resuming.current) {
+      resuming.current = true;
+      setBusy(true);
+      setUri(apiUrls.authResumeUrl);
+      return true;
+    }
+    return false;
+  };
+
+  const _onShouldStart = (req: { url: string }): boolean => !processUrl(req.url || "");
+  const _onNavigationStateChange = (event: WebViewNavigation) => {
+    processUrl(event.url || "");
+  };
+
   return (
     <View style={styles.container}>
       {uri && (
@@ -191,6 +219,7 @@ const LoginPage = () => {
           source={{ uri }}
           injectedJavaScriptBeforeContentLoaded={CAPTURE_JS}
           onMessage={_onMessage}
+          onShouldStartLoadWithRequest={_onShouldStart}
           onNavigationStateChange={_onNavigationStateChange}
           incognito // fresh cookies each attempt: avoids stale VK ID sessions
           style={styles.web}

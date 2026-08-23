@@ -171,10 +171,14 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
       //     success_token) regardless of the targetOrigin the browser would drop.
       //  &redirect=1     — sets isOldClient so a solved captcha navigates to
       //     blank.html?success=1 instead of hanging on the bridge sendCloseEvent.
-      const proto = (req.headers["x-forwarded-proto"] as string) || req.protocol
-      const origin = `${proto}://${req.get("host")}`
+      // origin=https://id.vk.com: the widget posts its result to window.parent
+      // with this as targetOrigin. Since the captcha runs top-level in the
+      // WebView (window.parent===window, origin id.vk.com), matching it to
+      // id.vk.com means the browser actually DELIVERS the message to a top-level
+      // 'message' listener (our injected addEventListener), not just to the
+      // postMessage-call wrapper. Belt and suspenders for the app capture.
       const sep = result.redirect_uri.includes("?") ? "&" : "?"
-      const url = `${result.redirect_uri}${sep}origin=${encodeURIComponent(origin)}&redirect=1`
+      const url = `${result.redirect_uri}${sep}origin=${encodeURIComponent("https://id.vk.com")}&redirect=1`
       res.redirect(url)
       return
     }
