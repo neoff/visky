@@ -178,6 +178,11 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
 // ?reset=1 clears any in-progress challenge state.
 authForm.get("/vk", async (req: Request, res: Response) => {
   if (req.query.reset) delete (req.session as any).fb
+  // The app passes its stable, real device_id (persisted in SecureStore). A
+  // consistent device_id across grant + audio signing looks like one real
+  // device to VK's anti-fraud (a new random id every attempt reads as many
+  // devices and escalates to captcha faster). Stored for the POST/resume below.
+  if (req.query.device_id) (req.session as any).dev = String(req.query.device_id)
   if (!serveVkLoginPage(res)) html(res, loginForm())
 })
 
@@ -201,7 +206,9 @@ authForm.post(["/vk", "/vk/fallback"], async (req: Request, res: Response) => {
   // Initial submit carries email/pass; challenge submits reuse stored creds.
   const login = req.body.email || prev?.login
   const password = req.body.pass || prev?.password
-  const device_id = prev?.device_id || deviceIDgen()
+  // Prefer the app's real device_id (from GET ?device_id=), then a stable one
+  // from a prior step, then a fresh fallback.
+  const device_id = prev?.device_id || (req.session as any).dev || deviceIDgen()
 
   if (!login || !password) {
     serveLoginError(req, res, "Введите логин и пароль")
@@ -249,18 +256,23 @@ authForm.get(["/vk/resume", "/vk/fallback/resume"], async (req: Request, res: Re
     serveLoginError(req, res, "Сессия истекла. Войдите заново.")
     return
   }
+  // The app captures the not_robot `success_token` from the captcha widget's
+  // bridge postMessage and passes it here as captcha_key. VK redeems it with the
+  // ORIGINAL captcha_sid to clear the challenge and issue the token.
+  const captcha_key = req.query.captcha_key ? String(req.query.captcha_key) : undefined
   console.log("=====> /auth" + req.path + " (post-captcha resume):", {
     login: prev.login,
     device_id: prev.device_id,
     captcha_sid: prev.captcha_sid,
+    has_captcha_key: !!captcha_key,
   })
   try {
-    // Retry with the same device_id; no captcha params — solving the not_robot
-    // challenge clears the flag server-side.
     const result = await performDirectGrant({
       login: prev.login,
       password: prev.password,
       device_id: prev.device_id,
+      captcha_sid: captcha_key ? prev.captcha_sid : undefined,
+      captcha_key,
     })
     finalizeGrant(req, res, result)
   } catch (error: any) {
