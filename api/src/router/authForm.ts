@@ -158,9 +158,15 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
     const fb = (req.session as any).fb as FbState | undefined
     if (fb) fb.captcha_sid = result.captcha_sid
     if (result.redirect_uri) {
-      // Send the WebView straight to VK's real captcha page (blank=1 => it lands
-      // on oauth.vk.com/blank.html?success=1 when solved).
-      res.redirect(result.redirect_uri)
+      // Send the WebView straight to VK's real captcha page. Append &redirect=1:
+      // the widget maps the `redirect` query param to isOldClient, and WITHOUT it
+      // a solved captcha calls the bridge sendCloseEvent (no listener top-level)
+      // and just HANGS with no navigation. With isOldClient=true the solve does
+      // window.location.href="oauth.vk.com/blank.html?success=1" instead, so the
+      // WebView actually navigates. The success_token still fires first via the
+      // bridge postMessage (caught by the app's injected wrapper) before this.
+      const sep = result.redirect_uri.includes("?") ? "&" : "?"
+      res.redirect(`${result.redirect_uri}${sep}redirect=1`)
       return
     }
     // Fallback (no redirect_uri): the legacy image page (usually broken now).
