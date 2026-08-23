@@ -73,6 +73,12 @@ export type GrantInput = {
   code?: string;
   captcha_sid?: string;
   captcha_key?: string;
+  // not_robot proof. VK's interactive captcha ("not_robot") is redeemed on the
+  // token endpoint with captcha_sid (the ORIGINAL from the need_captcha reply)
+  // PLUS `success_token` — NOT `captcha_key` (that's only for the legacy image
+  // captcha). Sending captcha_key with a not_robot token just re-challenges.
+  // Proven 2026-08-23: captcha_sid + success_token -> access_token + secret.
+  success_token?: string;
   device_id?: string;
 };
 
@@ -110,7 +116,10 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
   // account genuinely requires 2FA, and we resend with `code` then.
   if (input.code) qp.set("code", String(input.code));
   if (input.captcha_sid) qp.set("captcha_sid", String(input.captcha_sid));
-  if (input.captcha_key) qp.set("captcha_key", String(input.captcha_key));
+  // not_robot: captcha_sid + success_token (the winning combo). Legacy image
+  // captcha still uses captcha_key. Never send both for one challenge.
+  if (input.success_token) qp.set("success_token", String(input.success_token));
+  else if (input.captcha_key) qp.set("captcha_key", String(input.captcha_key));
 
   // DEV debug: which app pair + scope is used for the grant (diagnoses
   // "client_secret is incorrect" = mismatched app_id/secret pair).

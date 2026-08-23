@@ -275,23 +275,30 @@ authForm.get(["/vk/resume", "/vk/fallback/resume"], async (req: Request, res: Re
     serveLoginError(req, res, "Сессия истекла. Войдите заново.")
     return
   }
-  // The app captures the not_robot `success_token` from the captcha widget's
-  // bridge postMessage and passes it here as captcha_key. VK redeems it with the
-  // ORIGINAL captcha_sid to clear the challenge and issue the token.
-  const captcha_key = req.query.captcha_key ? String(req.query.captcha_key) : undefined
+  // The app captures the not_robot `success_token` from the captcha widget
+  // (captchaNotRobot.check response / bridge postMessage) and passes it here.
+  // VK redeems it on the token endpoint with the ORIGINAL captcha_sid +
+  // `success_token` (NOT captcha_key). Proven 2026-08-23:
+  //   captcha_sid + success_token -> access_token + secret.
+  // Accept success_token (preferred) or the legacy captcha_key query for compat.
+  const success_token = req.query.success_token
+    ? String(req.query.success_token)
+    : req.query.captcha_key
+      ? String(req.query.captcha_key)
+      : undefined
   console.log("=====> /auth" + req.path + " (post-captcha resume):", {
     login: prev.login,
     device_id: prev.device_id,
     captcha_sid: prev.captcha_sid,
-    has_captcha_key: !!captcha_key,
+    has_success_token: !!success_token,
   })
   try {
     const result = await performDirectGrant({
       login: prev.login,
       password: prev.password,
       device_id: prev.device_id,
-      captcha_sid: captcha_key ? prev.captcha_sid : undefined,
-      captcha_key,
+      captcha_sid: success_token ? prev.captcha_sid : undefined,
+      success_token,
     })
     finalizeGrant(req, res, result)
   } catch (error: any) {

@@ -35,26 +35,82 @@ const genDeviceId = (): string => {
 };
 
 // Intercept the captcha widget's bridge postMessage (its only channel for the
-// solved `success_token`) and forward every payload to RN. Runs before page JS.
+// solved `success_token` when redirect=1 sends it to blank.html?success=1 with
+// no token in the URL) and forward every payload to RN. Runs before page JS.
+// Also mirrors payloads to console.log so they show up in `adb logcat` even if
+// the RN-side parse misses them — essential for reverse-engineering the exact
+// message shape on a real device (the emulator's WebView is too old to run the
+// captcha widget at all).
 const CAPTURE_JS = `(function(){
   if (window.__vkcap) return; window.__vkcap = 1;
   var send = function(tag, data){
+    try { console.log('[vkcap]', tag, typeof data === 'string' ? data : JSON.stringify(data)); } catch(e){}
     try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({__cap:tag, data:data})); } catch(e){}
   };
+  // 1) postMessage bridge (the widget's sendGetResultEvent channel).
   try {
     var _pm = window.postMessage.bind(window);
     window.postMessage = function(m,o,t){ send('pm', m); return _pm(m,o,t); };
   } catch(e){}
   window.addEventListener('message', function(e){ send('msg', e.data); }, true);
+  // 2) THE reliable channel: the not_robot widget POSTs to
+  //    api.vk.com/method/captchaNotRobot.check and the JSON response carries
+  //    { response: { success_token } }. Hook fetch + XHR and forward any body
+  //    that mentions success_token — findToken() on the RN side pulls it out.
+  try {
+    var _fetch = window.fetch;
+    if (_fetch) window.fetch = function(){
+      var args = arguments;
+      return _fetch.apply(this, args).then(function(res){
+        try {
+          var url = (args[0] && args[0].url) || args[0] || '';
+          if (String(url).indexOf('captchaNotRobot') !== -1) {
+            res.clone().text().then(function(t){ if (t && t.indexOf('success_token') !== -1) send('xhr', t); }).catch(function(){});
+          }
+        } catch(e){}
+        return res;
+      });
+    };
+  } catch(e){}
+  try {
+    var _open = XMLHttpRequest.prototype.open, _sendX = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(m,u){ this.__vku = u; return _open.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function(){
+      var x = this;
+      x.addEventListener('load', function(){
+        try {
+          if (String(x.__vku || '').indexOf('captchaNotRobot') !== -1) {
+            var t = x.responseText || '';
+            if (t.indexOf('success_token') !== -1) send('xhr', t);
+          }
+        } catch(e){}
+      });
+      return _sendX.apply(this, arguments);
+    };
+  } catch(e){}
 })(); true;`;
 
 // Recursively find a captcha success token in an arbitrary message payload.
+// The not_robot bridge nests its result, and sometimes ships it as a JSON string
+// inside a field, so parse stringified JSON as we descend.
 const findToken = (obj: any, depth = 0): string | undefined => {
-  if (!obj || depth > 6) return undefined;
+  if (obj == null || depth > 8) return undefined;
+  if (typeof obj === "string") {
+    // A field value that is itself JSON — dig in.
+    const s = obj.trim();
+    if ((s.startsWith("{") || s.startsWith("[")) && s.length < 20000) {
+      try {
+        return findToken(JSON.parse(s), depth + 1);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
   if (typeof obj === "object") {
     for (const k of Object.keys(obj)) {
       const v = (obj as any)[k];
-      if (typeof v === "string" && /^(success_?token|token|captcha_?key|key)$/i.test(k) && v.length > 6) {
+      if (typeof v === "string" && /(success_?token|captcha_?key|^token$|^key$)/i.test(k) && v.length > 6) {
         return v;
       }
     }
@@ -74,6 +130,31 @@ const LoginPage = () => {
   const [busy, setBusy] = useState<boolean>(false);
   const handled = useRef<boolean>(false);
   const resuming = useRef<boolean>(false);
+  // Pending keyless-resume timer. When the captcha lands on blank.html?success=1
+  // we do NOT resume immediately: the widget fires its `success_token` via
+  // postMessage at almost the same instant, and a keyless resume just loops back
+  // into the captcha (verified: a bare re-grant always returns need_captcha).
+  // So we wait briefly for the token; _onMessage cancels this timer and does the
+  // keyed resume if the token arrives, otherwise this fires as a last resort.
+  const blankTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resumeWith = (successToken?: string) => {
+    if (resuming.current) return;
+    resuming.current = true;
+    if (blankTimer.current) {
+      clearTimeout(blankTimer.current);
+      blankTimer.current = null;
+    }
+    setBusy(true);
+    const base = apiUrls.authResumeUrl;
+    // not_robot is redeemed on the token endpoint with captcha_sid (held in the
+    // backend session) + success_token — proven working. Pass it as success_token.
+    const url = successToken
+      ? `${base}${base.includes("?") ? "&" : "?"}success_token=${encodeURIComponent(successToken)}`
+      : base;
+    console.log("[login] -> resume", successToken ? "WITH success_token" : "keyless (fallback)");
+    setUri(url);
+  };
 
   // Resolve a stable device_id, then point the WebView at the backend with it.
   // Guarded by a timeout so a slow/hanging SecureStore never leaves the WebView
@@ -105,6 +186,11 @@ const LoginPage = () => {
     return () => clearTimeout(fallback);
   }, []);
 
+  // Never leak the pending keyless-resume timer if the screen unmounts mid-flow.
+  useEffect(() => () => {
+    if (blankTimer.current) clearTimeout(blankTimer.current);
+  }, []);
+
   const finish = (fragments: Record<string, string>) => {
     signIn({
       user_id: fragments.user_id ?? null,
@@ -125,13 +211,14 @@ const LoginPage = () => {
       return;
     }
     if (!payload || !payload.__cap) return;
-    console.log("[captcha bridge]", JSON.stringify(payload.data).slice(0, 300));
+    // Log the FULL raw payload (not truncated) so `adb logcat` reveals the exact
+    // message shape the not_robot widget uses on a real device — we need this to
+    // confirm which field carries the success_token.
+    console.log("[captcha bridge]", payload.__cap, JSON.stringify(payload.data));
     const token = findToken(payload.data);
-    if (token && !resuming.current) {
-      resuming.current = true;
-      setBusy(true);
-      const sep = apiUrls.authResumeUrl.includes("?") ? "&" : "?";
-      setUri(`${apiUrls.authResumeUrl}${sep}captcha_key=${encodeURIComponent(token)}`);
+    if (token) {
+      console.log("[captcha bridge] -> success_token captured, keyed resume");
+      resumeWith(token);
     }
   };
 
@@ -197,14 +284,21 @@ const LoginPage = () => {
       return true;
     }
 
-    // Captcha solved (blank.html?success=1, no token): continue the grant via
-    // /resume. If the bridge success_token was captured, _onMessage already fired
-    // a keyed resume; otherwise this keyless resume advances (e.g. to 2FA).
+    // Captcha solved (blank.html?success=1, no token in URL). Do NOT resume
+    // immediately — the widget's success_token arrives via postMessage at nearly
+    // the same moment, and a keyless resume just loops back into the captcha.
+    // Wait briefly: _onMessage will cancel this timer and do the keyed resume if
+    // the token shows up; otherwise fall back to a keyless resume (e.g. the flow
+    // actually advances to 2FA rather than re-challenging).
     if (url.includes("blank.html") && url.includes("success=1") && !resuming.current) {
-      console.log("[login] -> captcha solved (success=1), resuming grant");
-      resuming.current = true;
-      setBusy(true);
-      setUri(apiUrls.authResumeUrl);
+      if (!blankTimer.current) {
+        console.log("[login] -> captcha success=1, waiting 1500ms for success_token");
+        blankTimer.current = setTimeout(() => {
+          blankTimer.current = null;
+          console.log("[login] -> no success_token arrived, keyless resume");
+          resumeWith();
+        }, 1500);
+      }
       return true;
     }
     return false;
