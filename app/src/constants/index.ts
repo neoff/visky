@@ -11,11 +11,13 @@ export const colors = {
   // renders at a different translucency on Android (dimezisBlurView) than on iOS,
   // which is what made the two builds look unequal. rgba keeps the see-through
   // look and is identical on both platforms.
-  surface: 'rgba(32,32,32,0.82)',
+  surface: 'rgba(0,0,0,0.55)',
   surfaceHeader: 'rgba(10,10,10,0.82)',
-  // hairline between the mini player and the tab icons: DARKER than the plate,
-  // painted on top of it (a transparent gap would punch a hole through both)
-  surfaceDivider: 'rgba(0,0,0,0.55)',
+  // Seam between the mini player and the tab icons. Swapped with the plate: the
+  // plate took the dark value and the line is the LIGHTER one, so it reads
+  // against it. Painted on top of the plate — a transparent gap would punch a
+  // hole through both plates.
+  surfaceDivider: 'rgba(32,32,32,0.82)',
   text: '#fff',
   textMuted: '#9ca3af',
   textMutedDarker: '#606060',

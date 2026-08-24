@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     left: 8 + 40 + 10, // plate padding + artwork + title container margin
     right: 8,          // plate padding
     bottom: 0,
-    height: StyleSheet.hairlineWidth,
+    height: 1, // hairline (0.33pt on a 3x screen) was invisible
     backgroundColor: colors.surfaceDivider,
   },
   trackArtworkImage: {

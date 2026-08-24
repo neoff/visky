@@ -520,8 +520,12 @@ The docked plate read as one block, so the two sections needed a seam. It is a *
 never a gap**: a transparent line would punch a hole through both translucent plates and show the
 list underneath.
 
-`FloatingPlayer` renders an absolutely positioned 1-hairline `View` on its bottom edge, coloured
-`colors.surfaceDivider` (`rgba(0,0,0,0.55)` — darker than the plate, so it reads on top of it).
+`FloatingPlayer` renders an absolutely positioned `View` on its bottom edge, coloured
+`colors.surfaceDivider`. The first take (a dark hairline on a lighter plate) was invisible —
+`StyleSheet.hairlineWidth` is 0.33pt on a 3x screen — so the two colours were **swapped** on the
+user's call: the plate took the dark value (`colors.surface = rgba(0,0,0,0.55)`) and the line the
+lighter one (`colors.surfaceDivider = rgba(32,32,32,0.82)`), at a full 1px. Side effect worth
+knowing: the plate is more see-through than before, since 0.55 alpha replaced 0.82.
 Its width follows the list separator: inset on the left to where the track title starts
 (plate padding 8 + artwork 40 + title margin 10 = 58), running to the plate's right padding —
 not edge to edge.
