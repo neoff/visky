@@ -530,9 +530,10 @@ Three takes to land it:
 3. **final:** the plate keeps its own value (`rgba(32,32,32,0.82)`) and the divider is *lighter*
    than it — `rgba(255,255,255,0.22)` at **2px**. It is translucent white composited ON the plate,
    so it brightens the plate rather than cutting through it; the list never shows through.
-Its width follows the list separator: inset on the left to where the track title starts
-(plate padding 8 + artwork 40 + title margin 10 = 58), running to the plate's right padding —
-not edge to edge.
+Its width spans the mini player's own content: from the **left edge of the artwork** (`left: 8`, the
+plate's `paddingHorizontal`) to the **right edge of the ⏭ button** (`right: 8 + 16`, the plate
+padding plus `trackControlsContainer.marginRight`). Absolute children are positioned against the
+parent's border box, so the parent's padding has to be repeated in these numbers.
 
 Verified on both devices with a 1:1 crop of the seam.
 

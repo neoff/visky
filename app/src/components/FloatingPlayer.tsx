@@ -66,12 +66,13 @@ const styles = StyleSheet.create({
   },
   // Splits the docked plate into two sections (player / tab icons). Painted ON
   // the plate — never a gap, or it would punch a hole through both plates.
-  // Inset on the left exactly like the list separator: it starts where the
-  // track title starts, not at the screen edge.
+  // It spans the mini player's own content: from the LEFT EDGE OF THE ARTWORK to
+  // the RIGHT EDGE OF THE ⏭ BUTTON. Absolute children are laid out against the
+  // parent's border box, so the parent's padding has to be repeated here.
   divider: {
     position: 'absolute',
-    left: 8 + 40 + 10, // plate padding + artwork + title container margin
-    right: 8,          // plate padding
+    left: 8,       // plate paddingHorizontal — the artwork starts here
+    right: 8 + 16, // plate paddingHorizontal + trackControlsContainer marginRight
     bottom: 0,
     height: 2, // hairline (0.33pt on a 3x screen) was invisible
     backgroundColor: colors.surfaceDivider,
