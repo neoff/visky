@@ -75,6 +75,19 @@ const CAPTURE_JS = `(function(){
   //    api.vk.com/method/captchaNotRobot.check and the JSON response carries
   //    { response: { success_token } }. Hook fetch + XHR and forward any body
   //    that mentions success_token — findToken() on the RN side pulls it out.
+  //    A response WITHOUT success_token is just as informative: check answers
+  //    {status:"BOT", show_captcha_type:"slider"|undefined} when VK refuses the
+  //    checkbox, and the widget then silently swaps to a slider puzzle (or, with
+  //    no show_captcha_type, goes to its "blocked" state). Both look like a hang
+  //    from outside, so forward EVERY captchaNotRobot.* body under tag 'chk' and
+  //    let the RN side decode which branch fired.
+  var report = function(url, body){
+    if (!body) return;
+    var m = String(url).split('captchaNotRobot.')[1] || '';
+    m = m.split('?')[0];
+    if (body.indexOf('success_token') !== -1) send('xhr', body);
+    else send('chk', {m: m, body: body.slice(0, 400)});
+  };
   try {
     var _fetch = window.fetch;
     if (_fetch) window.fetch = function(){
@@ -83,7 +96,7 @@ const CAPTURE_JS = `(function(){
         try {
           var url = (args[0] && args[0].url) || args[0] || '';
           if (String(url).indexOf('captchaNotRobot') !== -1) {
-            res.clone().text().then(function(t){ if (t && t.indexOf('success_token') !== -1) send('xhr', t); }).catch(function(){});
+            res.clone().text().then(function(t){ report(url, t); }).catch(function(){});
           }
         } catch(e){}
         return res;
@@ -97,15 +110,18 @@ const CAPTURE_JS = `(function(){
       var x = this;
       x.addEventListener('load', function(){
         try {
-          if (String(x.__vku || '').indexOf('captchaNotRobot') !== -1) {
-            var t = x.responseText || '';
-            if (t.indexOf('success_token') !== -1) send('xhr', t);
-          }
+          if (String(x.__vku || '').indexOf('captchaNotRobot') !== -1) report(x.__vku, x.responseText || '');
         } catch(e){}
       });
       return _sendX.apply(this, arguments);
     };
   } catch(e){}
+  // 3) Uncaught page errors. The widget swallows most failures into a silent
+  //    state change, but a broken bundle / missing API surfaces here and is the
+  //    difference between "VK said no" and "our WebView cannot run the widget".
+  window.addEventListener('error', function(e){
+    try { send('err', {m: (e && e.message) || '', src: (e && e.filename) || ''}); } catch(x){}
+  }, true);
 })(); true;`;
 
 // Recursively find a captcha success token in an arbitrary message payload.
@@ -158,6 +174,9 @@ const LoginPage = () => {
   // Chromium major version of the WebView, reported from the captcha page when
   // it is too old to run VK's widget (<94). Drives the explanation banner.
   const [oldWebView, setOldWebView] = useState<number | null>(null);
+  // Last non-OK status from captchaNotRobot.check ("BOT", "BOT:slider",
+  // "ERROR_LIMIT", ...). Drives the explanation shown over the dead widget.
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
 
   const resumeWith = (successToken?: string) => {
     if (resuming.current) return;
@@ -232,6 +251,29 @@ const LoginPage = () => {
       return;
     }
     if (!payload || !payload.__cap) return;
+    // Diagnostics for the "widget hangs after the checkbox" report: VK answers
+    // captchaNotRobot.check with a status, and every non-OK status leaves the
+    // widget sitting there with no navigation and no token.
+    //   status "OK"                          -> success_token (handled below)
+    //   status "BOT" + show_captcha_type      -> silently swaps to that puzzle
+    //   status "BOT" without show_captcha_type-> internal "blocked" state
+    //   ERROR_LIMIT / ERROR_TOKEN_EXPIRED / ERROR -> dead ends
+    if (payload.__cap === "chk") {
+      const m = payload.data?.m;
+      const body = String(payload.data?.body ?? "");
+      console.log("[captcha api]", m, body);
+      if (m === "check") {
+        const status = /"status"\s*:\s*"([A-Z_]+)"/.exec(body)?.[1];
+        const next = /"show_captcha_type"\s*:\s*"([a-z]+)"/.exec(body)?.[1];
+        console.log("[captcha api] check status:", status, "next:", next ?? "none");
+        if (status && status !== "OK") setCaptchaError(next ? `${status}:${next}` : status);
+      }
+      return;
+    }
+    if (payload.__cap === "err") {
+      console.log("[captcha page error]", payload.data?.m, payload.data?.src);
+      return;
+    }
     if (payload.__cap === "oldwv") {
       const v = payload.data?.chrome;
       console.log("[login] WebView too old for VK captcha: Chromium", v);
@@ -307,6 +349,7 @@ const LoginPage = () => {
     if (url.includes("not_robot_captcha")) {
       resuming.current = false;
       setBusy(false);
+      setCaptchaError(null);
     }
 
     // Terminal success — ANY redirect carrying the token (matches the original
@@ -383,6 +426,44 @@ const LoginPage = () => {
         </View>
       )}
 
+      {/* VK answered the checkbox with a non-OK status. "BOT:<type>" means it
+          swapped in another puzzle (still solvable — just hint, never cover it);
+          anything else is a dead end where the widget stops reacting entirely. */}
+      {captchaError !== null &&
+        (captchaError.startsWith("BOT:") ? (
+          <View style={styles.hintBar} pointerEvents="none">
+            <Text style={styles.hintText}>
+              VK просит дополнительную проверку — решите задание выше
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.overlay}>
+            <View style={styles.notice}>
+              <Text style={styles.noticeTitle}>VK не принял проверку</Text>
+              <Text style={styles.noticeText}>
+                {captchaError === "ERROR_LIMIT"
+                  ? "Слишком много попыток проверки. Подождите несколько минут и попробуйте снова."
+                  : captchaError === "ERROR_TOKEN_EXPIRED"
+                    ? "Проверка устарела — начните вход заново."
+                    : "VK отклонил проверку «я не робот» и больше не реагирует. Начните вход заново."}
+                {"\n\n"}
+                Код ответа: {captchaError}
+              </Text>
+              <TouchableOpacity
+                style={styles.noticeBtn}
+                onPress={() => {
+                  handled.current = false;
+                  resuming.current = false;
+                  setCaptchaError(null);
+                  setUri(apiUrls.authAppUrl);
+                }}
+              >
+                <Text style={styles.noticeBtnText}>Начать заново</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+
       {uri && uri.indexOf(apiUrls.authFallbackUrl) !== 0 && (
         <TouchableOpacity
           style={styles.fallbackBtn}
@@ -413,6 +494,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notice: { margin: 24, padding: 20, borderRadius: 12, backgroundColor: "#1c1c1e" },
+  noticeBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+    backgroundColor: "#3f8ae0",
+  },
+  noticeBtnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  hintBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "rgba(0,0,0,0.75)",
+  },
+  hintText: { color: colors.text, fontSize: 13, textAlign: "center" },
   noticeTitle: { color: colors.text, fontSize: 17, fontWeight: "600", marginBottom: 10 },
   noticeText: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
   fallbackBtn: { paddingVertical: 14, alignItems: "center", backgroundColor: colors.background },
