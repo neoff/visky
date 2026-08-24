@@ -21,19 +21,27 @@ to sign in.
 
 ---
 
-## Status (2026-08-24, evening)
+## Status (2026-08-24, night)
 
-**The captcha was never the real problem.** The cluster's egress IP is flagged: VK answers
-`need_captcha` to *every* grant from it, while the same credentials from a residential IP return a
-token outright, in the same second (root cause 15). The grant now runs **on the phone** — the
-backend 302s the WebView at `oauth.vk.com/token` — so VK is never challenged in the first place.
+**Working end to end, verified on an emulator.** The device-side grant is the primary path (the
+cluster IP is flagged — root cause 15), the not_robot captcha resolves through `success_token`, 2FA
+is handled, and audio plays.
 
-Earlier chain (login → not_robot → `success_token` → retry → token + secret) does work and is kept
-as the fallback for the challenges that can still appear, but it should now be a rare path.
+Verified live on an Android 14 emulator (WebView 113), API `1.5.34`:
+- **No-2FA account** (`+380938658617`): login → token+secret → **99 tracks** → playback
+  (`loading → buffering → ready → playing`). Run twice, before and after the version alignment.
+- **2FA account** (`en.varg@gmail.com`): login → captcha (solved) → 2FA page → resend switches the
+  channel to SMS → the SMS code plus the captcha `success_token` reach VK **together** on the retry
+  (root cause 25). A wrong code re-prompts (root cause 26); a rate-limited resend shows a notice and
+  keeps the form. The only thing not driven to a token was a *valid* code — VK rate-limited the test
+  account after a day of attempts (`error_code 10 / ratelimit`, clears in hours); that is a VK limit,
+  not app code.
 
-Not yet confirmed on a device: the device-side grant needs a new app build (see *Deployed state*).
-Remaining constraint if a captcha ever does appear: **the WebView must be Chromium ≥ 94**
-(root cause 8). The 2captcha fallback was never needed.
+Remaining constraint if a captcha appears: **the WebView must be Chromium ≥ 94** (root cause 8).
+Shipping constraint: **local Android builds need JDK 17** (root cause 27).
+
+**Shipped:** API `varg/visky-api:1.5.34` deployed to the cluster; the app built locally
+(`scripts/build-app-local.sh`, no expo.dev cloud) and submitted to Google Play (internal track).
 
 ---
 
@@ -253,6 +261,33 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
     override — which matters, because overriding it would break the Chromium-version sniff and VK's
     own login page.
 
+25. **A 2FA code is lost if a captcha interrupts the code grant.** Submitting the SMS/call code POSTs
+    to `/auth/vk` with `code`; that grant can itself return `need_captcha`. The captcha is solved and
+    the flow resumes via `/auth/vk/resume?success_token=…`, but the resume rebuilt the grant from the
+    session with only `success_token` — the `code` was never stored — so VK re-challenged for 2FA
+    every time: solve the captcha, land back on the SMS field, forever. Confirmed live: the resume
+    grant URL carried `success_token` but no `code`. Fix: persist `code` in the `fb` session on the
+    POST and re-attach it in the resume, so VK gets the code and the solved-captcha token together
+    (verified live — the resume URL then carried `code` + `success_token`, and VK evaluated the code
+    instead of re-prompting).
+
+26. **A wrong/expired code must re-prompt, not dump to the login form.** VK answers a bad code with
+    `invalid_request` / `wrong_otp` / "Invalid code". That fell through to `serveLoginError`, which
+    re-rendered the *full login form* with empty fields — the whole 2FA context was lost. Codes
+    commonly expire during the captcha detour, so this is a routine path. Now, while a validation
+    challenge is in flight, a wrong code re-renders the code form with "Неверный код. Введите код ещё
+    раз." and drops the stale pending code so the next resume does not replay it.
+
+27. **Local Android builds need JDK 17; Android Studio's jbr drifted to JDK 25.** `eas build --local`
+    / `expo run:android` on JDK 25 fail the CMake configure of native modules
+    (`react-native-worklets` / `mmkv-storage` / `screens`) with
+    `IllegalStateException: WARNING: A restricted method in java.lang.System has been called` — AGP
+    treats the JVM warning as fatal. Only shows with a cold `.cxx` cache (after `rm -rf android`); a
+    warm cache hides it. Build on Homebrew `openjdk@17`. Also: `eas build --local` runs `expo-doctor`
+    as a preflight and fails on any non-zero exit — kept green by aligning the SDK 57 patch versions
+    (`expo install --fix`) and excluding `react-native-fast-image` / `react-native-track-player` from
+    the RN-Directory check in `expo.doctor` config (both are in active use and working).
+
 ---
 
 ## Current architecture / flow
@@ -332,30 +367,43 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
 
 ## Deployed / published state
 
-- **Backend:** `varg/visky-api:1.5.31` deployed and rolled out (k8s ctx `oracle`, ns `frisky`,
+- **Backend:** `varg/visky-api:1.5.34` deployed and rolled out (k8s ctx `oracle`, ns `frisky`,
   deploy `visky-api`, env from secret `visky-api-env`). Deploy with `scripts/build-api.sh --deploy`
   (add `--no-bump` when package.json is already at the target version). CD is NOT automated.
-  Smoke-checked in prod: `POST /auth/vk` → `blank.html#g=…`, `/auth/vk/validate-resend` →
-  `blank.html#r=…`, `/auth/vk/next` → 200. **1.5.32** adds the blocked-account page.
-- **App:** EAS `@varg/visky`, pkg `com.envarg.visky`, production profile (app-bundle, auto-submit
-  to the Play internal track), built with `scripts/build-app.sh`.
-  - **vc53** (`055ff92`) — device-side grant + captcha diagnostics, but **no** TLS trust anchor, so
-    it still cannot reach VK on Android 9.
-  - **vc54 was NOT built**: the EAS account has used up its Free-plan Android builds for the month
-    (resets 1 Sep 2026). The equivalent build exists locally instead —
-    `app/android/app/build/outputs/apk/release/app-release.apk`, produced with
-    `npx expo run:android --variant release` — carrying the trust anchor, the injection-timing fix,
-    the overlay fix and the delegated resend. Install with `adb install -r`.
+  Version history that matters: **1.5.31** device-side resend, **1.5.32** blocked-account page,
+  **1.5.33** keep the 2FA code across a captcha (cause 25), **1.5.34** wrong-code re-prompt (cause 26).
+- **App:** EAS `@varg/visky`, pkg `com.envarg.visky`, production profile (app-bundle).
+  - The current build was **built locally and submitted to Google Play (internal track)** with
+    `scripts/build-app-local.sh` — `eas build --local` (no expo.dev cloud) → `eas submit`. Artifact
+    kept at `app/build/visky-*.aab` (~74 MB). It carries the trust anchor, the injection-timing fix,
+    the overlay fix, the delegated resend, the code-through-captcha fix, and the aligned SDK 57
+    versions. Requires JDK 17 (cause 27). `scripts/build-app.sh` is the cloud variant (EAS Free-plan
+    Android builds are exhausted until 1 Sep 2026, so the local script is the working path).
+  - Earlier cloud build **vc53** (`055ff92`) predates the TLS trust anchor and cannot reach VK on
+    Android 9 — superseded.
 - **The device-side grant needs the APP shipped**: the backend redirect is inert without an app that
   knows how to run the grant, so deploying the API alone kills login outright (that is exactly what
   happened with 1.5.29 at 10:52). `VK_GRANT_ON_SERVER=true` is the escape hatch. The reverse is
-  safe — the app handles both the 1.5.29 and the 1.5.30 redirect shapes, so it can ship first.
+  safe — the app handles both the direct-`/token` and the `blank.html#g=` redirect shapes.
 - git: monorepo `github.com:neoff/visky.git`, all on `main`.
 
 ---
 
 ## What was verified, and how
 
+- **Full app, no-2FA, on an Android 14 emulator** (WebView 113, API `1.5.34`) — `+380938658617`:
+  `[login] grant response … len 1481` → `AuthLayout has token user_id 1127108627` → `SongsScreen` →
+  `Merging tracks 99` → track tapped → `Playback state: loading → buffering → ready → playing`. Run
+  again after the SDK-57 version alignment to confirm the bump changed nothing.
+- **Full app, 2FA, same emulator** — `en.varg@gmail.com`: login → not_robot captcha (solved by hand)
+  → 2FA page → resend flips to "Код из SMS" → the SMS code plus the captcha `success_token` reach VK
+  together on the retry (decoded the `blank.html#g=` fragment: `code=…` AND `success_token=…`, cause
+  25). VK then evaluated the code (returned `wrong_otp` for an expired one, which re-prompted — cause
+  26; and later `ratelimit`, which showed a notice and kept the form). A *valid* code to a token was
+  blocked only by VK rate-limiting the account after a day of attempts.
+- **Code-through-captcha fix** (cause 25) — also proven deterministically against a local API without
+  the emulator: POST login → 2FA → POST code → synthetic `need_captcha` → `/auth/vk/resume` produced
+  a grant URL carrying `code`, `success_token` AND `captcha_sid` together.
 - **Grant redemption** — curl against `oauth.vk.com/token`: `captcha_sid + success_token` →
   `access_token` + `secret` (user_id 735655178). The three failing variants are listed in cause 7.
 - **Client capture** — a mock page mimicking the widget (same `captchaNotRobot.check` XHR) served to
