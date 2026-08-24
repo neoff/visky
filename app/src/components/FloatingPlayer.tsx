@@ -43,6 +43,8 @@ export const FloatingPlayer = ({style}: ViewProps) => {
           <PlayPauseButton iconSize={24} type={PlayerButtonType.SMALL}/>
           <SkipToNextButton iconSize={22} type={PlayerButtonType.SMALL}/>
         </View>
+
+        <View style={styles.divider} pointerEvents="none"/>
       </>
     </TouchableOpacity>
   )
@@ -61,6 +63,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
+  },
+  // Splits the docked plate into two sections (player / tab icons). Painted ON
+  // the plate — never a gap, or it would punch a hole through both plates.
+  // Inset on the left exactly like the list separator: it starts where the
+  // track title starts, not at the screen edge.
+  divider: {
+    position: 'absolute',
+    left: 8 + 40 + 10, // plate padding + artwork + title container margin
+    right: 8,          // plate padding
+    bottom: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.surfaceDivider,
   },
   trackArtworkImage: {
     width: 40,

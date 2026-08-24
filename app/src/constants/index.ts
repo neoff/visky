@@ -13,6 +13,9 @@ export const colors = {
   // look and is identical on both platforms.
   surface: 'rgba(32,32,32,0.82)',
   surfaceHeader: 'rgba(10,10,10,0.82)',
+  // hairline between the mini player and the tab icons: DARKER than the plate,
+  // painted on top of it (a transparent gap would punch a hole through both)
+  surfaceDivider: 'rgba(0,0,0,0.55)',
   text: '#fff',
   textMuted: '#9ca3af',
   textMutedDarker: '#606060',

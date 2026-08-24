@@ -511,6 +511,23 @@ Now: `bufferingDuringPlay` → spinner, `playing` → `pause` glyph, otherwise �
 Verified on the Android emulator, both states: playing row shows ‖ centred on the artwork, pausing
 from the mini player switches the same row to ▶.
 
+
+---
+
+# Round 6 — divider between the mini player and the tab icons
+
+The docked plate read as one block, so the two sections needed a seam. It is a **painted hairline,
+never a gap**: a transparent line would punch a hole through both translucent plates and show the
+list underneath.
+
+`FloatingPlayer` renders an absolutely positioned 1-hairline `View` on its bottom edge, coloured
+`colors.surfaceDivider` (`rgba(0,0,0,0.55)` — darker than the plate, so it reads on top of it).
+Its width follows the list separator: inset on the left to where the track title starts
+(plate padding 8 + artwork 40 + title margin 10 = 58), running to the plate's right padding —
+not edge to edge.
+
+Verified on both devices with a 1:1 crop of the seam.
+
 ---
 
 # OPEN QUESTIONS — need your decision / your hands
