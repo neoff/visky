@@ -1,5 +1,5 @@
 import {TrackList} from "@/components/TrackList"
-import {modifiers, screenPadding} from "@/constants"
+import {layout, screenPadding} from "@/constants"
 import {trackTitleFilter} from '@/helpers/filter'
 import {generateTracksListId, reducer} from '@/helpers/miscellaneous'
 import {loadPlayListData, loadFriskyListData} from "@/helpers/network"
@@ -16,10 +16,12 @@ import {usePlaylistState} from "@/hooks/usePlaylistState";
 import {useSearchStore} from "@/hooks/useSearchStore";
 import Animated, {useAnimatedRef, useSharedValue, useAnimatedScrollHandler} from "react-native-reanimated";
 import {AnimatedSearchHeader} from "@/components/AnimatedSearchHeader";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 
 const SongsScreen = () => {
   const {refreshing, search, tracks, filteredTracks, handleRefresh} = usePlaylistState('tracks')
+  const insets = useSafeAreaInsets()
   //const updateOffset = useRef<boolean>(false)
 
 
@@ -141,7 +143,9 @@ const SongsScreen = () => {
       scrollY.value = event.contentOffset.y;
     },
   });
-  const HEADER_HEIGHT = 130 + modifiers.scroll;
+  // the header is pinned under the status bar, so its height is the shared
+  // content height plus the real top inset — identical on iOS and Android
+  const HEADER_HEIGHT = layout.headerContentHeight + insets.top;
 
 
   const isFetchingMore = useRef(false);
@@ -159,7 +163,9 @@ const SongsScreen = () => {
         ref={scrollRef}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
-        contentInsetAdjustmentBehavior="automatic"
+        // we pad the list manually by HEADER_HEIGHT; letting iOS add its own
+        // content inset on top of that is what shifted the two platforms apart
+        contentInsetAdjustmentBehavior="never"
         style={{ paddingHorizontal: screenPadding.horizontal, flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ paddingTop: HEADER_HEIGHT, minHeight: '100%', }}
         refreshControl={

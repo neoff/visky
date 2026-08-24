@@ -3,6 +3,7 @@ import {unknownTrackImageUri} from '@/constants/images'
 import {playlistNameFilter} from '@/helpers/filter'
 import {Playlist} from '@/helpers/types'
 import {useNavigationSearch} from '@/hooks/useNavigationSearch'
+import {layout} from '@/constants'
 import {utilsStyles} from '@/styles'
 import {useMemo} from 'react'
 import {FlatList, FlatListProps, Text, View} from 'react-native'
@@ -35,7 +36,7 @@ export const PlayList = ({
 
   return (
     <FlashList
-      contentContainerStyle={{paddingTop: 10, paddingBottom: 128}}
+      contentContainerStyle={{paddingTop: 10, paddingBottom: layout.tabBarContentHeight + 80}}
       ItemSeparatorComponent={ItemDivider}
       ListFooterComponent={ItemDivider}
       ListEmptyComponent={

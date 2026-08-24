@@ -2,6 +2,7 @@ import {MovingText} from "@/components/MovingText";
 import {PlayerButtonType, PlayPauseButton, SkipToNextButton} from "@/components/PlayerControls";
 import {unknownTrackImageUri} from "@/constants/images";
 import {useLastActiveTrack} from "@/hooks/useLastActiveTrack";
+import {colors, fonts, layout} from "@/constants";
 import {defaultStyles} from "@/styles";
 import {useRouter} from "expo-router";
 import {StyleSheet, TouchableOpacity, View, ViewProps} from "react-native";
@@ -51,10 +52,15 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#252525',
-    padding: 8,
-    borderRadius: 12,
-    paddingVertical: 10,
+    // same plate colour as the tab bar; it is docked on top of it, so only the
+    // top corners are rounded and the bar below shows no seam.
+    // The height is fixed (not derived from the padding + text line height) so
+    // the plate is exactly as tall on Android as it is on iOS.
+    height: layout.floatingPlayerHeight,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 8,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   trackArtworkImage: {
     width: 40,
@@ -68,7 +74,8 @@ const styles = StyleSheet.create({
   },
   trackTitle: {
     ...defaultStyles.text,
-    fontSize: 18,
+    fontSize: fonts.sm,
+    lineHeight: fonts.sm + 4,
     fontWeight: '600',
     paddingLeft: 10,
   },

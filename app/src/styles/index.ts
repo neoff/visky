@@ -65,23 +65,26 @@ export const trackListStyles = StyleSheet.create({
     alignItems: 'center',
     paddingRight: 20 + modifiers.padding,
   },
-  trackPlayingIconIndicator: {
-    position: 'absolute',
-    top: 18,
-    left: 16,
-    width: 16,
-    height: 16,
+  // artwork + centred play/loading overlay. The overlay is an absolute fill of
+  // the container, so the icon stays centred whatever the artwork size is.
+  trackArtworkContainer: {
+    width: 50 + modifiers.image,
+    height: 50 + modifiers.image,
+    marginLeft: 10 + modifiers.padding,
   },
-  trackPausedIndicator: {
+  trackArtworkOverlay: {
     position: 'absolute',
-    top: 14,
-    left: 14,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   trackArtworkImage: {
     borderRadius: 8,
-    marginLeft: 10 + modifiers.padding,
-    width: 50 + modifiers.image,
-    height: 50 + modifiers.image,
+    width: '100%',
+    height: '100%',
   },
   trackTitleText: {
     ...defaultStyles.text,

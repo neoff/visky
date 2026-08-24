@@ -6,6 +6,13 @@ import { RepeatMode } from "react-native-track-player";
 export const colors = {
   primary: '#fc3c44',
   background: '#000',
+  // Shared translucent plate colour for the tab bar, the mini player and the
+  // search header. It is an explicit rgba value rather than a BlurView: expo-blur
+  // renders at a different translucency on Android (dimezisBlurView) than on iOS,
+  // which is what made the two builds look unequal. rgba keeps the see-through
+  // look and is identical on both platforms.
+  surface: 'rgba(32,32,32,0.82)',
+  surfaceHeader: 'rgba(10,10,10,0.82)',
   text: '#fff',
   textMuted: '#9ca3af',
   textMutedDarker: '#606060',
@@ -14,20 +21,38 @@ export const colors = {
   minimumTrackTintColor: 'rgba(255,255,255,0.6)',
 }
 
+// iOS and Android must render identically: no per-platform size/spacing offsets.
+// The keys are kept so the existing `x + modifiers.y` call sites keep compiling.
 export const modifiers = {
-  text:(Platform.OS === "ios") ? 0 : 8,
-  icons:(Platform.OS === "ios") ? 0 : 8,
-  padding:(Platform.OS === "ios") ? 0 : 5,
-  margin:(Platform.OS === "ios") ? 0 : 25,
-  width:(Platform.OS === "ios") ? 0 : 10,
-  height:(Platform.OS === "ios") ? 0 : 10,
-  image:(Platform.OS === "ios") ? 0 : 20,
-  scroll:(Platform.OS === "ios") ? 0 : 60,
+  text: 0,
+  icons: 0,
+  padding: 0,
+  margin: 0,
+  width: 0,
+  height: 0,
+  image: 0,
+  scroll: 0,
 }
 
 export const size = {
-  base: (Platform.OS === "ios") ? 0 : 18,
-  image: (Platform.OS === "ios") ? 0 : 50,
+  base: 0,
+  image: 0,
+}
+
+// Shared layout metrics. The tab bar, the mini player and the search header all
+// derive their geometry from here so the two platforms stay in sync and the
+// mini player sits flush on top of the tab bar.
+export const layout = {
+  // tab bar height WITHOUT the bottom safe-area inset
+  tabBarContentHeight: 60,
+  tabBarRadius: 20,
+  // mini player: fixed so it is exactly as tall as the tab bar plate
+  floatingPlayerHeight: 60,
+  // one icon size for every tab, so the icon row has a single baseline
+  tabIconSize: 24,
+  searchBoxHeight: 48,
+  // search header height WITHOUT the top safe-area inset
+  headerContentHeight: 130,
 }
 
 export const fonts = {
@@ -35,7 +60,8 @@ export const fonts = {
   sm: 16 + modifiers.text,
   base: 20 + modifiers.text,
   lg: 24 + modifiers.text,
-  weight: (Platform.OS === "ios") ? 500 : 600,
+  // identical on both platforms — a heavier Android weight renders visibly bigger
+  weight: 600,
 }
 
 
@@ -78,7 +104,7 @@ export const __DEV = _envDev === "true" || false
 // EXPO_PUBLIC_LOGIN_LOCAL is the one that actually works; EXPO_LOGIN_LOCAL is
 // accepted too but Expo will not expose it to the app.
 export const loginLocal =
-  (process.env.EXPO_PUBLIC_LOGIN_LOCAL || process.env.EXPO_LOGIN_LOCAL) === "true"
+  __DEV && (process.env.EXPO_PUBLIC_LOGIN_LOCAL || process.env.EXPO_LOGIN_LOCAL) === "true"
 let baseHost: string = process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:3000";
 
 if (__DEV) {

@@ -54,51 +54,67 @@ export const deviceIDgen = () => {
     return result;
 }
 
+// Titles arrive in two shapes:
+//   old: artist "FRISKY | Blue",  title "Event 2024 - Mix (Part 2) [vk.com/feelin_frisky]"
+//   new: artist "Melamanos",      title "FRISKY | Artist of the Week August 2026 - Part 2"
+// Both rules are kept: the old cleanup is untouched, the "FRISKY | " prefix is
+// now stripped from the title too, and the part suffix is matched in both the
+// "(Part N)" and "- Part N" / "Part N" spellings.
+const friskyPrefixRegex = /^\s*FRISKY\s*\|\s*/i
+const partRegex = /^(.*?)\s*(?:[-\u2013\u2014]\s*)?\(?\s*Part\s+(\d+)\s*\)?$/i
+
 export const cleanupData = (data: VkPlaylistResponse): VkPlaylistResponse => {
-    //remove from items.artist "FRISKY | " and from items.title  [vk.com/feelin_frisky]"
+    //remove from items.artist/title "FRISKY | ", the "Month YYYY - " prefix and the "[vk.com/feelin_frisky]" suffix
     data.items = data?.items?.map((item) => {
-        item.artist = item.artist?.replace("FRISKY | ", "");
+        item.artist = item.artist?.replace(friskyPrefixRegex, "");
+        item.title = item.title?.replace(friskyPrefixRegex, "");
         item.title = item.title?.replace(/\w+? \d{4} - /g, "");
         item.title = item.title?.replace(/ \[vk\.com\/feelin_frisky]/g, "");
+        item.title = item.title?.trim();
         return item;
     });
     return data;
 }
 
+/**
+ * Group tracks that belong to the same multipart show and order them Part 1,
+ * Part 2, Part 3. The group keeps the position of its first member, so the
+ * overall (date descending) order of the playlist is preserved.
+ */
 export const  sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistResponse =>{
-    const partRegex = /^(.*)\s+\(Part (\d+)\)$/i
+    const groups = new Map<string, any[]>();
+    const sortedItems: any[] = [];
 
-    const sortedItems = [];
-    let i = 0;
+    for (const item of data.items) {
+        const match = item.title?.match(partRegex);
 
-    while (i < data.items.length) {
-        const match = data.items[i].title?.match(partRegex);
+        if (!match) {
+            sortedItems.push(item);
+            continue;
+        }
 
-        if (match) {
-            const baseTitle = match[1]
-            const group = [];
+        const baseTitle = match[1].toLowerCase();
+        const group = groups.get(baseTitle);
 
-            while (i < data.items.length) {
-                const m = data.items[i].title?.match(partRegex);
-                if (!m || m[1] !== baseTitle) break;
-                group.push(data.items[i]);
-                i++
-            }
-
-            // отсортировать Part N по номеру
-            group.sort((a, b) => {
-                const aNum = Number(a.title?.match(partRegex)![2]);
-                const bNum = Number(b.title?.match(partRegex)![2]);
-                return aNum - bNum;
-            })
-
-            sortedItems.push(...group);
+        if (group) {
+            group.push(item);
         } else {
-            sortedItems.push(data.items[i]);
-            i++
+            const newGroup = [item];
+            groups.set(baseTitle, newGroup);
+            // placeholder: the whole group is spliced in at this position later
+            sortedItems.push(newGroup);
         }
     }
-    data.items = sortedItems;
+
+    for (const group of groups.values()) {
+        group.sort((a, b) => {
+            const aNum = Number(a.title?.match(partRegex)![2]);
+            const bNum = Number(b.title?.match(partRegex)![2]);
+            return aNum - bNum;
+        })
+    }
+
+    data.items = sortedItems.flatMap((entry) => Array.isArray(entry) ? entry : [entry]);
     return data
 }
 

@@ -1,4 +1,5 @@
 import { unknownTrackImageUri } from "@/constants/images";
+import { layout } from '@/constants';
 import { utilsStyles } from '@/styles';
 import {ActivityIndicator, FlatList, FlatListProps, Text, View} from "react-native";
 import FastImage from "react-native-fast-image";
@@ -77,7 +78,7 @@ export const TrackList = ({
   return (
     <FlashList
       data={tracks}
-      contentContainerStyle={{paddingTop: 10, paddingBottom: 128}}
+      contentContainerStyle={{paddingTop: 10, paddingBottom: layout.tabBarContentHeight + 80}}
       /*ListHeaderComponent={
         !hideQueueControls ? (
           <QueueControls tracks={tracks} style={{ paddingBottom: 20 }} />

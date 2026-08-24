@@ -58,6 +58,50 @@ describe('helpers', () => {
     ]);
   });
 
+  test('cleanupData should strip "FRISKY | " from the new-format title', () => {
+    const data: Tracklist = {
+      items: [
+        { artist: 'Melamanos', title: 'FRISKY | Artist of the Week August 2026 - Part 2', type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = cleanupData(data);
+    expect(result.items[0].artist).toBe('Melamanos');
+    expect(result.items[0].title).toBe('Artist of the Week Part 2');
+  });
+
+  test('sortLocalPartTracks should sort new-format "- Part N" blocks', () => {
+    const data: Tracklist = {
+      items: [
+        { title: 'Artist of the Week - Part 2', artist: 'Melamanos', type: 'hls' },
+        { title: 'Artist of the Week - Part 1', artist: 'Melamanos', type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = sortLocalPartTracks(data);
+    expect(result.items.map(i => i.title)).toEqual([
+      'Artist of the Week - Part 1', 'Artist of the Week - Part 2'
+    ]);
+  });
+
+  test('cleanupDataAndSortPart handles the new VK payload shape', () => {
+    const data: Tracklist = {
+      items: [
+        { artist: 'Melamanos', title: 'FRISKY | Artist of the Week August 2026 - Part 3', type: 'hls' },
+        { artist: 'Melamanos', title: 'FRISKY | Artist of the Week August 2026 - Part 2', type: 'hls' },
+        { artist: 'Christian Monique', title: 'FRISKY | SEVENTEEN August 2026 - Part 2', type: 'hls' },
+        { artist: 'Melamanos', title: 'FRISKY | Artist of the Week August 2026 - Part 1', type: 'hls' },
+        { artist: 'Christian Monique', title: 'FRISKY | SEVENTEEN August 2026 - Part 1', type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = cleanupDataAndSortPart(data);
+    expect(result.items.map(i => i.title)).toEqual([
+      'Artist of the Week Part 1',
+      'Artist of the Week Part 2',
+      'Artist of the Week Part 3',
+      'SEVENTEEN Part 1',
+      'SEVENTEEN Part 2'
+    ]);
+  });
+
   test('cleanupDataAndSortPart combines both clean and sort', () => {
     const data: Tracklist = {
       items: [

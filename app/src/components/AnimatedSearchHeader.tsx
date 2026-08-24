@@ -1,6 +1,5 @@
 // AnimatedSearchHeader.tsx
 import {TextInput, View, Text, Platform, Pressable, StyleSheet, TouchableOpacity} from 'react-native';
-import {BlurView} from 'expo-blur';
 import Animated, {
   Extrapolation,
   SharedValue,
@@ -9,7 +8,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/Ionicons';
-import {colors} from "@/constants";
+import {colors, fonts, layout} from "@/constants";
 import {Ionicons} from "@expo/vector-icons";
 import {useCallback, useRef, useState} from "react";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
@@ -47,7 +46,7 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
 
   const searchAnimatedStyle = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 40], [1, 0], Extrapolation.CLAMP),
-    height: interpolate(scrollY.value, [0, 40], [48, 0], Extrapolation.CLAMP),
+    height: interpolate(scrollY.value, [0, 40], [layout.searchBoxHeight, 0], Extrapolation.CLAMP),
     marginTop: interpolate(scrollY.value, [0, 40], [12, 0], Extrapolation.CLAMP),
   }));
   const handleChangeText = useCallback(
@@ -64,12 +63,9 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
   };
 
   return (
-    <BlurView
-      intensity={95}
-      tint={'dark'}
-      experimentalBlurMethod={'dimezisBlurView'}
-      style={styles.header}
-    >
+    // translucent rgba plate instead of BlurView: expo-blur is translucent to a
+    // different degree on Android, which made the two headers look unequal
+    <View style={[styles.header, {paddingTop: insets.top + 8}]}>
       <Animated.View style={[{alignItems: 'flex-start'}, headerAnimatedStyle]}>
         <Text style={styles.title}>{title}</Text>
       </Animated.View>
@@ -93,7 +89,7 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
           )}
         </View>
       </Animated.View>
-    </BlurView>
+    </View>
   );
 };
 
@@ -103,35 +99,40 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    paddingTop: 60,
+    // paddingTop is applied at runtime from the top safe-area inset
     paddingHorizontal: 16,
     paddingBottom: 12,
+    backgroundColor: colors.surfaceHeader,
     zIndex: 10,
-
   },
   title: {
     fontSize: 32,
+    lineHeight: 38,
     fontWeight: "bold",
     color: colors.text,
     marginBottom: 12,
+    includeFontPadding: false,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 48,
+    height: layout.searchBoxHeight,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
     backgroundColor: colors.background,
     gap: 8,
   },
+  // NO vertical padding here: the box already has a fixed height and Android
+  // clips the input to `height - padding`, which cut the text row in half.
+  // `height: '100%'` + centred text keeps the caret and the glyphs whole.
   input: {
-    backgroundColor: colors.background,
+    height: '100%',
     color: colors.text,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    fontSize: 16,
+    paddingVertical: 0,
+    paddingHorizontal: 4,
+    fontSize: fonts.sm,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
     flex: 1,
   },
 });

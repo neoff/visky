@@ -22,7 +22,7 @@ export const TrackListItem = ({
   return (
     <TouchableHighlight onPress={() => handleTrackSelect(track)}>
       <View style={trackListStyles.trackItemContainer}>
-        <View>
+        <View style={trackListStyles.trackArtworkContainer}>
           <FastImage
             source={{
               uri: track.artwork ?? unknownTrackImageUri,
@@ -34,21 +34,15 @@ export const TrackListItem = ({
             }}
           />
 
-          {isActiveTrack &&
-            (playing ? (
-              <ActivityIndicator
-                style={trackListStyles.trackPlayingIconIndicator}
-                color={colors.icon}
-                size="small"
-              />
-            ) : (
-              <Ionicons
-                style={trackListStyles.trackPausedIndicator}
-                name="play"
-                size={24}
-                color={colors.icon}
-              />
-            ))}
+          {isActiveTrack && (
+            <View style={trackListStyles.trackArtworkOverlay} pointerEvents="none">
+              {playing ? (
+                <ActivityIndicator color={colors.icon} size="small"/>
+              ) : (
+                <Ionicons name="play" size={24} color={colors.icon}/>
+              )}
+            </View>
+          )}
         </View>
 
         <View style={{
