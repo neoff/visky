@@ -160,7 +160,20 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
     not in the widget's param whitelist (`variant, domain, session_token, autofocus, blank, redirect,
     scheme, lang_id`) and is simply ignored.
 
-17. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
+17. **An Android WebView will not necessarily render `application/json`.** The first cut of the
+    device-side grant navigated the WebView straight at `oauth.vk.com/token` and read the JSON out
+    of the page. WebView 66 renders that as a **blank page** (reproduced in the emulator's
+    `org.chromium.webview_shell`), i.e. exactly the silent hang we were trying to remove. The token
+    endpoint also sends no CORS headers (`Access-Control-Allow-Origin` absent, checked) and does not
+    support JSONP (`callback` / `jsonp` / `format=jsonp` all ignored), so a `fetch` from our own host
+    cannot read it either.
+
+    Fix: land on `https://oauth.vk.com/blank.html` — a real, empty, CSP-free page on the SAME origin
+    — with the grant query in the **URL fragment** (never sent to VK), and have the injected script
+    issue `fetch('/token?…')`. Same-origin means the body is readable no matter how the WebView would
+    have rendered it, and the token never appears on screen.
+
+18. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
     like `VKAndroidApp/7.7-9034` does (verified). So delegating the grant to the WebView needs no UA
     override — which matters, because overriding it would break the Chromium-version sniff and VK's
     own login page.
@@ -174,8 +187,9 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
 - `GET /auth/vk` — serves the real VK login page snapshot (`api/docs/auth.html`) with its form
   rewritten to POST `/auth/vk`. Stores `?device_id=` (from the app) in session.
 - `POST /auth/vk` — **does not call VK.** It stores creds + device_id in `session.fb` and 302s the
-  WebView to the URL from `buildGrantUrl()` (`https://oauth.vk.com/token?…`), so the grant leaves
-  from the phone's IP over HTTP/2 (root cause 15). `VK_GRANT_ON_SERVER=true` restores the old
+  WebView to `https://oauth.vk.com/blank.html#g=<urlencoded grant query>` (built from
+  `buildGrantUrl()`), so the grant leaves from the phone's IP over HTTP/2 (root cause 15) and is read
+  back with a same-origin `fetch` (root cause 17). `VK_GRANT_ON_SERVER=true` restores the old
   server-side `performDirectGrant` path; everything downstream is identical either way.
 - `GET /auth/vk/next?d=<VK's raw JSON>` — the app hands back what VK answered on the device;
   `parseGrantResponse` turns it into the same `GrantResult` the server grant produced, and it goes
@@ -210,9 +224,9 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
         `success_token` under tag `xhr`, everything else under `chk` so the `BOT` / `ERROR_LIMIT`
         branches are visible instead of looking like a hang (root cause 16);
     (c) still wraps `postMessage` + a `message` listener as a belt-and-braces channel;
-    (d) on `oauth.vk.com/token`, reads VK's JSON out of the page (`document.body.innerText`;
-        content-type is `application/json`, so the WebView renders it as text) and sends it as
-        `grant`;
+    (d) on `oauth.vk.com/blank.html#g=…`, decodes the fragment and runs the grant itself with a
+        same-origin `fetch('/token?…')`, sending the body as `grant`. Falls back to a top-level
+        navigation (and reading `document.body.innerText`) only if that fetch throws;
     (e) forwards uncaught page errors as `err`.
     **No backslashes and no `${` in this template literal** — see gotchas.
   - `onMessage` —
@@ -226,8 +240,12 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
     `oldwv` → the "update WebView" notice.
   - `onShouldStartLoadWithRequest` + `onNavigationStateChange` → `processUrl(url)`:
     - logs `[login nav] <url>`; clears the busy overlay on `not_robot_captcha`.
-    - keeps the overlay UP on `oauth.vk.com/token` so VK's raw JSON (token included) is never on
-      screen; clears it again when a backend step renders.
+    - keeps the overlay UP for the whole grant hop; clears it again when a backend step renders.
+    - **bounces** a direct `oauth.vk.com/token` navigation to `blank.html#g=…` itself, so the app
+      works against api 1.5.29 (which redirected straight at the token endpoint) as well as 1.5.30
+      and the deploy order does not matter. Only from `onShouldStartLoadWithRequest` (before the
+      load) and at most once per attempt — re-issuing the grant would be a second attempt against
+      VK's flood control.
     - any url with `access_token=` → parse hash → `signIn` → `router.dismiss()`.
     - `blank.html` + `success=1` → wait 1500 ms for the token (keyed resume wins the race), else a
       keyless resume as a last resort.
@@ -243,10 +261,12 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
 - **App:** EAS `@varg/visky`, pkg `com.envarg.visky`, production profile (app-bundle, auto-submit
   internal track). Last build **vc50** (commit `d2ef5c7`) — contains the `success_token` capture and
   the spinner fix, but **not** the old-WebView notice / dev-routing (`24807c1`), the captcha-status
-  diagnostics (`3d8afaf`) or the device-side grant (`17530a3`). Build with `scripts/build-app.sh`.
-- **The device-side grant needs BOTH sides shipped together**: the backend redirect is inert without
-  an app that knows how to read the JSON back, and vice versa. Deploy the API and cut an app build in
-  the same pass, or set `VK_GRANT_ON_SERVER=true` until the build lands.
+  diagnostics (`3d8afaf`) or the device-side grant (`17530a3` + `055ff92`). Build with
+  `scripts/build-app.sh` (production profile, auto-submits to the Play internal track).
+- **The device-side grant needs the APP shipped**: the backend redirect is inert without an app that
+  knows how to run the grant, so deploying the API alone kills login outright (that is exactly what
+  happened with 1.5.29 at 10:52). `VK_GRANT_ON_SERVER=true` is the escape hatch. The reverse is
+  safe — the app handles both the 1.5.29 and the 1.5.30 redirect shapes, so it can ship first.
 - git: monorepo `github.com:neoff/visky.git`, all on `main`.
 
 ---
@@ -278,6 +298,14 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
   `success_token`; a 2FA `code` POST re-delegates with `&code=` appended; unparseable `d` falls back
   to the login page. `CAPTURE_JS` passes `node --check` and contains no backslashes or `${`.
   **Not yet run on a real device** — needs a new app build.
+- **WebView will not render the JSON** (cause 17) — `org.chromium.webview_shell` on the emulator
+  (WebView 66) loaded the token URL and showed a blank page; nothing landed in `/sdcard/Download`
+  either, so it was not a download. Hence the same-origin fetch. The fragment→`fetch('/token?…')`
+  path was then exercised in a DOM stand-in under node: the query round-trips byte-identical and the
+  `{"__cap":"grant"}` message reaches the RN side.
+- **The blank.html hop is safe to inject into** — `https://oauth.vk.com/blank.html` returns
+  `200 text/html` with **no** `Content-Security-Policy` (checked), so the injected script and its
+  same-origin fetch are not blocked.
 
 ---
 
