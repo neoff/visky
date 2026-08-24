@@ -5,6 +5,7 @@ import TrackPlayer, { Track } from 'react-native-track-player'
 import { match } from 'ts-pattern'
 import {useFavorites} from "@/store/library";
 import {useQueue} from "@/store/queue";
+import {isSameTrack} from "@/helpers/miscellaneous";
 
 type TrackShortcutsMenuProps = PropsWithChildren<{ track: Track }>
 
@@ -33,7 +34,7 @@ export const TrackShortcutsMenu = ({ track, children }: TrackShortcutsMenuProps)
         if (activeQueueId?.startsWith('favorites')) {
           const queue = await TrackPlayer.getQueue()
 
-          const trackToRemove = queue.findIndex((queueTrack) => queueTrack.url === track.url)
+          const trackToRemove = queue.findIndex((queueTrack) => isSameTrack(queueTrack, track))
 
           await TrackPlayer.remove(trackToRemove)
         }

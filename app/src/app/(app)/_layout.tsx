@@ -1,6 +1,6 @@
 import {Button, Text, View} from 'react-native';
 import {Redirect, router, SplashScreen, Stack, useRouter} from 'expo-router';
-import {apiUrls, authPage} from "@/constants";
+import {apiUrls, authPage, colors} from "@/constants";
 import React, {useCallback, useRef, useState} from "react";
 import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 import {useLogTrackPlayerState} from "@/hooks/useLogTrackPlayerState";
@@ -32,7 +32,11 @@ export default function AppLayout() {
   console.log("===AppLayout return");
   // This layout can be deferred because it's not the root layout.
   return (
-    <Stack>
+    // contentStyle pins an OPAQUE background on every screen in this stack.
+    // Without it the card is composited over the screen below, and during the
+    // vertical dismiss gesture the (now translucent) mini player and tab bar of
+    // the tabs screen bleed through the player as grey rectangles.
+    <Stack screenOptions={{contentStyle: {backgroundColor: colors.background}}}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="player"
@@ -42,6 +46,7 @@ export default function AppLayout() {
           gestureDirection: 'vertical',
           animationDuration: 400,
           headerShown: false,
+          contentStyle: {backgroundColor: colors.background},
           headerLeft: () => <Button onPress={handleDismiss} title="Close" />,
         }}
       />

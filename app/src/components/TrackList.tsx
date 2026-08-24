@@ -1,12 +1,12 @@
 import { unknownTrackImageUri } from "@/constants/images";
 import { layout } from '@/constants';
+import { isSameTrack } from '@/helpers/miscellaneous';
 import { utilsStyles } from '@/styles';
 import {ActivityIndicator, FlatList, FlatListProps, Text, View} from "react-native";
 import FastImage from "react-native-fast-image";
 import TrackPlayer, {Track, TrackType} from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
-import {useRef} from "react";
 import {FlashList, FlashListProps} from "@shopify/flash-list";
 import unknownTrackImage from '@/assets/unknown_track.png'
 
@@ -24,7 +24,6 @@ export const TrackList = ({
                             refresh = false,
                             ...flatListProps
                           }: TrackListProps) => {
-  const queueOffset = useRef(0)
   const { activeQueueId, setActiveQueueId } = useQueue()
 
   /*const handleTrackSelect = async (selectedTrack: Track) => {
@@ -34,42 +33,47 @@ export const TrackList = ({
     await TrackPlayer.play()
   }*/
   const handleTrackSelect = async (selectedTrack: Track) => {
-    console.log('Selected track', selectedTrack)
     const playableTracks = tracks.filter(
       (track) => typeof track.url === 'string' && track.url.trim().length > 0,
     )
-    const trackIndex = playableTracks.findIndex((track) => track.url === selectedTrack.url)
+    const trackIndex = playableTracks.findIndex((track) => isSameTrack(track, selectedTrack))
     if (trackIndex === -1) {
       console.warn('Selected track has no playable URL', selectedTrack.id)
       return
     }
 
-    const isChangingQueue = id !== activeQueueId
-    console.log(`isChangingQueue:${isChangingQueue} id:${id} activeQueueId:${activeQueueId}`)
     try {
-      if (isChangingQueue) {
-        const beforeTracks = playableTracks.slice(0, trackIndex)
-        const afterTracks = playableTracks.slice(trackIndex + 1)
-        const queue = [selectedTrack, ...afterTracks, ...beforeTracks].map((track) => ({
-          ...track,
-          type: TrackType.HLS,
-        }))
+      // Skip inside the queue the PLAYER actually holds, looked up by track id.
+      // The old code kept its own `queueOffset` ref and did index arithmetic
+      // against the on-screen list: the ref is re-created whenever TrackList
+      // remounts while `activeQueueId` survives in the zustand store, and a
+      // refresh can reorder the list without changing the queue id — both make
+      // the arithmetic point at a DIFFERENT track. Asking the player is exact.
+      const currentQueue = await TrackPlayer.getQueue()
+      const indexInQueue = currentQueue.findIndex((queueTrack) =>
+        isSameTrack(queueTrack, selectedTrack),
+      )
 
-        await TrackPlayer.reset()
-        await TrackPlayer.add(queue)
+      if (id === activeQueueId && indexInQueue !== -1) {
+        await TrackPlayer.skip(indexInQueue)
         await TrackPlayer.play()
-
-        queueOffset.current = trackIndex
-        setActiveQueueId(id)
-      } else {
-        const nextTrackIndex =
-          trackIndex - queueOffset.current < 0
-            ? playableTracks.length + trackIndex - queueOffset.current
-            : trackIndex - queueOffset.current
-
-        await TrackPlayer.skip(nextTrackIndex)
-        await TrackPlayer.play()
+        return
       }
+
+      // different list (or the track is not queued): rebuild the queue starting
+      // at the selected track
+      const beforeTracks = playableTracks.slice(0, trackIndex)
+      const afterTracks = playableTracks.slice(trackIndex + 1)
+      const queue = [selectedTrack, ...afterTracks, ...beforeTracks].map((track) => ({
+        ...track,
+        type: TrackType.HLS,
+      }))
+
+      await TrackPlayer.reset()
+      await TrackPlayer.add(queue)
+      await TrackPlayer.play()
+
+      setActiveQueueId(id)
     } catch (error) {
       console.warn('Unable to start selected track', error)
     }

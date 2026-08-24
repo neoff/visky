@@ -6,6 +6,7 @@ import FastImage from "react-native-fast-image"
 import {Track, useActiveTrack, useIsPlaying} from "react-native-track-player";
 import {Entypo, Ionicons} from "@expo/vector-icons";
 import dayjs from "dayjs";
+import {isSameTrack} from "@/helpers/miscellaneous";
 
 export type TracksListItemProps = {
   track: Track
@@ -17,7 +18,8 @@ export const TrackListItem = ({
                                 onTrackSelect: handleTrackSelect,
                               }: TracksListItemProps) => {
   const {playing} = useIsPlaying()
-  const isActiveTrack = useActiveTrack()?.url === track.url
+  // by id, not by url — VK's signed urls change on every refresh
+  const isActiveTrack = isSameTrack(useActiveTrack(), track)
 
   return (
     <TouchableHighlight onPress={() => handleTrackSelect(track)}>

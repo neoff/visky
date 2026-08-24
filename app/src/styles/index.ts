@@ -41,7 +41,7 @@ export const utilsStyles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     opacity: 0.3,
     marginVertical: 10 + modifiers.padding,
-    marginLeft: 60 + modifiers.margin,
+    marginLeft: 50 + 14 + modifiers.margin, // artwork width + columnGap: the separator starts at the text
   },
   emptyContentText: {
     ...defaultStyles.text,
@@ -59,18 +59,20 @@ export const utilsStyles = StyleSheet.create({
 })
 
 export const trackListStyles = StyleSheet.create({
+  // The row itself adds NO horizontal padding: the screen already applies
+  // `screenPadding.horizontal` on both sides, so the artwork and the "..." menu
+  // end up the same distance from their edges.
   trackItemContainer: {
     flexDirection: 'row',
     columnGap: 14 + modifiers.padding,
     alignItems: 'center',
-    paddingRight: 20 + modifiers.padding,
+    paddingRight: 0,
   },
   // artwork + centred play/loading overlay. The overlay is an absolute fill of
   // the container, so the icon stays centred whatever the artwork size is.
   trackArtworkContainer: {
     width: 50 + modifiers.image,
     height: 50 + modifiers.image,
-    marginLeft: 10 + modifiers.padding,
   },
   trackArtworkOverlay: {
     position: 'absolute',

@@ -34,3 +34,22 @@ export const reducer = (data: any[]) => {
 }
 
 
+
+/**
+ * Stable identity for a track.
+ *
+ * NEVER compare tracks by `url`: VK hands out SIGNED m3u8 links that are
+ * regenerated on every `audio.get` call, so the same track has a different url
+ * after each refresh. Comparing by url made the active row lose its highlight
+ * and its play icon, and made `TrackPlayer.skip` land on the wrong track.
+ */
+export const trackKey = (track: { id?: string | number; url?: string } | null | undefined) =>
+  track == null ? undefined : (track.id != null ? String(track.id) : track.url)
+
+export const isSameTrack = (
+  a: { id?: string | number; url?: string } | null | undefined,
+  b: { id?: string | number; url?: string } | null | undefined,
+) => {
+  const ka = trackKey(a)
+  return ka !== undefined && ka === trackKey(b)
+}

@@ -74,7 +74,8 @@ export const screen = {
 }*/
 
 export const screenPadding = {
-  horizontal: 24,
+  // halved (was 24): the rows sat too far from the screen edges
+  horizontal: 12,
 }
 
 export interface IPlayerState {

@@ -3,6 +3,7 @@ import { Artist, Playlist, TrackWithPlaylist } from '@/helpers/types'
 import { Track } from 'react-native-track-player'
 import { create } from 'zustand'
 import {MMKVLoader, useMMKVStorage} from "react-native-mmkv-storage";
+import {isSameTrack} from "@/helpers/miscellaneous";
 
 interface LibraryState {
   tracks: Promise<TrackWithPlaylist[]>
@@ -25,7 +26,7 @@ export const useLibraryStore = create<LibraryState>()((set) => ({
   toggleTrackFavorite: (track) =>
     set((state) => ({
       tracks: state.tracks.then((tracks) => tracks.map((currentTrack) => {
-        if (currentTrack.url === track.url) {
+        if (isSameTrack(currentTrack, track)) {
           return {
             ...currentTrack,
             rating: currentTrack.rating === 1 ? 0 : 1,
@@ -38,7 +39,7 @@ export const useLibraryStore = create<LibraryState>()((set) => ({
   addToPlaylist: (track, playlistName) =>
     set((state) => ({
       tracks: state.tracks.then((tracks) => tracks.map((currentTrack) => {
-        if (currentTrack.url === track.url) {
+        if (isSameTrack(currentTrack, track)) {
           return {
             ...currentTrack,
             playlist: [...(currentTrack.playlist ?? []), playlistName],
