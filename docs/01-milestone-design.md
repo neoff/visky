@@ -497,6 +497,20 @@ With no track loaded the tab bar keeps its rounded corners.
 
 Verified on both devices by cropping the strip where the plates meet: no gaps left or right.
 
+
+---
+
+# Round 5 — pause glyph instead of the spinner (open question 4, answered)
+
+`TrackListItem` rendered `playing ? <ActivityIndicator/> : <Ionicons play/>`, so a **playing** track
+showed a loading spinner. `useIsPlaying()` also returns `bufferingDuringPlay`, which is what the
+spinner actually belongs to.
+
+Now: `bufferingDuringPlay` → spinner, `playing` → `pause` glyph, otherwise → `play` glyph.
+
+Verified on the Android emulator, both states: playing row shows ‖ centred on the artwork, pausing
+from the mini player switches the same row to ▶.
+
 ---
 
 # OPEN QUESTIONS — need your decision / your hands
@@ -516,9 +530,8 @@ Verified on both devices by cropping the strip where the plates meet: no gaps le
    time a queue is built; (b) after a refresh, push the new metadata into the existing queue with
    `TrackPlayer.updateMetadataForTrack`. Not in the task, so nothing was changed.
 
-4. **The active row shows a spinner while playing** (`ActivityIndicator`) and ▶ only while paused.
-   That reads as "loading", not "playing". Pre-existing behaviour, left as is. Want an equalizer /
-   pause glyph instead?
+4. ~~**The active row shows a spinner while playing.**~~ **RESOLVED** — see Round 5: the row now
+   shows ‖ while playing, ▶ while paused, and the spinner only during real buffering.
 
 5. **No artwork at all** — the new VK payload has no `album.thumb`, so every row falls back to the
    placeholder note. Needs a separate lookup or a show-level artwork fallback. Not in the task.

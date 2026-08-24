@@ -17,7 +17,7 @@ export const TrackListItem = ({
                                 track,
                                 onTrackSelect: handleTrackSelect,
                               }: TracksListItemProps) => {
-  const {playing} = useIsPlaying()
+  const {playing, bufferingDuringPlay} = useIsPlaying()
   // by id, not by url — VK's signed urls change on every refresh
   const isActiveTrack = isSameTrack(useActiveTrack(), track)
 
@@ -38,10 +38,12 @@ export const TrackListItem = ({
 
           {isActiveTrack && (
             <View style={trackListStyles.trackArtworkOverlay} pointerEvents="none">
-              {playing ? (
+              {/* the spinner means BUFFERING, not "playing": a playing track
+                  shows the pause glyph, a paused one shows play */}
+              {bufferingDuringPlay ? (
                 <ActivityIndicator color={colors.icon} size="small"/>
               ) : (
-                <Ionicons name="play" size={24} color={colors.icon}/>
+                <Ionicons name={playing ? 'pause' : 'play'} size={24} color={colors.icon}/>
               )}
             </View>
           )}
