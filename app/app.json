@@ -63,7 +63,8 @@
           "resizeMode": "contain"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "./plugins/withVkTrustAnchor"
     ],
     "experiments": {
       "typedRoutes": true,
