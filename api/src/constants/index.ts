@@ -45,7 +45,7 @@ export const directGrant = {
   scope: process.env.VK_DIRECT_SCOPE || "nohttps,audio,offline",
   // User-Agent MUST pair with the app id (VK Android UA for the VK Android app).
   userAgent: process.env.VK_DIRECT_UA
-    || "VKAndroidApp/7.7-9034 (Android 12; SDK 31; arm64-v8a; ru)",
+    || "VKAndroidApp/5.52-4543 (Android 5.1.1; SDK 22; x86_64; unknown Android SDK built for x86_64; en; 320x240)",
 }
 
 
