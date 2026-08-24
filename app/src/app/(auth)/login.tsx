@@ -458,12 +458,16 @@ const LoginPage = () => {
       return false;
     }
 
-    // A backend step rendered (login form, 2FA, error) — the flow continues, so
-    // allow the next grant response to be consumed.
+    // Any backend page means a step rendered (login form, 2FA, error), so drop
+    // the overlay — including on /auth/vk/next, which IS the page that renders
+    // the 2FA form. Leaving it up dimmed the card and swallowed every tap on the
+    // code field, the same failure as the old stuck captcha spinner.
+    if (url.includes("/auth/")) setBusy(false);
+
+    // A fresh step (not the grant handoff itself) re-arms the grant capture.
     if (url.includes("/auth/vk") && !url.includes("/auth/vk/next")) {
       grantSent.current = false;
       bounced.current = false;
-      setBusy(false);
     }
 
     if (url.includes("not_robot_captcha")) {
