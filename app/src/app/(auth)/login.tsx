@@ -1,7 +1,7 @@
 import { useSession } from "@/components/SessionProvider";
 import { apiUrls, colors } from "@/constants";
 import { getAuth } from "@/helpers/network";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -243,6 +243,7 @@ const findToken = (obj: any, depth = 0): string | undefined => {
 const LoginPage = () => {
   const { signIn } = useSession();
   const router = useRouter();
+  const navigation = useNavigation();
 
   const [uri, setUri] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
@@ -265,13 +266,29 @@ const LoginPage = () => {
   // Chromium major version of the WebView, reported from the captcha page when
   // it is too old to run VK's widget (<94). Drives the explanation banner.
   const [oldWebView, setOldWebView] = useState<number | null>(null);
+  // Host + path of whatever the WebView is showing, mirrored into the modal
+  // header so a stall is diagnosable at a glance instead of being an anonymous
+  // spinner. Query and hash are deliberately dropped — the grant URL carries the
+  // password in plain sight.
+  const [navUrl, setNavUrl] = useState<string>("");
   // Last non-OK status from captchaNotRobot.check ("BOT", "BOT:slider",
   // "ERROR_LIMIT", ...). Drives the explanation shown over the dead widget.
   const [captchaError, setCaptchaError] = useState<string | null>(null);
 
+  useEffect(() => {
+    navigation.setOptions({ title: navUrl || apiUrls.baseUrl });
+  }, [navigation, navUrl]);
+
   const resumeWith = (successToken?: string) => {
     if (resuming.current) return;
     resuming.current = true;
+    // A resume is a NEW grant round, so re-arm the capture. processUrl cannot do
+    // it for us: setUri() drives the WebView programmatically and Android does
+    // not report that through onShouldStartLoadWithRequest, so the /auth/vk/resume
+    // navigation is never seen. Without this the post-captcha grant — the one
+    // that finally carries the token — arrives and is dropped.
+    grantSent.current = false;
+    bounced.current = false;
     if (blankTimer.current) {
       clearTimeout(blankTimer.current);
       blankTimer.current = null;
@@ -459,6 +476,8 @@ const LoginPage = () => {
   const processUrl = (url: string, preload = false): boolean => {
     if (!url) return false;
     console.log("[login nav]", url);
+    const shown = /^https?:\/\/([^/?#]+)([^?#]*)/.exec(url);
+    setNavUrl(shown ? `${shown[1]}${shown[2]}` : url.slice(0, 80));
     const hasToken = url.includes("access_token=");
 
     // Back on VK's captcha page — allow a fresh resume cycle AND drop the busy
