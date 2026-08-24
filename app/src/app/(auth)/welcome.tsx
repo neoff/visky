@@ -35,7 +35,8 @@ const WelcomeNavigation = () => {
         </Text>
 
         <Text style={welcomeStyles.text}>
-          Please log in to continue. You've just accessed the now experience.{'\n'}
+          Please log in to continue.{'\n'}
+          You've just accessed the now experience.{'\n'}
           This experience is great for dancing and improving self-esteem.
         </Text>
 
