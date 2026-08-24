@@ -203,7 +203,16 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
     `Hellenic Academic and Research Institutions RootCA 2015` — present in Android 9. Audio was
     never affected.
 
-19. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
+19. **`injectedJavaScriptBeforeContentLoaded` is not actually "before" on Android.** It lands at
+    `onPageStarted`, and `oauth.vk.com/blank.html` is a few hundred bytes — by the time the script
+    ran, `DOMContentLoaded` had already fired, so neither listener ever did and the grant silently
+    never started. The page loaded, and then nothing. Fix: inject on **both** hooks
+    (`injectedJavaScriptBeforeContentLoaded` for the fetch/XHR hooks, `injectedJavaScript` for
+    timing), keep installation once-only behind `window.__vkcap`, but expose the ready handler as
+    `window.__vkready` so the second pass can still run it — plus an immediate call when
+    `document.readyState` is already past `loading`, and a 300 ms backstop.
+
+20. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
     like `VKAndroidApp/7.7-9034` does (verified). So delegating the grant to the WebView needs no UA
     override — which matters, because overriding it would break the Chromium-version sniff and VK's
     own login page.
@@ -286,13 +295,17 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
 
 ## Deployed / published state
 
-- **Backend:** `varg/visky-api:1.5.27` (k8s ctx `oracle`, ns `frisky`, deploy `visky-api`, env from
-  secret `visky-api-env`). Deploy with `scripts/build-api.sh --deploy`. CD is NOT automated.
+- **Backend:** `varg/visky-api:1.5.29` running in the cluster (k8s ctx `oracle`, ns `frisky`, deploy
+  `visky-api`, env from secret `visky-api-env`). Deploy with `scripts/build-api.sh --deploy`. CD is
+  NOT automated. **1.5.30 is built but not deployed** — it only replaces the redirect-to-`/token`
+  with a direct redirect to `blank.html#g=`, which the app already handles itself, so deploying it
+  saves one hop and nothing else.
 - **App:** EAS `@varg/visky`, pkg `com.envarg.visky`, production profile (app-bundle, auto-submit
-  internal track). Last build **vc50** (commit `d2ef5c7`) — contains the `success_token` capture and
-  the spinner fix, but **not** the old-WebView notice / dev-routing (`24807c1`), the captcha-status
-  diagnostics (`3d8afaf`) or the device-side grant (`17530a3` + `055ff92`). Build with
-  `scripts/build-app.sh` (production profile, auto-submits to the Play internal track).
+  to the Play internal track), built with `scripts/build-app.sh`.
+  - **vc53** (`055ff92`) — device-side grant + captcha diagnostics, but **no** TLS trust anchor, so
+    it still cannot reach VK on Android 9.
+  - **vc54** (`5684871`) — adds the trust anchor and the injection-timing fix. This is the first
+    build that works end to end on an old device.
 - **The device-side grant needs the APP shipped**: the backend redirect is inert without an app that
   knows how to run the grant, so deploying the API alone kills login outright (that is exactly what
   happened with 1.5.29 at 10:52). `VK_GRANT_ON_SERVER=true` is the escape hatch. The reverse is
@@ -343,6 +356,23 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
 - **The trust-anchor plugin** — `npx expo prebuild` produces `res/raw/gts_root_r1.pem` (fingerprint
   unchanged through the copy), `res/xml/network_security_config.xml` scoped to vk.com/vk.ru, and
   `android:networkSecurityConfig="@xml/network_security_config"` on `<application>`.
+- **THE WHOLE CHAIN, on Android 9, against the live API.** A local release APK
+  (`npx expo run:android --variant release`) on the `Galaxy_Note8` AVD, driven with `adb input`,
+  using throwaway credentials so no real account was touched:
+
+  ```
+  [login nav] https://visky.envarg.com/auth/vk?device_id=…
+  [login nav] https://oauth.vk.com/token?grant_type=password&…
+  [login] -> bouncing the grant to same-origin blank.html
+  [login nav] https://oauth.vk.com/blank.html#g=…
+  [login] grant response from device, len 146
+  [login nav] https://visky.envarg.com/auth/vk/next?d={"error":"invalid_client",…}
+  ```
+
+  No SSL error — so WebView on Android 9 **does** honour `network_security_config` trust anchors.
+  With real credentials the same path yields `access_token` instead of `invalid_client`.
+  Note this ran against the deployed api **1.5.29**, exercising the app-side bounce; 1.5.30 only
+  removes the extra hop.
 - **The blank.html hop is safe to inject into** — `https://oauth.vk.com/blank.html` returns
   `200 text/html` with **no** `Content-Security-Policy` (checked), so the injected script and its
   same-origin fetch are not blocked.
