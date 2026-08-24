@@ -160,20 +160,50 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
     not in the widget's param whitelist (`variant, domain, session_token, autofocus, blank, redirect,
     scheme, lang_id`) and is simply ignored.
 
-17. **An Android WebView will not necessarily render `application/json`.** The first cut of the
-    device-side grant navigated the WebView straight at `oauth.vk.com/token` and read the JSON out
-    of the page. WebView 66 renders that as a **blank page** (reproduced in the emulator's
-    `org.chromium.webview_shell`), i.e. exactly the silent hang we were trying to remove. The token
-    endpoint also sends no CORS headers (`Access-Control-Allow-Origin` absent, checked) and does not
-    support JSONP (`callback` / `jsonp` / `format=jsonp` all ignored), so a `fetch` from our own host
-    cannot read it either.
+17. **Reading the grant back needs a same-origin hop.** The token endpoint sends no CORS headers
+    (`Access-Control-Allow-Origin` absent) and supports no JSONP (`callback` / `jsonp` /
+    `format=jsonp` all ignored), so a `fetch` from our own host cannot read the response. A
+    top-level navigation to `oauth.vk.com/token` would work, but leaves the raw token rendered on
+    screen and depends on how the WebView chooses to display `application/json`.
 
     Fix: land on `https://oauth.vk.com/blank.html` — a real, empty, CSP-free page on the SAME origin
     — with the grant query in the **URL fragment** (never sent to VK), and have the injected script
-    issue `fetch('/token?…')`. Same-origin means the body is readable no matter how the WebView would
-    have rendered it, and the token never appears on screen.
+    issue `fetch('/token?…')`. Same origin means the body is readable, and the token never appears
+    on screen.
 
-18. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
+    (An earlier revision of this doc blamed a blank `/token` page on the WebView refusing to render
+    `application/json`. That was wrong — see cause 18. The same-origin hop is still the right
+    design, for the reasons above.)
+
+18. **VK's TLS chain does not validate on Android 9 — and this had been poisoning everything.**
+
+    ```
+    *.vk.com  <-  GTS WR1  <-  GTS Root R1        VK sends only the first two
+    Android 9 store: 137 roots — GlobalSign x5, DigiCert x8, ISRG x1, Google/GTS x0
+    ```
+
+    GTS Root R1 *is* cross-signed by GlobalSign Root R1, but VK does not ship that cross-cert, so an
+    old device has no path to build. Every request to `vk.com`, `id.vk.com`, `oauth.vk.com` and
+    `api.vk.com` fails with `SSL error: The certificate authority is not trusted` (Android
+    `SslError` code 3), and the WebView just shows a blank page. Reproduced on an Android 9 emulator
+    in `org.chromium.webview_shell`: `https://example.com` renders, `oauth.vk.com/authorize`
+    (ordinary `text/html`) does not.
+
+    This retroactively explains a large slice of this document: on that phone the not_robot widget
+    could never load at all, so "white page", "captcha did not appear" and "freezes after the
+    checkbox" were partly this, not the ES2022 syntax floor of cause 8.
+
+    Fix: `app/plugins/withVkTrustAnchor.js` bundles the genuine public GTS Root R1 (SHA-256
+    `D9:47:43:2A:…:F4:CF`, valid to 2036) and adds it as a trust anchor for **vk.com and vk.ru only**,
+    alongside `<certificates src="system"/>`. Validation stays fully on — this supplies a missing
+    real root, it does not disable or bypass any check.
+
+    VK's media CDN needs nothing: `*.userapi.com` / `vkuseraudio.net` chain through
+    `HARICA DV TLS RSA` to a **cross-signed** `HARICA TLS RSA Root CA 2021` whose issuer is
+    `Hellenic Academic and Research Institutions RootCA 2015` — present in Android 9. Audio was
+    never affected.
+
+19. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
     like `VKAndroidApp/7.7-9034` does (verified). So delegating the grant to the WebView needs no UA
     override — which matters, because overriding it would break the Chromium-version sniff and VK's
     own login page.
@@ -298,11 +328,21 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
   `success_token`; a 2FA `code` POST re-delegates with `&code=` appended; unparseable `d` falls back
   to the login page. `CAPTURE_JS` passes `node --check` and contains no backslashes or `${`.
   **Not yet run on a real device** — needs a new app build.
-- **WebView will not render the JSON** (cause 17) — `org.chromium.webview_shell` on the emulator
-  (WebView 66) loaded the token URL and showed a blank page; nothing landed in `/sdcard/Download`
-  either, so it was not a download. Hence the same-origin fetch. The fragment→`fetch('/token?…')`
-  path was then exercised in a DOM stand-in under node: the query round-trips byte-identical and the
-  `{"__cap":"grant"}` message reaches the RN side.
+- **Same-origin hop** (cause 17) — the fragment→`fetch('/token?…')` path exercised in a DOM stand-in
+  under node: the query round-trips byte-identical and the `{"__cap":"grant"}` message reaches the
+  RN side. No CORS headers and no JSONP on the token endpoint: checked with curl.
+- **The Android 9 TLS wall** (cause 18) — three independent checks. `org.chromium.webview_shell` on
+  the emulator renders `https://example.com` but shows a blank page for `oauth.vk.com/authorize`
+  (plain HTML, so not a rendering question); the device's own store, pulled and grepped, holds 137
+  roots with **zero** matching `Google`/`GTS`; and `openssl s_client` shows VK serving only
+  `*.vk.com` + `GTS WR1`, whose issuer is `GTS Root R1`. On a real device the same failure surfaces
+  as `SSL error: The certificate authority is not trusted` in the RN WebView's `onError`.
+- **Audio CDN is unaffected** — `vkuseraudio.net`'s chain ends at a cross-signed
+  `HARICA TLS RSA Root CA 2021` issued by `Hellenic … RootCA 2015`, and that root IS in the Android 9
+  store (confirmed by dumping all three `Hellenic` certs off the device).
+- **The trust-anchor plugin** — `npx expo prebuild` produces `res/raw/gts_root_r1.pem` (fingerprint
+  unchanged through the copy), `res/xml/network_security_config.xml` scoped to vk.com/vk.ru, and
+  `android:networkSecurityConfig="@xml/network_security_config"` on `<application>`.
 - **The blank.html hop is safe to inject into** — `https://oauth.vk.com/blank.html` returns
   `200 text/html` with **no** `Content-Security-Policy` (checked), so the injected script and its
   same-origin fetch are not blocked.
