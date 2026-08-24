@@ -240,30 +240,51 @@ export function parseGrantResponse(data: any, device_id: string): GrantResult {
  * before it will actually re-deliver (calling earlier just returns the same
  * countdown). Returns whatever VK reports so the UI can show a real timer.
  */
-export async function requestValidationResend(
-  sid: string,
-): Promise<{validation_type?: string; validation_resend?: string; delay?: number; error?: string}> {
-  const qp = new URLSearchParams({
+/**
+ * Query string for auth.validatePhone, for when the resend has to run on the
+ * DEVICE. Same reason as buildGrantUrl: from the cluster's IP VK answers this
+ * with "Captcha needed" (seen live on the 2FA page), from a phone it just works.
+ * api.vk.com sends no Access-Control-Allow-Origin but DOES support JSONP, so the
+ * app appends &callback= and loads it as a script.
+ */
+export function buildValidateResendQuery(sid: string): string {
+  return new URLSearchParams({
     sid,
     client_id: directGrant.appId,
     client_secret: directGrant.appSecret,
     v: grantVersion,
     lang: "ru",
-  });
+  }).toString();
+}
+
+/** Shape auth.validatePhone's JSON into what the 2FA page needs to re-render. */
+export function parseValidateResend(data: any): {
+  validation_type?: string;
+  validation_resend?: string;
+  delay?: number;
+  error?: string;
+} {
+  if (data?.response) {
+    return {
+      validation_type: data.response.validation_type,
+      validation_resend: data.response.validation_resend,
+      delay: data.response.delay,
+    };
+  }
+  return {error: data?.error?.error_msg || data?.error || "resend failed"};
+}
+
+export async function requestValidationResend(
+  sid: string,
+): Promise<{validation_type?: string; validation_resend?: string; delay?: number; error?: string}> {
+  const qp = buildValidateResendQuery(sid);
   try {
-    const data = await h2GetJson("https://api.vk.com", `/method/auth.validatePhone?${qp.toString()}`, {
+    const data = await h2GetJson("https://api.vk.com", `/method/auth.validatePhone?${qp}`, {
       "user-agent": directGrant.userAgent,
       accept: "*/*",
     });
     console.log("<===== validatePhone:", JSON.stringify(data).slice(0, 200));
-    if (data?.response) {
-      return {
-        validation_type: data.response.validation_type,
-        validation_resend: data.response.validation_resend,
-        delay: data.response.delay,
-      };
-    }
-    return {error: data?.error?.error_msg || data?.error || "resend failed"};
+    return parseValidateResend(data);
   } catch (e: any) {
     console.error("======> validatePhone ERROR:", e?.message);
     return {error: e?.message || "resend failed"};

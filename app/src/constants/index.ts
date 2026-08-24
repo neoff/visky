@@ -151,6 +151,10 @@ export const apiUrls = {
   // itself (the backend 302s it to oauth.vk.com/token so the request leaves from
   // the phone's IP, which VK does not challenge — the cluster's IP always is).
   authNextUrl: loginLocal ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk/next`,
+  // Same handoff for the 2FA code resend, which VK also refuses from the server.
+  authValidateNextUrl: loginLocal
+    ? `${baseHost}/auth/local${redirectUrl}`
+    : `${baseHost}/auth/vk/validate-next`,
   authAdminAppUrl_: `${authUrl}/vk`,
   directUrl: `${authUrl}/direct`,
   tokenUrl: `${authUrl}/token`,

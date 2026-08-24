@@ -148,16 +148,35 @@ const CAPTURE_JS = `(function(){
       send('grant', t);
     } catch(e){}
   };
+  // Same story for the 2FA resend: auth.validatePhone from the cluster comes back
+  // "Captcha needed", so the backend parks us on blank.html#r=<query> and we make
+  // the call ourselves. api.vk.com sends no CORS headers but does answer JSONP,
+  // so this goes out as a script tag rather than a fetch.
+  var runResend = function(){
+    try {
+      if (grabbed) return;
+      if (location.host.indexOf('oauth.vk.com') === -1) return;
+      if (location.pathname.indexOf('/blank.html') !== 0) return;
+      var h = location.hash || '';
+      if (h.indexOf('#r=') !== 0) return;
+      grabbed = 1;
+      var qs = decodeURIComponent(h.substring(3));
+      window.__vkcb = function(d){ send('resend', JSON.stringify(d)); };
+      var sc = document.createElement('script');
+      sc.onerror = function(){ send('resend', JSON.stringify({error: 'network'})); };
+      sc.src = 'https://api.vk.com/method/auth.validatePhone?' + qs + '&callback=__vkcb';
+      (document.head || document.documentElement).appendChild(sc);
+    } catch(e){}
+  };
   var runGrant = function(){
     try {
       if (grabbed) return;
       if (location.host.indexOf('oauth.vk.com') === -1) return;
       if (location.pathname.indexOf('/blank.html') !== 0) return;
       var h = location.hash || '';
-      var i = h.indexOf('g=');
-      if (i === -1) return;
+      if (h.indexOf('#g=') !== 0) return;
       grabbed = 1;
-      var qs = decodeURIComponent(h.substring(i + 2));
+      var qs = decodeURIComponent(h.substring(3));
       fetch('/token?' + qs, {credentials: 'omit'})
         .then(function(r){ return r.text(); })
         .then(function(t){ send('grant', t); })
@@ -170,7 +189,7 @@ const CAPTURE_JS = `(function(){
         });
     } catch(e){}
   };
-  var onReady = function(){ runGrant(); grabGrant(); };
+  var onReady = function(){ runGrant(); runResend(); grabGrant(); };
   document.addEventListener('DOMContentLoaded', onReady);
   window.addEventListener('load', onReady);
   // blank.html is a few bytes, and on Android this script is injected at
@@ -354,6 +373,18 @@ const LoginPage = () => {
       }
       return;
     }
+    // auth.validatePhone's JSON, fetched by the page via JSONP.
+    if (payload.__cap === "resend") {
+      const raw = String(payload.data ?? "");
+      console.log("[login] 2FA resend response from device, len", raw.length);
+      if (!grantSent.current) {
+        grantSent.current = true;
+        const base = apiUrls.authValidateNextUrl;
+        setBusy(true);
+        setUri(`${base}${base.includes("?") ? "&" : "?"}d=${encodeURIComponent(raw)}`);
+      }
+      return;
+    }
     if (payload.__cap === "granterr") {
       console.log("[login] same-origin grant fetch failed, falling back:", payload.data);
       return;
@@ -465,7 +496,11 @@ const LoginPage = () => {
     if (url.includes("/auth/")) setBusy(false);
 
     // A fresh step (not the grant handoff itself) re-arms the grant capture.
-    if (url.includes("/auth/vk") && !url.includes("/auth/vk/next")) {
+    if (
+      url.includes("/auth/vk") &&
+      !url.includes("/auth/vk/next") &&
+      !url.includes("/auth/vk/validate-next")
+    ) {
       grantSent.current = false;
       bounced.current = false;
     }

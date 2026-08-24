@@ -1,6 +1,13 @@
 import {vkTokenAncor} from "@/configurations"
 import {deviceIDgen} from "@/helper"
-import {buildGrantUrl, parseGrantResponse, performDirectGrant, requestValidationResend} from "@/helper/directGrant"
+import {
+  buildGrantUrl,
+  buildValidateResendQuery,
+  parseGrantResponse,
+  parseValidateResend,
+  performDirectGrant,
+  requestValidationResend,
+} from "@/helper/directGrant"
 import {Request, Response} from "@/types"
 import express from "express"
 import fs, {readFileSync} from "fs"
@@ -463,13 +470,13 @@ authForm.get(["/vk/resume", "/vk/fallback/resume"], async (req: Request, res: Re
 // Ask VK to re-deliver the 2FA code (e.g. switch a flash call over to SMS).
 // VK enforces its own countdown: calling early just returns the remaining
 // `delay`, which we render as a disabled link with a timer.
-authForm.get("/vk/validate-resend", async (req: Request, res: Response) => {
-  const val = (req.session as any).val as ValState | undefined
-  if (!val?.sid) {
-    serveLoginError(req, res, "Сессия истекла. Войдите заново.")
-    return
-  }
-  const r = await requestValidationResend(val.sid)
+// Render the 2FA page after a resend attempt, whoever performed it.
+const renderResend = (
+  req: Request,
+  res: Response,
+  val: ValState,
+  r: {validation_type?: string; validation_resend?: string; delay?: number; error?: string},
+): void => {
   if (r.validation_type) val.type = `2fa_${r.validation_type}`.replace("2fa_2fa_", "2fa_")
   if (r.validation_resend) val.resend = r.validation_resend
   ;(req.session as any).val = val
@@ -479,6 +486,43 @@ authForm.get("/vk/validate-resend", async (req: Request, res: Response) => {
       ? `Код можно запросить снова через ${r.delay} с.`
       : "Код отправлен повторно."
   html(res, smsForm(val, notice ?? `Не удалось запросить код: ${r.error}`, r.delay))
+}
+
+authForm.get("/vk/validate-resend", async (req: Request, res: Response) => {
+  const val = (req.session as any).val as ValState | undefined
+  if (!val?.sid) {
+    serveLoginError(req, res, "Сессия истекла. Войдите заново.")
+    return
+  }
+  // The resend is a VK API call and so hits the same flagged-IP wall as the
+  // grant: from the cluster it comes back "Captcha needed" (observed live on the
+  // 2FA page), which left the only escape from an undelivered flash call dead.
+  // Hand it to the device the same way — api.vk.com has no CORS but does support
+  // JSONP, so the app loads it as a script and posts the JSON back.
+  if (!grantOnServer) {
+    console.log("=====> delegating 2FA resend to the device:", {sid: val.sid, type: val.type})
+    res.redirect(`https://oauth.vk.com/blank.html#r=${encodeURIComponent(buildValidateResendQuery(val.sid))}`)
+    return
+  }
+  renderResend(req, res, val, await requestValidationResend(val.sid))
+})
+
+// The device performed the resend; ?d carries auth.validatePhone's JSON.
+authForm.get("/vk/validate-next", async (req: Request, res: Response) => {
+  const val = (req.session as any).val as ValState | undefined
+  if (!val?.sid) {
+    serveLoginError(req, res, "Сессия истекла. Войдите заново.")
+    return
+  }
+  let data: any
+  try {
+    data = JSON.parse(String(req.query.d || ""))
+  } catch {
+    renderResend(req, res, val, {error: "не удалось прочитать ответ VK"})
+    return
+  }
+  console.log("<===== device validatePhone:", JSON.stringify(data).slice(0, 200))
+  renderResend(req, res, val, parseValidateResend(data))
 })
 
 authForm.get('/blank.html', async (req: Request, res: Response) => {
