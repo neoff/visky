@@ -521,11 +521,15 @@ never a gap**: a transparent line would punch a hole through both translucent pl
 list underneath.
 
 `FloatingPlayer` renders an absolutely positioned `View` on its bottom edge, coloured
-`colors.surfaceDivider`. The first take (a dark hairline on a lighter plate) was invisible —
-`StyleSheet.hairlineWidth` is 0.33pt on a 3x screen — so the two colours were **swapped** on the
-user's call: the plate took the dark value (`colors.surface = rgba(0,0,0,0.55)`) and the line the
-lighter one (`colors.surfaceDivider = rgba(32,32,32,0.82)`), at a full 1px. Side effect worth
-knowing: the plate is more see-through than before, since 0.55 alpha replaced 0.82.
+`colors.surfaceDivider`.
+
+Three takes to land it:
+1. dark hairline on a lighter plate — invisible; `StyleSheet.hairlineWidth` is 0.33pt on a 3x screen;
+2. swapping the two colours made the line read, but the plate inherited the 0.55 alpha and went
+   nearly see-through;
+3. **final:** the plate keeps its own value (`rgba(32,32,32,0.82)`) and the divider is *lighter*
+   than it — `rgba(255,255,255,0.22)` at **2px**. It is translucent white composited ON the plate,
+   so it brightens the plate rather than cutting through it; the list never shows through.
 Its width follows the list separator: inset on the left to where the track title starts
 (plate padding 8 + artwork 40 + title margin 10 = 58), running to the plate's right padding —
 not edge to edge.
