@@ -537,6 +537,29 @@ parent's border box, so the parent's padding has to be repeated in these numbers
 
 Verified on both devices with a 1:1 crop of the seam.
 
+
+---
+
+# Round 7 — the welcome (login) screen
+
+Copy and artwork rewrite of `app/src/app/(auth)/welcome.tsx`:
+
+* the FontAwesome `user-circle` placeholder is replaced by the **app logo**. `assets/icon.png` was
+  copied verbatim to `assets/logo.png` (no crop, as asked) — it is a 1024x1024 PNG with transparent
+  corners, so it needs an opaque plate under it. The plate is a **circle**, 112pt across, just over
+  the 100pt person icon it replaced, and the artwork fills 96% of it so the arms of the X almost
+  touch the border instead of floating in white.
+* `Welcome Stranger!` → **`Welcome to the dawn.`**, with the long blurb under it a step smaller than
+  the body text (`fonts.xs`) so the header keeps the weight.
+* a **right-aligned italic quote** in quotation marks under the logo.
+* the old `Please log in to continue…` is merged with the "now experience" line into one block.
+
+The screen scrolls now (`ScrollView`): the copy is long enough to overflow a small phone.
+
+Verified on both devices by opening `visky:///welcome` — `xcrun simctl openurl` on iOS and
+`adb shell am start -a android.intent.action.VIEW -d visky:///welcome` on Android, which is how to
+reach an auth screen while a session exists.
+
 ---
 
 # OPEN QUESTIONS — need your decision / your hands

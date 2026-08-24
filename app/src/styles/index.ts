@@ -141,20 +141,60 @@ export const welcomeStyles = StyleSheet.create({
     backgroundColor: '#000000',
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     fontSize: fonts.base,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 32,
   },
   header: {
     fontSize: fonts.lg,
+    fontWeight: '700',
     textAlign: 'center',
     color: '#fff',
     margin: 10,
   },
+  // the long blurb under the header: deliberately a step smaller than the body
+  // text so the header keeps the weight
+  intro: {
+    textAlign: 'center',
+    fontSize: fonts.xs,
+    lineHeight: fonts.xs + 6,
+    color: '#bdbdbd',
+    marginBottom: 24,
+  },
+  // the logo is a transparent-cornered PNG, so it needs its own white plate.
+  // Round, and the artwork fills 96% of it so the arms of the X almost reach the
+  // border instead of floating in white.
+  logoPlate: {
+    // a quarter smaller again — just over the 100pt person icon it replaced
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 24,
+  },
+  logoImage: {
+    width: 108,
+    height: 108,
+  },
+  quote: {
+    alignSelf: 'stretch',
+    textAlign: 'right',
+    fontStyle: 'italic',
+    fontSize: fonts.xs + 1,
+    lineHeight: fonts.xs + 8,
+    color: '#d0d0d0',
+    marginBottom: 28,
+  },
   text: {
     textAlign: 'center',
-    fontSize: fonts.sm,
+    fontSize: fonts.xs + 2,
+    lineHeight: fonts.xs + 9,
     color: '#ddd',
     marginBottom: 5 + modifiers.padding,
   },
