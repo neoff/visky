@@ -42,7 +42,14 @@ const genDeviceId = (): string => {
 // message shape on a real device (the emulator's WebView is too old to run the
 // captcha widget at all).
 const CAPTURE_JS = `(function(){
-  if (window.__vkcap) return; window.__vkcap = 1;
+  // Injected twice on purpose (before content, for the fetch/XHR hooks, and
+  // after load, because Android does not reliably run the "before" hook early
+  // enough). Installing is once-only, but the ready handler must run on BOTH
+  // passes — otherwise the second injection returns here and the grant never
+  // starts, which is exactly what happened on the Android 9 emulator: the page
+  // loaded and nothing else ever fired.
+  if (window.__vkcap) { try { window.__vkready && window.__vkready(); } catch(e){} return; }
+  window.__vkcap = 1;
   var send = function(tag, data){
     try { console.log('[vkcap]', tag, typeof data === 'string' ? data : JSON.stringify(data)); } catch(e){}
     try { window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({__cap:tag, data:data})); } catch(e){}
@@ -166,6 +173,14 @@ const CAPTURE_JS = `(function(){
   var onReady = function(){ runGrant(); grabGrant(); };
   document.addEventListener('DOMContentLoaded', onReady);
   window.addEventListener('load', onReady);
+  // blank.html is a few bytes, and on Android this script is injected at
+  // onPageStarted — by the time it runs the document can ALREADY be parsed, so
+  // neither listener would ever fire and the grant would silently never start
+  // (observed on the emulator: the page loaded, nothing happened). Run it now if
+  // the document is past parsing, and once more on a timer as a backstop.
+  window.__vkready = onReady;
+  if (document.readyState === 'interactive' || document.readyState === 'complete') onReady();
+  setTimeout(onReady, 300);
   // 4) Uncaught page errors. The widget swallows most failures into a silent
   //    state change, but a broken bundle / missing API surfaces here and is the
   //    difference between "VK said no" and "our WebView cannot run the widget".
@@ -498,6 +513,7 @@ const LoginPage = () => {
           originWhitelist={["*"]}
           source={{ uri }}
           injectedJavaScriptBeforeContentLoaded={CAPTURE_JS}
+          injectedJavaScript={CAPTURE_JS}
           onMessage={_onMessage}
           onShouldStartLoadWithRequest={_onShouldStart}
           onNavigationStateChange={_onNavigationStateChange}
