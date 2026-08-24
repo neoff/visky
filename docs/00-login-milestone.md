@@ -212,7 +212,24 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
     `window.__vkready` so the second pass can still run it — plus an immediate call when
     `document.readyState` is already past `loading`, and a 300 ms backstop.
 
-20. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
+20. **The 2FA resend is a second victim of the flagged IP.** `auth.validatePhone` runs the same VK
+    API surface as the grant, so from the cluster it answers **`Captcha needed`** — seen live on the
+    2FA page as "Не удалось запросить код: Captcha needed". Since VK often picks `2fa_callreset` and
+    the flash call does not always arrive, and the resend is the ONLY way to switch the channel to
+    SMS, this left an undelivered call with no way forward at all.
+
+    Delegated to the device like the grant: `/auth/vk/validate-resend` parks the WebView on
+    `blank.html#r=<query>` and `/auth/vk/validate-next` takes VK's JSON back. `api.vk.com` sends no
+    `Access-Control-Allow-Origin` but **does** answer JSONP, so this one goes out as a `<script>`
+    tag rather than a fetch. Both handoffs now match their hash prefix strictly (`#g=` / `#r=`).
+
+21. **The overlay must clear on the handoff page too.** `/auth/vk/next` is the URL that renders the
+    2FA form, and it was excluded from the branch clearing `busy`, so the spinner sat over the
+    confirmation card — dimmed, swallowing every tap on the code field. Same failure as cause 14,
+    one URL further along. `busy` now clears on any `/auth/` navigation; only the grant-capture
+    re-arm still skips the handoff URLs.
+
+22. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
     like `VKAndroidApp/7.7-9034` does (verified). So delegating the grant to the WebView needs no UA
     override — which matters, because overriding it would break the Chromium-version sniff and VK's
     own login page.
@@ -246,8 +263,9 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
 - `GET /auth/vk/resume?success_token=<token>` — resubmits the grant from `session.fb` (same
   device_id) with the stored `captcha_sid` + `success_token`, delegating to the device the same way.
   Legacy `?captcha_key=` still accepted.
-- `GET /auth/vk/validate-resend` — `auth.validatePhone(session.val.sid)` to re-deliver the 2FA code
-  (flips callreset → SMS); re-renders the page with VK's `delay` as a live countdown.
+- `GET /auth/vk/validate-resend` — re-delivers the 2FA code (flips callreset → SMS). Delegated to
+  the device (cause 20) unless `VK_GRANT_ON_SERVER=true`; `GET /auth/vk/validate-next?d=<json>`
+  takes the reply and re-renders the page with VK's `delay` as a live countdown.
 - Self-rendered pages (2FA, captcha fallback, errors, `/auth/vk/fallback`) use a **VK-styled shell**:
   light `#edeef0` backdrop, white card, VK logo, blue `#3f8ae0` button — all **inline**, no external
   CSS/JS (VK's own page pulls ~11 stylesheets + 34 bundles, which old WebViews fail on).
@@ -295,17 +313,20 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
 
 ## Deployed / published state
 
-- **Backend:** `varg/visky-api:1.5.29` running in the cluster (k8s ctx `oracle`, ns `frisky`, deploy
-  `visky-api`, env from secret `visky-api-env`). Deploy with `scripts/build-api.sh --deploy`. CD is
-  NOT automated. **1.5.30 is built but not deployed** — it only replaces the redirect-to-`/token`
-  with a direct redirect to `blank.html#g=`, which the app already handles itself, so deploying it
-  saves one hop and nothing else.
+- **Backend:** `varg/visky-api:1.5.31` deployed and rolled out (k8s ctx `oracle`, ns `frisky`,
+  deploy `visky-api`, env from secret `visky-api-env`). Deploy with `scripts/build-api.sh --deploy`
+  (add `--no-bump` when package.json is already at the target version). CD is NOT automated.
+  Smoke-checked in prod: `POST /auth/vk` → `blank.html#g=…`, `/auth/vk/validate-resend` →
+  `blank.html#r=…`, `/auth/vk/next` → 200.
 - **App:** EAS `@varg/visky`, pkg `com.envarg.visky`, production profile (app-bundle, auto-submit
   to the Play internal track), built with `scripts/build-app.sh`.
   - **vc53** (`055ff92`) — device-side grant + captcha diagnostics, but **no** TLS trust anchor, so
     it still cannot reach VK on Android 9.
-  - **vc54** (`5684871`) — adds the trust anchor and the injection-timing fix. This is the first
-    build that works end to end on an old device.
+  - **vc54 was NOT built**: the EAS account has used up its Free-plan Android builds for the month
+    (resets 1 Sep 2026). The equivalent build exists locally instead —
+    `app/android/app/build/outputs/apk/release/app-release.apk`, produced with
+    `npx expo run:android --variant release` — carrying the trust anchor, the injection-timing fix,
+    the overlay fix and the delegated resend. Install with `adb install -r`.
 - **The device-side grant needs the APP shipped**: the backend redirect is inert without an app that
   knows how to run the grant, so deploying the API alone kills login outright (that is exactly what
   happened with 1.5.29 at 10:52). `VK_GRANT_ON_SERVER=true` is the escape hatch. The reverse is
