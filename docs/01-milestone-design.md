@@ -481,6 +481,22 @@ pins `contentStyle: {backgroundColor: colors.background}` on the stack and on th
 * `app/src/styles/index.ts` — symmetric row padding, separator offset.
 * `app/src/app/(app)/_layout.tsx` — opaque stack content background.
 
+
+---
+
+# Round 4 — the two gaps beside the tab bar
+
+With the mini player docked on it, the tab bar's rounded top corners
+(`layout.tabBarRadius`, 20) left a small notch on each side where the list showed through between
+the two plates — the mini player's bottom edge is square, the bar's top edge is not.
+
+**Fix** (`app/src/app/(app)/(tabs)/_layout.tsx`): the radius is now conditional. The layout watches
+the same condition `FloatingPlayer` bails out on (`useActiveTrack() ?? useLastActiveTrack()`); while
+the mini player is on screen the bar's top corners are square, so the two plates read as one block.
+With no track loaded the tab bar keeps its rounded corners.
+
+Verified on both devices by cropping the strip where the plates meet: no gaps left or right.
+
 ---
 
 # OPEN QUESTIONS — need your decision / your hands

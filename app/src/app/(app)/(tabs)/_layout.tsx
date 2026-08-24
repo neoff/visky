@@ -4,6 +4,8 @@ import React from "react"
 import {ColorValue, StyleSheet, View} from "react-native";
 import {FontAwesome, FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {FloatingPlayer} from "@/components/FloatingPlayer";
+import {useLastActiveTrack} from "@/hooks/useLastActiveTrack";
+import {useActiveTrack} from "react-native-track-player";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 export default function TabsLayout(){
@@ -13,6 +15,15 @@ export default function TabsLayout(){
   // inset. The mini player is pinned to exactly that height, so it always sits
   // flush on top of the tab bar instead of floating above it.
   const tabBarHeight = layout.tabBarContentHeight + bottom
+
+  // The mini player renders whenever there is a current-or-last track — the same
+  // condition FloatingPlayer uses to bail out. While it is docked on top of the
+  // tab bar, the bar's rounded top corners leave two little gaps at the sides
+  // where the list shows through; square them off so the two plates read as one.
+  const activeTrack = useActiveTrack()
+  const lastActiveTrack = useLastActiveTrack()
+  const hasMiniPlayer = Boolean(activeTrack ?? lastActiveTrack)
+  const tabBarRadius = hasMiniPlayer ? 0 : layout.tabBarRadius
 
   return (
     <>
@@ -44,8 +55,8 @@ export default function TabsLayout(){
             left: 0,
             right: 0,
             bottom: 0,
-            borderTopLeftRadius: layout.tabBarRadius,
-            borderTopRightRadius: layout.tabBarRadius,
+            borderTopLeftRadius: tabBarRadius,
+            borderTopRightRadius: tabBarRadius,
             borderTopWidth: 0,
             elevation: 0,
             paddingTop: 8,
@@ -62,8 +73,8 @@ export default function TabsLayout(){
                 StyleSheet.absoluteFill,
                 {
                   backgroundColor: colors.surface,
-                  borderTopLeftRadius: layout.tabBarRadius,
-                  borderTopRightRadius: layout.tabBarRadius,
+                  borderTopLeftRadius: tabBarRadius,
+                  borderTopRightRadius: tabBarRadius,
                   overflow: 'hidden',
                 },
               ]}
