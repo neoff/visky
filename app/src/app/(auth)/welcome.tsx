@@ -19,8 +19,10 @@ const WelcomeNavigation = () => {
           Welcome to the dawn.
         </Text>
         <Text style={welcomeStyles.intro}>
-          You've just accessed the beautiful experience. This experience will cover courtship, sex,
-          commitment, fetishes, loneliness, vindication, love, and hate. Please enjoy your experience.
+          You've just accessed the beautiful experience.{'\n'}
+          This experience will cover courtship, sex, commitment, fetishes, loneliness, vindication,
+          love, and hate.{'\n'}
+          Please enjoy your experience.
         </Text>
 
         {/* app logo — the PNG has transparent corners, so it sits on a white plate */}
