@@ -532,14 +532,16 @@ Verified on both devices with a 1:1 crop of the seam.
 
 # OPEN QUESTIONS — need your decision / your hands
 
-1. **iOS: the mini-player expand gesture.** I cannot inject touch into the iOS simulator
-   (`simctl` has no tap/swipe; `osascript` is denied assistive access). The artifact fix is a
-   mitigation applied blind. **Please swipe the mini player up on iOS and tell me whether the grey
-   rectangles are gone.**
+1. ~~**iOS: the mini-player expand gesture.**~~ **RESOLVED** — confirmed by the user on 2026-08-24:
+   the grey rectangles are gone with the opaque `contentStyle` on the stack.
 
-2. **api 1.5.28 is live in the cluster.** It was deployed before you told me to hold. The change
-   itself is verified good on device (prefix stripped, Part 1 before Part 2). Keep it, or roll back
-   to 1.5.27 (`scripts/deploy-api.sh 1.5.27`)?
+2. ~~**api 1.5.28 rollback?**~~ **RESOLVED — keep 1.5.28.** The rollback offer was about the process
+   (it shipped before verification), not about the code: 1.5.28 is verified (55 tests green, prefix
+   stripped and Part 1 before Part 2 on device), so rolling back would restore the bug.
+
+2b. **Still unverified on iOS** (no touch injection here, see round 3): tap-to-play picking the
+   right track, and the new pause glyph on the active row. Both are platform-agnostic code paths
+   verified on Android, but nobody has tapped them on iOS. Blocker for shipping until checked.
 
 3. **The mini player shows a stale title** (`FRISKY | At Play August 2026`) while the list shows the
    cleaned one. The queue inside `react-native-track-player` still holds the objects it was built
