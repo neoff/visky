@@ -212,6 +212,15 @@ const grantOnServer = process.env.VK_GRANT_ON_SERVER === "true"
 
 // Hand the grant to the WebView (see above). Everything the follow-up needs
 // (creds, device_id, captcha_sid) already lives in the session.
+//
+// We do NOT send the WebView straight to oauth.vk.com/token. VK answers that with
+// `application/json`, and an Android WebView is not guaranteed to render it —
+// WebView 66 shows a blank page for it (checked on the emulator), which would be
+// another silent hang. Instead we land on oauth.vk.com/blank.html (a real, empty,
+// CSP-free page on the SAME origin) and put the grant query in the URL FRAGMENT,
+// which is never sent to VK. The app's injected script reads the fragment and
+// issues a same-origin `fetch('/token?…')`, whose body it can read regardless of
+// how the WebView would have rendered it — and the token never appears on screen.
 const delegateGrant = (res: Response, input: Parameters<typeof buildGrantUrl>[0]): void => {
   const {url, device_id} = buildGrantUrl(input)
   console.log("=====> delegating grant to the device:", {
@@ -220,7 +229,8 @@ const delegateGrant = (res: Response, input: Parameters<typeof buildGrantUrl>[0]
     code: input.code ? "yes" : undefined,
     success_token: input.success_token ? "yes" : undefined,
   })
-  res.redirect(url)
+  const query = url.slice(url.indexOf("?") + 1)
+  res.redirect(`https://oauth.vk.com/blank.html#g=${encodeURIComponent(query)}`)
 }
 
 // Turn a grant result into the right WebView response, shared by the initial

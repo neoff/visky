@@ -116,13 +116,19 @@ const CAPTURE_JS = `(function(){
       return _sendX.apply(this, arguments);
     };
   } catch(e){}
-  // 3) THE GRANT ITSELF. The backend 302s us to oauth.vk.com/token instead of
-  //    calling VK server-side: the cluster's egress IP is flagged and gets
-  //    need_captcha on every single attempt, while the same request from a
-  //    phone's IP returns the token outright. VK answers with a JSON body that
-  //    the WebView renders as text — read it once and hand it to RN, which posts
-  //    it back to /auth/vk/next so the backend decides the next step.
+  // 3) THE GRANT ITSELF runs here, on the device — the cluster's egress IP is
+  //    flagged and gets need_captcha on every single attempt, while the same
+  //    request from a phone's IP returns the token outright.
+  //
+  //    The backend lands us on oauth.vk.com/blank.html with the grant query in
+  //    the FRAGMENT (never sent to VK), and we issue it ourselves as a
+  //    SAME-ORIGIN fetch. Same origin means the body is readable — a fetch from
+  //    our own host could not read it (the token endpoint sends no CORS headers)
+  //    and a top-level navigation would depend on the WebView rendering
+  //    application/json, which WebView 66 does not (blank page on the emulator).
   var grabbed = 0;
+  // Fallback for the top-level-navigation shape: if we ever land on /token
+  // directly, read VK's JSON out of the rendered page.
   var grabGrant = function(){
     try {
       if (grabbed) return;
@@ -135,8 +141,31 @@ const CAPTURE_JS = `(function(){
       send('grant', t);
     } catch(e){}
   };
-  document.addEventListener('DOMContentLoaded', grabGrant);
-  window.addEventListener('load', grabGrant);
+  var runGrant = function(){
+    try {
+      if (grabbed) return;
+      if (location.host.indexOf('oauth.vk.com') === -1) return;
+      if (location.pathname.indexOf('/blank.html') !== 0) return;
+      var h = location.hash || '';
+      var i = h.indexOf('g=');
+      if (i === -1) return;
+      grabbed = 1;
+      var qs = decodeURIComponent(h.substring(i + 2));
+      fetch('/token?' + qs, {credentials: 'omit'})
+        .then(function(r){ return r.text(); })
+        .then(function(t){ send('grant', t); })
+        .catch(function(e){
+          // Last resort: do it as a top-level navigation and let grabGrant read
+          // whatever the WebView renders.
+          send('granterr', String((e && e.message) || e));
+          grabbed = 0;
+          location.href = '/token?' + qs;
+        });
+    } catch(e){}
+  };
+  var onReady = function(){ runGrant(); grabGrant(); };
+  document.addEventListener('DOMContentLoaded', onReady);
+  window.addEventListener('load', onReady);
   // 4) Uncaught page errors. The widget swallows most failures into a silent
   //    state change, but a broken bundle / missing API surfaces here and is the
   //    difference between "VK said no" and "our WebView cannot run the widget".
@@ -190,6 +219,8 @@ const LoginPage = () => {
   // backend answers it with the token redirect, which `handled` must still
   // accept.
   const grantSent = useRef<boolean>(false);
+  // One grant bounce per attempt (see processUrl) — never re-issue the grant.
+  const bounced = useRef<boolean>(false);
   // Pending keyless-resume timer. When the captcha lands on blank.html?success=1
   // we do NOT resume immediately: the widget fires its `success_token` via
   // postMessage at almost the same instant, and a keyless resume just loops back
@@ -308,6 +339,10 @@ const LoginPage = () => {
       }
       return;
     }
+    if (payload.__cap === "granterr") {
+      console.log("[login] same-origin grant fetch failed, falling back:", payload.data);
+      return;
+    }
     if (payload.__cap === "err") {
       console.log("[captcha page error]", payload.data?.m, payload.data?.src);
       return;
@@ -375,7 +410,7 @@ const LoginPage = () => {
   // Single URL interception, shared by onShouldStartLoadWithRequest (reliable on
   // iOS incl. redirects) and onNavigationStateChange (fires on Android redirects).
   // Returns true when the URL was a terminal redirect we consumed.
-  const processUrl = (url: string): boolean => {
+  const processUrl = (url: string, preload = false): boolean => {
     if (!url) return false;
     console.log("[login nav]", url);
     const hasToken = url.includes("access_token=");
@@ -384,10 +419,27 @@ const LoginPage = () => {
     // overlay. The overlay is absolutely positioned over the WebView, so leaving
     // it up while the captcha renders looks like an endless spinner and swallows
     // every tap on the checkbox (the reported "crutilka" hang).
-    // The grant page briefly renders VK's raw JSON (token included). Keep the
-    // overlay up over it until grabGrant has handed it back to /auth/vk/next.
+    // The grant hop. Nothing for the user to do here, so keep the overlay up
+    // until the result reaches /auth/vk/next.
+    if (url.includes("oauth.vk.com/blank.html") && !url.includes("success=1")) {
+      setBusy(true);
+      return false;
+    }
     if (url.includes("oauth.vk.com/token")) {
       setBusy(true);
+      // A backend that redirects straight at the token endpoint (api <= 1.5.29)
+      // would leave us on a raw application/json page, which WebView 66 renders
+      // as nothing at all. Bounce to same-origin blank.html instead and let
+      // CAPTURE_JS fetch the grant from there. Only ever BEFORE the load: once
+      // the page is already open, re-issuing the grant would be a second attempt
+      // against VK's flood control, so from there on grabGrant has to do it.
+      const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
+      if (preload && q && !bounced.current) {
+        bounced.current = true;
+        console.log("[login] -> bouncing the grant to same-origin blank.html");
+        setUri(`https://oauth.vk.com/blank.html#g=${encodeURIComponent(q)}`);
+        return true;
+      }
       return false;
     }
 
@@ -395,6 +447,7 @@ const LoginPage = () => {
     // allow the next grant response to be consumed.
     if (url.includes("/auth/vk") && !url.includes("/auth/vk/next")) {
       grantSent.current = false;
+      bounced.current = false;
       setBusy(false);
     }
 
@@ -433,7 +486,7 @@ const LoginPage = () => {
     return false;
   };
 
-  const _onShouldStart = (req: { url: string }): boolean => !processUrl(req.url || "");
+  const _onShouldStart = (req: { url: string }): boolean => !processUrl(req.url || "", true);
   const _onNavigationStateChange = (event: WebViewNavigation) => {
     processUrl(event.url || "");
   };
