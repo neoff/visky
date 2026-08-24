@@ -98,6 +98,10 @@ export type GrantResult =
       device_id: string
     }
   | {kind: "need_captcha"; captcha_sid: string; captcha_img: string; redirect_uri?: string; device_id: string}
+  // VK dresses a blocked account up as `need_validation` and only the presence of
+  // `ban_info` tells the two apart. Rendering the code form for it asks the user
+  // for a code that will never arrive, so it gets its own result.
+  | {kind: "banned"; message: string; member_name?: string; device_id: string}
   | {kind: "error"; message: string; raw?: any};
 
 /**
@@ -196,6 +200,14 @@ export function parseGrantResponse(data: any, device_id: string): GrantResult {
       access_token: data.access_token,
       secret: data.secret || "",
       user_id: data.user_id?.toString() || "",
+      device_id,
+    };
+  }
+  if (data.ban_info) {
+    return {
+      kind: "banned",
+      message: data.ban_info.message || data.error_description || "Аккаунт заблокирован",
+      member_name: data.ban_info.member_name,
       device_id,
     };
   }

@@ -194,6 +194,17 @@ const captchaForm = (captchaImg: string, captchaSid: string) => PAGE(`
   </form>
   <a href="/auth/vk?reset=1">Начать заново</a>`)
 
+// A blocked account. VK reports it as `need_validation`, but no code exists to
+// enter — the only way out is unblocking the account on vk.com — so say that
+// plainly instead of showing a code field that can never be satisfied.
+const bannedPage = (message: string, memberName?: string) => PAGE(`
+  <h1>Аккаунт заблокирован</h1>
+  <p class="hint">${memberName ? `${memberName}: ` : ""}${message}</p>
+  <p class="hint">Код подтверждения тут не поможет — снимите блокировку на vk.com,
+  затем войдите снова.</p>
+  <a href="https://vk.com/restore">Открыть vk.com/restore</a>
+  <a href="/auth/vk?reset=1">Начать заново</a>`)
+
 type FbState = {login: string; password: string; device_id: string; captcha_sid?: string; captcha_redirect?: string}
 
 const html = (res: Response, body: string) => {
@@ -260,6 +271,13 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
       `/auth/blank.html#success=1&access_token=${result.access_token}` +
       `&user_id=${result.user_id}&secret=${result.secret}&device_id=${result.device_id}`
     )
+    return
+  }
+
+  if (result.kind === "banned") {
+    console.error("⛔ account banned:", result.message)
+    delete (req.session as any).fb
+    html(res, bannedPage(result.message, result.member_name))
     return
   }
 
