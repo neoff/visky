@@ -205,7 +205,7 @@ const bannedPage = (message: string, memberName?: string) => PAGE(`
   <a href="https://vk.com/restore">Открыть vk.com/restore</a>
   <a href="/auth/vk?reset=1">Начать заново</a>`)
 
-type FbState = {login: string; password: string; device_id: string; captcha_sid?: string; captcha_redirect?: string}
+type FbState = {login: string; password: string; device_id: string; code?: string; captcha_sid?: string; captcha_redirect?: string}
 
 const html = (res: Response, body: string) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8")
@@ -394,7 +394,7 @@ authForm.post(["/vk", "/vk/fallback"], async (req: Request, res: Response) => {
 
   // Persist creds + device_id BEFORE the attempt so a challenge (captcha/2FA)
   // can resume the grant with the SAME device_id. finalizeGrant clears fb on ok.
-  ;(req.session as any).fb = {login, password, device_id} as FbState
+  ;(req.session as any).fb = {login, password, device_id, code: req.body.code || undefined} as FbState
 
   const input = {
     login,
@@ -468,6 +468,11 @@ authForm.get(["/vk/resume", "/vk/fallback/resume"], async (req: Request, res: Re
     login: prev.login,
     password: prev.password,
     device_id: prev.device_id,
+    // Re-attach the pending 2FA code. If the code-submit grant was interrupted by
+    // a captcha, VK needs BOTH the code and the success_token on the retry —
+    // dropping the code here made VK re-challenge for 2FA after every solved
+    // captcha (observed: solve captcha -> back to the SMS field).
+    code: prev.code,
     captcha_sid: success_token ? prev.captcha_sid : undefined,
     success_token,
   }
