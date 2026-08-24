@@ -335,6 +335,25 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
     return
   }
 
+  // A wrong/expired 2FA code (VK: invalid_request / wrong_otp / "Invalid code")
+  // is NOT a login failure — the password was fine, only the code was off. If a
+  // 2FA challenge is still in flight, re-render the code form with the error so
+  // the user can enter a fresh code, instead of dumping them back to an empty
+  // login form (which loses the whole 2FA context). The code expiring during a
+  // captcha detour lands here too, so this is the normal retry path.
+  const val = (req.session as any).val as ValState | undefined
+  const wrongCode = /wrong_otp|invalid.?code|неверный|otp/i.test(
+    `${result.message} ${result.raw?.error_type || ""}`,
+  )
+  if (val?.sid && wrongCode) {
+    console.warn("🔁 wrong 2FA code, re-prompting:", result.message)
+    // Drop the stale pending code so the next resume does not replay it.
+    const fb = (req.session as any).fb as FbState | undefined
+    if (fb) delete fb.code
+    html(res, smsForm(val, "Неверный код. Введите код ещё раз."))
+    return
+  }
+
   console.error("❌ grant failed:", result.message)
   delete (req.session as any).fb
   serveLoginError(req, res, result.message)
