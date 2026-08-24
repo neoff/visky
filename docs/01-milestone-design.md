@@ -556,9 +556,55 @@ Copy and artwork rewrite of `app/src/app/(auth)/welcome.tsx`:
 
 The screen scrolls now (`ScrollView`): the copy is long enough to overflow a small phone.
 
+**Logo sizing, as iterated on screen.** The plate started at 200pt with the artwork at 140 (sized so
+the corners of the square PNG could not be clipped by the radius) — too much white ring, because the
+X inside the PNG only spans ~90% of it. Raising the artwork to 192/200 put the arms almost on the
+border with no visible clipping, and that 96% ratio was then kept while the circle shrank twice:
+200 → 150 → **112pt**, which lands just over the 100pt person icon it replaced. Artwork 108pt.
+
+**Line breaks are explicit.** Every paragraph break the copy needs is a hard `{'\n'}`, not a
+reflow, so the text reads the same on both platforms:
+
+```
+You've just accessed the beautiful experience.
+This experience will cover courtship, sex, commitment, fetishes, loneliness, vindication, love, and hate.
+Please enjoy your experience.
+...
+Please log in to continue.
+You've just accessed the now experience.
+This experience is great for dancing
+and improving self-esteem.
+```
+
+The long "courtship…" line still wraps on its own — it is wider than either screen — but the forced
+breaks sit exactly where they were asked for.
+
 Verified on both devices by opening `visky:///welcome` — `xcrun simctl openurl` on iOS and
 `adb shell am start -a android.intent.action.VIEW -d visky:///welcome` on Android, which is how to
 reach an auth screen while a session exists.
+
+
+---
+
+# Release — 2026-08-24
+
+**Pushed:** `c7b7854..518b74d` to `origin/main` (25 commits: the API fix, the parity work, rounds
+3–7).
+
+**Backend: NOT redeployed.** `git diff --name-only e105acc..HEAD -- api/` is empty — everything after
+the 1.5.28 release commit is app-side or docs. `varg/visky-api:1.5.28` is still the live image
+(pod Running, `https://visky.envarg.com/health` → 200).
+
+**Android:** `scripts/build-app.sh` → EAS profile `production`, `--auto-submit` to Google Play
+(internal track). versionCode auto-incremented 51 → **52** (`appVersionSource: remote`).
+
+* build: https://expo.dev/accounts/varg/projects/visky/builds/a8ce5b8e-ebf6-4a25-a71c-d66eea6ab5ac
+* submission: https://expo.dev/accounts/varg/projects/visky/submissions/d464fb76-0921-4201-b7b5-ee7590843f9a
+
+Note for the record: this shipped with open question 2b still open — tap-to-play and the pause glyph
+were never exercised **by hand on iOS**, only on Android, because touch cannot be injected into the
+iOS simulator here. The user was told twice and ordered the build anyway. It does not affect the
+Android artifact, which is the one being shipped.
 
 ---
 
@@ -573,7 +619,8 @@ reach an auth screen while a session exists.
 
 2b. **Still unverified on iOS** (no touch injection here, see round 3): tap-to-play picking the
    right track, and the new pause glyph on the active row. Both are platform-agnostic code paths
-   verified on Android, but nobody has tapped them on iOS. Blocker for shipping until checked.
+   verified on Android, but nobody has tapped them on iOS. **The user shipped the Android build
+   anyway on 2026-08-24 knowing this** — it stays open for whenever the iOS build is cut.
 
 3. **The mini player shows a stale title** (`FRISKY | At Play August 2026`) while the list shows the
    cleaned one. The queue inside `react-native-track-player` still holds the objects it was built
