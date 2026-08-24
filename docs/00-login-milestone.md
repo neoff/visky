@@ -21,13 +21,19 @@ to sign in.
 
 ---
 
-## Status (2026-08-24)
+## Status (2026-08-24, evening)
 
-**The full chain works on a real device:** login → not_robot captcha → `success_token` capture →
-grant retry → token + secret → signed in. 2FA accounts reach a working confirmation step.
+**The captcha was never the real problem.** The cluster's egress IP is flagged: VK answers
+`need_captcha` to *every* grant from it, while the same credentials from a residential IP return a
+token outright, in the same second (root cause 15). The grant now runs **on the phone** — the
+backend 302s the WebView at `oauth.vk.com/token` — so VK is never challenged in the first place.
 
-Remaining constraint: **the WebView must be Chromium ≥ 94** (see root cause 8). Nothing else is
-open; the 2captcha fallback was never needed.
+Earlier chain (login → not_robot → `success_token` → retry → token + secret) does work and is kept
+as the fallback for the challenges that can still appear, but it should now be a rare path.
+
+Not yet confirmed on a device: the device-side grant needs a new app build (see *Deployed state*).
+Remaining constraint if a captcha ever does appear: **the WebView must be Chromium ≥ 94**
+(root cause 8). The 2captcha fallback was never needed.
 
 ---
 
@@ -120,6 +126,45 @@ open; the 2captcha fallback was never needed.
     WebView and was never cleared when the flow navigated back onto the captcha page, so it covered
     the widget and swallowed taps. Cleared on every `not_robot_captcha` navigation.
 
+15. **THE BIG ONE — the cluster's egress IP is flagged.** Identical http2 request, same account,
+    same second:
+
+    ```
+    from the pod (kubectl exec … node probe.js)  -> {"error":"need_captcha", …,"captcha_ratio":2.6}
+    from a dev machine                           -> {"access_token":"vk1.a.…","secret":…} http 200
+    ```
+
+    Both test accounts, reproducible. Every captcha in this document was a *symptom* of where the
+    request came from. Worse, it is unwinnable server-side: the not_robot session is minted for the
+    server IP but solved on the phone, so `captchaNotRobot.check` keeps answering `BOT`. Fix: the
+    grant is delegated to the WebView (see *Current architecture*).
+
+16. **"Widget freezes after the checkbox" is VK saying no, not a hang.** Read from the widget bundle
+    (`st.vk.com/vkid/vkid-bff/dist/projects/notRobotCaptcha-web/entrypoints/entry.*.js`):
+
+    ```js
+    const {status, success_token, show_captcha_type, redirect} = await requestCheck(…)
+    if (status === "OK") { sendGetResultEvent(success_token); closeApp({successToken, redirect}) }
+    if (status === "BOT") {
+      if (show_captcha_type) { captchaType = show_captcha_type; checkStatus = IDLE }  // silent swap to a slider puzzle
+      else                   { checkStatus = BLOCKED }                                // just sits there
+    }
+    ```
+
+    Navigation *and* the token only happen on `status:"OK"`. Every other status leaves the widget
+    inert with nothing on the wire. Our hook only forwarded bodies containing `success_token`, so all
+    failure branches were invisible. Now every `captchaNotRobot.*` body is forwarded and decoded.
+
+    Same read confirmed our own params are right: `redirect=1` sets `isOldClient`, which is exactly
+    the branch that does `location.href = "https://oauth.vk.com/blank.html?success=1"`; `origin=` is
+    not in the widget's param whitelist (`variant, domain, session_token, autofocus, blank, redirect,
+    scheme, lang_id`) and is simply ignored.
+
+17. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
+    like `VKAndroidApp/7.7-9034` does (verified). So delegating the grant to the WebView needs no UA
+    override — which matters, because overriding it would break the Chromium-version sniff and VK's
+    own login page.
+
 ---
 
 ## Current architecture / flow
@@ -128,8 +173,17 @@ open; the 2captcha fallback was never needed.
 
 - `GET /auth/vk` — serves the real VK login page snapshot (`api/docs/auth.html`) with its form
   rewritten to POST `/auth/vk`. Stores `?device_id=` (from the app) in session.
-- `POST /auth/vk` — runs `performDirectGrant` (HTTP/2). `finalizeGrant` renders the next step:
-  - **ok** → `redirect("blank.html#success=1&access_token=..&user_id=..&secret=..&device_id=..")`.
+- `POST /auth/vk` — **does not call VK.** It stores creds + device_id in `session.fb` and 302s the
+  WebView to the URL from `buildGrantUrl()` (`https://oauth.vk.com/token?…`), so the grant leaves
+  from the phone's IP over HTTP/2 (root cause 15). `VK_GRANT_ON_SERVER=true` restores the old
+  server-side `performDirectGrant` path; everything downstream is identical either way.
+- `GET /auth/vk/next?d=<VK's raw JSON>` — the app hands back what VK answered on the device;
+  `parseGrantResponse` turns it into the same `GrantResult` the server grant produced, and it goes
+  through the same `finalizeGrant`.
+- `finalizeGrant` renders the next step:
+  - **ok** → `redirect("/auth/blank.html#success=1&access_token=..&user_id=..&secret=..&device_id=..")`
+    (absolute: it fires from `/auth/vk`, `/auth/vk/resume` and `/auth/vk/next`, which would each
+    resolve a relative path differently).
   - **need_validation** (2FA) → stores `{sid, type, mask, resend}` in `session.val`, renders the
     confirmation page with per-channel copy (callreset = 4 digits of the incoming call, sms/app = 6).
   - **need_captcha** → stores `captcha_sid` + creds + device_id in `session.fb`, then redirects the
@@ -137,7 +191,8 @@ open; the 2captcha fallback was never needed.
     (`redirect=1` → navigates to `blank.html?success=1` on solve instead of hanging).
   - **error** → re-renders the login page with a banner.
 - `GET /auth/vk/resume?success_token=<token>` — resubmits the grant from `session.fb` (same
-  device_id) with the stored `captcha_sid` + `success_token`. Legacy `?captcha_key=` still accepted.
+  device_id) with the stored `captcha_sid` + `success_token`, delegating to the device the same way.
+  Legacy `?captcha_key=` still accepted.
 - `GET /auth/vk/validate-resend` — `auth.validatePhone(session.val.sid)` to re-deliver the 2FA code
   (flips callreset → SMS); re-renders the page with VK's `delay` as a live countdown.
 - Self-rendered pages (2FA, captcha fallback, errors, `/auth/vk/fallback`) use a **VK-styled shell**:
@@ -151,12 +206,28 @@ open; the 2captcha fallback was never needed.
 - WebView at `apiUrls.authAppUrl` with:
   - `injectedJavaScriptBeforeContentLoaded` (`CAPTURE_JS`) —
     (a) reports the Chromium version on the captcha page when < 94;
-    (b) hooks `fetch` **and** `XMLHttpRequest` for `captchaNotRobot.check` and forwards the body;
-    (c) still wraps `postMessage` + a `message` listener as a belt-and-braces channel.
-  - `onMessage` — `findToken` (recursive, parses stringified JSON) pulls `success_token` → loads
-    `/auth/vk/resume?success_token=<token>`; an `oldwv` message shows the "update WebView" notice.
+    (b) hooks `fetch` **and** `XMLHttpRequest` for **every** `captchaNotRobot.*` call — bodies with
+        `success_token` under tag `xhr`, everything else under `chk` so the `BOT` / `ERROR_LIMIT`
+        branches are visible instead of looking like a hang (root cause 16);
+    (c) still wraps `postMessage` + a `message` listener as a belt-and-braces channel;
+    (d) on `oauth.vk.com/token`, reads VK's JSON out of the page (`document.body.innerText`;
+        content-type is `application/json`, so the WebView renders it as text) and sends it as
+        `grant`;
+    (e) forwards uncaught page errors as `err`.
+    **No backslashes and no `${` in this template literal** — see gotchas.
+  - `onMessage` —
+    `grant` → forwards the JSON to `/auth/vk/next?d=…` (guarded by its own `grantSent` ref, separate
+    from `handled` so the token redirect that follows is still accepted);
+    `xhr`/`pm`/`msg` → `findToken` (recursive, parses stringified JSON) pulls `success_token` → loads
+    `/auth/vk/resume?success_token=<token>`;
+    `chk` → decodes `status` / `show_captcha_type`; a non-OK status shows a hint ("solve the puzzle
+    above") for `BOT:<type>`, or a "VK не принял проверку" card with a restart button for the dead
+    ends (`ERROR_LIMIT`, `ERROR_TOKEN_EXPIRED`, bare `BOT`);
+    `oldwv` → the "update WebView" notice.
   - `onShouldStartLoadWithRequest` + `onNavigationStateChange` → `processUrl(url)`:
     - logs `[login nav] <url>`; clears the busy overlay on `not_robot_captcha`.
+    - keeps the overlay UP on `oauth.vk.com/token` so VK's raw JSON (token included) is never on
+      screen; clears it again when a backend step renders.
     - any url with `access_token=` → parse hash → `signIn` → `router.dismiss()`.
     - `blank.html` + `success=1` → wait 1500 ms for the token (keyed resume wins the race), else a
       keyless resume as a last resort.
@@ -171,8 +242,11 @@ open; the 2captcha fallback was never needed.
   secret `visky-api-env`). Deploy with `scripts/build-api.sh --deploy`. CD is NOT automated.
 - **App:** EAS `@varg/visky`, pkg `com.envarg.visky`, production profile (app-bundle, auto-submit
   internal track). Last build **vc50** (commit `d2ef5c7`) — contains the `success_token` capture and
-  the spinner fix, but **not** the old-WebView notice / dev-routing (commit `24807c1`) or the
-  VK-styled 2FA page (backend-only, already live). Build with `scripts/build-app.sh`.
+  the spinner fix, but **not** the old-WebView notice / dev-routing (`24807c1`), the captcha-status
+  diagnostics (`3d8afaf`) or the device-side grant (`17530a3`). Build with `scripts/build-app.sh`.
+- **The device-side grant needs BOTH sides shipped together**: the backend redirect is inert without
+  an app that knows how to read the JSON back, and vice versa. Deploy the API and cut an app build in
+  the same pass, or set `VK_GRANT_ON_SERVER=true` until the build lands.
 - git: monorepo `github.com:neoff/visky.git`, all on `main`.
 
 ---
@@ -191,6 +265,19 @@ open; the 2captcha fallback was never needed.
   `maxlength=4`; `/auth/vk/validate-resend` returned `validation_type: sms` and the page re-rendered
   as "Код из SMS" with a 60 s countdown.
 - **End to end on device** — confirmed working by the user after the `success_token` fix.
+- **Flagged cluster IP** (cause 15) — the same http2 grant script run twice, once via
+  `kubectl exec … node probe.js` inside the pod and once on the dev mac, for both test accounts:
+  pod → `need_captcha` every time, mac → `access_token` every time.
+- **Widget freeze** (cause 16) — read directly from VK's captcha bundle (`closeApp` / `checkResult`),
+  not inferred: only `status:"OK"` navigates or emits a token.
+- **Device-side grant** (`17530a3`) — driven end-to-end against a local API with curl standing in for
+  the WebView: `POST /auth/vk` → 302 to `oauth.vk.com/token?…` (device_id preserved) → fetch → JSON →
+  `GET /auth/vk/next?d=…` → `302 /auth/blank.html#access_token=…&secret=…`. Also verified per branch:
+  synthetic `need_validation` renders the callreset page with `maxlength=4`; synthetic `need_captcha`
+  302s to the widget and stores `captcha_sid`, which `/auth/vk/resume` then replays alongside
+  `success_token`; a 2FA `code` POST re-delegates with `&code=` appended; unparseable `d` falls back
+  to the login page. `CAPTURE_JS` passes `node --check` and contains no backslashes or `${`.
+  **Not yet run on a real device** — needs a new app build.
 
 ---
 
