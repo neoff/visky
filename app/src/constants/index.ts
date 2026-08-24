@@ -147,6 +147,10 @@ export const apiUrls = {
   // After the user solves VK's real captcha, VK lands on blank.html?success=1;
   // the WebView loads this to retry the grant (same device_id) and get the token.
   authResumeUrl: loginLocal ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk/resume`,
+  // Where the WebView hands VK's raw grant JSON back after performing the grant
+  // itself (the backend 302s it to oauth.vk.com/token so the request leaves from
+  // the phone's IP, which VK does not challenge — the cluster's IP always is).
+  authNextUrl: loginLocal ? `${baseHost}/auth/local${redirectUrl}` : `${baseHost}/auth/vk/next`,
   authAdminAppUrl_: `${authUrl}/vk`,
   directUrl: `${authUrl}/direct`,
   tokenUrl: `${authUrl}/token`,

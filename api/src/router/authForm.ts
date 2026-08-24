@@ -1,6 +1,6 @@
 import {vkTokenAncor} from "@/configurations"
 import {deviceIDgen} from "@/helper"
-import {performDirectGrant, requestValidationResend} from "@/helper/directGrant"
+import {buildGrantUrl, parseGrantResponse, performDirectGrant, requestValidationResend} from "@/helper/directGrant"
 import {Request, Response} from "@/types"
 import express from "express"
 import fs, {readFileSync} from "fs"
@@ -194,6 +194,35 @@ const html = (res: Response, body: string) => {
   res.send(body).end()
 }
 
+// WHERE THE GRANT RUNS.
+//
+// VK returns `need_captcha` on EVERY password grant issued from the cluster's
+// egress IP — the node is flagged (captcha_ratio 2.6). The same credentials sent
+// from a residential IP in the same second come back with an access_token, no
+// captcha and no 2FA. Verified 2026-08-24 by running the identical http2 request
+// from inside the pod and from a dev machine, for both test accounts.
+//
+// So by default we do NOT call VK from here. We 302 the WebView straight at the
+// token endpoint: the request then leaves from the PHONE's IP, over HTTP/2 (the
+// browser's default), and is never challenged. VK answers with a JSON body,
+// which the app reads out of the page and hands back to GET /vk/next — from
+// there the existing finalizeGrant logic renders 2FA / captcha / errors exactly
+// as before. Set VK_GRANT_ON_SERVER=true to go back to grants from the server.
+const grantOnServer = process.env.VK_GRANT_ON_SERVER === "true"
+
+// Hand the grant to the WebView (see above). Everything the follow-up needs
+// (creds, device_id, captcha_sid) already lives in the session.
+const delegateGrant = (res: Response, input: Parameters<typeof buildGrantUrl>[0]): void => {
+  const {url, device_id} = buildGrantUrl(input)
+  console.log("=====> delegating grant to the device:", {
+    login: input.login,
+    device_id,
+    code: input.code ? "yes" : undefined,
+    success_token: input.success_token ? "yes" : undefined,
+  })
+  res.redirect(url)
+}
+
 // Turn a grant result into the right WebView response, shared by the initial
 // POST and the post-captcha /resume. On success -> blank.html#... (app catches
 // the hash). On need_captcha -> redirect the WebView to VK's REAL interactive
@@ -208,8 +237,10 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
     req.session.user_id = result.user_id
     req.session.device_id = result.device_id
     console.log("✅ grant ok:", {user_id: result.user_id, has_secret: !!result.secret})
+    // Absolute: this fires from /auth/vk, /auth/vk/resume AND /auth/vk/next, and
+    // a relative "blank.html" would resolve against each of those differently.
     res.redirect(
-      `blank.html#success=1&access_token=${result.access_token}` +
+      `/auth/blank.html#success=1&access_token=${result.access_token}` +
       `&user_id=${result.user_id}&secret=${result.secret}&device_id=${result.device_id}`
     )
     return
@@ -330,20 +361,44 @@ authForm.post(["/vk", "/vk/fallback"], async (req: Request, res: Response) => {
   // can resume the grant with the SAME device_id. finalizeGrant clears fb on ok.
   ;(req.session as any).fb = {login, password, device_id} as FbState
 
+  const input = {
+    login,
+    password,
+    device_id,
+    code: req.body.code,
+    captcha_sid: req.body.captcha_sid,
+    captcha_key: req.body.captcha_key,
+  }
+
+  if (!grantOnServer) {
+    delegateGrant(res, input)
+    return
+  }
+
   try {
-    const result = await performDirectGrant({
-      login,
-      password,
-      device_id,
-      code: req.body.code,
-      captcha_sid: req.body.captcha_sid,
-      captcha_key: req.body.captcha_key,
-    })
-    finalizeGrant(req, res, result)
+    finalizeGrant(req, res, await performDirectGrant(input))
   } catch (error: any) {
     console.error("======> grant ERROR:", error?.message)
     serveLoginError(req, res, error?.message || "Ошибка авторизации")
   }
+})
+
+// The device performed the grant and read VK's JSON out of the page; ?d carries
+// it verbatim. Parsing it here keeps every downstream step (2FA page, captcha
+// redirect, error page, session storage) identical to the server-grant path.
+authForm.get("/vk/next", async (req: Request, res: Response) => {
+  const prev = (req.session as any).fb as FbState | undefined
+  const device_id = prev?.device_id || (req.session as any).dev || deviceIDgen()
+  let data: any
+  try {
+    data = JSON.parse(String(req.query.d || ""))
+  } catch {
+    console.error("======> /vk/next: unparseable grant payload")
+    serveLoginError(req, res, "Не удалось прочитать ответ VK. Войдите заново.")
+    return
+  }
+  console.log("<===== device grant response:", JSON.stringify(data).slice(0, 300))
+  finalizeGrant(req, res, parseGrantResponse(data, device_id))
 })
 
 // After the user solves VK's real captcha, VK navigates the WebView to
@@ -374,15 +429,21 @@ authForm.get(["/vk/resume", "/vk/fallback/resume"], async (req: Request, res: Re
     captcha_sid: prev.captcha_sid,
     has_success_token: !!success_token,
   })
+  const input = {
+    login: prev.login,
+    password: prev.password,
+    device_id: prev.device_id,
+    captcha_sid: success_token ? prev.captcha_sid : undefined,
+    success_token,
+  }
+
+  if (!grantOnServer) {
+    delegateGrant(res, input)
+    return
+  }
+
   try {
-    const result = await performDirectGrant({
-      login: prev.login,
-      password: prev.password,
-      device_id: prev.device_id,
-      captcha_sid: success_token ? prev.captcha_sid : undefined,
-      success_token,
-    })
-    finalizeGrant(req, res, result)
+    finalizeGrant(req, res, await performDirectGrant(input))
   } catch (error: any) {
     console.error("======> resume grant ERROR:", error?.message)
     serveLoginError(req, res, error?.message || "Ошибка авторизации")

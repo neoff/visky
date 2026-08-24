@@ -116,7 +116,28 @@ const CAPTURE_JS = `(function(){
       return _sendX.apply(this, arguments);
     };
   } catch(e){}
-  // 3) Uncaught page errors. The widget swallows most failures into a silent
+  // 3) THE GRANT ITSELF. The backend 302s us to oauth.vk.com/token instead of
+  //    calling VK server-side: the cluster's egress IP is flagged and gets
+  //    need_captcha on every single attempt, while the same request from a
+  //    phone's IP returns the token outright. VK answers with a JSON body that
+  //    the WebView renders as text — read it once and hand it to RN, which posts
+  //    it back to /auth/vk/next so the backend decides the next step.
+  var grabbed = 0;
+  var grabGrant = function(){
+    try {
+      if (grabbed) return;
+      if (location.host.indexOf('oauth.vk.com') === -1) return;
+      if (location.pathname.indexOf('/token') !== 0) return;
+      var b = document.body;
+      var t = ((b && (b.innerText || b.textContent)) || '').trim();
+      if (t.charAt(0) !== '{') return;
+      grabbed = 1;
+      send('grant', t);
+    } catch(e){}
+  };
+  document.addEventListener('DOMContentLoaded', grabGrant);
+  window.addEventListener('load', grabGrant);
+  // 4) Uncaught page errors. The widget swallows most failures into a silent
   //    state change, but a broken bundle / missing API surfaces here and is the
   //    difference between "VK said no" and "our WebView cannot run the widget".
   window.addEventListener('error', function(e){
@@ -164,6 +185,11 @@ const LoginPage = () => {
   const [busy, setBusy] = useState<boolean>(false);
   const handled = useRef<boolean>(false);
   const resuming = useRef<boolean>(false);
+  // One grant response per attempt. Separate from `handled` (which guards the
+  // final sign-in) because forwarding the grant JSON is a mid-flow step: the
+  // backend answers it with the token redirect, which `handled` must still
+  // accept.
+  const grantSent = useRef<boolean>(false);
   // Pending keyless-resume timer. When the captcha lands on blank.html?success=1
   // we do NOT resume immediately: the widget fires its `success_token` via
   // postMessage at almost the same instant, and a keyless resume just loops back
@@ -270,6 +296,18 @@ const LoginPage = () => {
       }
       return;
     }
+    // VK's grant JSON, read off the token page the WebView loaded itself.
+    if (payload.__cap === "grant") {
+      const raw = String(payload.data ?? "");
+      console.log("[login] grant response from device, len", raw.length);
+      if (!grantSent.current) {
+        grantSent.current = true;
+        const base = apiUrls.authNextUrl;
+        setBusy(true);
+        setUri(`${base}${base.includes("?") ? "&" : "?"}d=${encodeURIComponent(raw)}`);
+      }
+      return;
+    }
     if (payload.__cap === "err") {
       console.log("[captcha page error]", payload.data?.m, payload.data?.src);
       return;
@@ -346,6 +384,20 @@ const LoginPage = () => {
     // overlay. The overlay is absolutely positioned over the WebView, so leaving
     // it up while the captcha renders looks like an endless spinner and swallows
     // every tap on the checkbox (the reported "crutilka" hang).
+    // The grant page briefly renders VK's raw JSON (token included). Keep the
+    // overlay up over it until grabGrant has handed it back to /auth/vk/next.
+    if (url.includes("oauth.vk.com/token")) {
+      setBusy(true);
+      return false;
+    }
+
+    // A backend step rendered (login form, 2FA, error) — the flow continues, so
+    // allow the next grant response to be consumed.
+    if (url.includes("/auth/vk") && !url.includes("/auth/vk/next")) {
+      grantSent.current = false;
+      setBusy(false);
+    }
+
     if (url.includes("not_robot_captcha")) {
       resuming.current = false;
       setBusy(false);
@@ -454,6 +506,7 @@ const LoginPage = () => {
                 onPress={() => {
                   handled.current = false;
                   resuming.current = false;
+                  grantSent.current = false;
                   setCaptchaError(null);
                   setUri(apiUrls.authAppUrl);
                 }}
@@ -470,6 +523,7 @@ const LoginPage = () => {
           onPress={() => {
             handled.current = false;
             resuming.current = false;
+            grantSent.current = false;
             setUri(apiUrls.authFallbackUrl);
           }}
         >

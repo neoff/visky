@@ -101,14 +101,25 @@ export type GrantResult =
   | {kind: "error"; message: string; raw?: any};
 
 /**
- * Perform a single direct password grant attempt against oauth.vk.com/token.
- * device_id MUST stay stable across the 2FA/captcha retry and later audio
- * signing (it is part of md5(url+secret)); callers pass the returned device_id
- * back in on the follow-up attempt.
+ * Build the exact token-endpoint URL for a grant attempt.
+ *
+ * Split out of performDirectGrant because the grant no longer always runs here:
+ * VK hands out `need_captcha` on EVERY attempt from the cluster's egress IP
+ * (captcha_ratio 2.6), while the SAME credentials from a residential IP get an
+ * access_token straight away, in the same second. So the app's WebView navigates
+ * to this URL itself — the request then leaves from the phone's IP over HTTP/2
+ * and VK never challenges it. Verified 2026-08-24 from inside the pod vs a dev
+ * machine, both accounts. The UA does NOT matter (a plain Chrome-mobile UA gets
+ * a token too), so the WebView needs no UA override.
  */
-export async function performDirectGrant(input: GrantInput): Promise<GrantResult> {
+export function buildGrantUrl(input: GrantInput): {url: string; device_id: string} {
   const device_id: string = input.device_id || deviceIDgen();
+  const qp = grantParams(input, device_id);
+  const u = new URL(TokenUrl);
+  return {url: `${u.origin}${u.pathname}?${qp.toString()}`, device_id};
+}
 
+function grantParams(input: GrantInput, device_id: string): URLSearchParams {
   const qp = new URLSearchParams({
     grant_type: "password",
     client_id: directGrant.appId,
@@ -132,6 +143,18 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
   // captcha still uses captcha_key. Never send both for one challenge.
   if (input.success_token) qp.set("success_token", String(input.success_token));
   else if (input.captcha_key) qp.set("captcha_key", String(input.captcha_key));
+  return qp;
+}
+
+/**
+ * Perform a single direct password grant attempt against oauth.vk.com/token.
+ * device_id MUST stay stable across the 2FA/captcha retry and later audio
+ * signing (it is part of md5(url+secret)); callers pass the returned device_id
+ * back in on the follow-up attempt.
+ */
+export async function performDirectGrant(input: GrantInput): Promise<GrantResult> {
+  const device_id: string = input.device_id || deviceIDgen();
+  const qp = grantParams(input, device_id);
 
   // DEV debug: which app pair + scope is used for the grant (diagnoses
   // "client_secret is incorrect" = mismatched app_id/secret pair).
@@ -158,7 +181,15 @@ export async function performDirectGrant(input: GrantInput): Promise<GrantResult
     return {kind: "error", message: e?.message || "Grant request failed"};
   }
   console.log("<===== direct grant response:", JSON.stringify(data).slice(0, 300));
+  return parseGrantResponse(data, device_id);
+}
 
+/**
+ * Turn VK's token-endpoint JSON into a GrantResult. Shared by the server-side
+ * grant and by /auth/vk/next, which receives the very same JSON read out of the
+ * WebView after the phone performed the grant itself.
+ */
+export function parseGrantResponse(data: any, device_id: string): GrantResult {
   if (data.access_token) {
     return {
       kind: "ok",
