@@ -249,11 +249,6 @@ const LoginPage = () => {
   const [busy, setBusy] = useState<boolean>(false);
   const handled = useRef<boolean>(false);
   const resuming = useRef<boolean>(false);
-  // One grant response per attempt. Separate from `handled` (which guards the
-  // final sign-in) because forwarding the grant JSON is a mid-flow step: the
-  // backend answers it with the token redirect, which `handled` must still
-  // accept.
-  const grantSent = useRef<boolean>(false);
   // One grant bounce per attempt (see processUrl) — never re-issue the grant.
   const bounced = useRef<boolean>(false);
   // Pending keyless-resume timer. When the captcha lands on blank.html?success=1
@@ -287,7 +282,6 @@ const LoginPage = () => {
     // not report that through onShouldStartLoadWithRequest, so the /auth/vk/resume
     // navigation is never seen. Without this the post-captcha grant — the one
     // that finally carries the token — arrives and is dropped.
-    grantSent.current = false;
     bounced.current = false;
     if (blankTimer.current) {
       clearTimeout(blankTimer.current);
@@ -350,6 +344,20 @@ const LoginPage = () => {
     router.dismiss();
   };
 
+  // Hand a device-fetched result (grant JSON, or auth.validatePhone JSON) to the
+  // matching backend endpoint. No dedup here on purpose: the injected script
+  // already emits exactly one 'grant'/'resend' per page load (its `grabbed`
+  // flag), and two rounds can legitimately return byte-identical JSON — a wrong
+  // 2FA code yields the SAME need_validation challenge as the first prompt, so
+  // any content- or once-based guard on this side silently drops the resubmit and
+  // freezes the spinner. Every message here is a fresh, user-initiated round.
+  const forwardDeviceResult = (tag: string, base: string, raw: string) => {
+    console.log(`[login] ${tag} response from device, len`, raw.length);
+    if (!raw) return;
+    setBusy(true);
+    setUri(`${base}${base.includes("?") ? "&" : "?"}d=${encodeURIComponent(raw)}`);
+  };
+
   // Captcha result carrier: forward captured success_token to the resume grant.
   const _onMessage = (event: { nativeEvent: { data: string } }) => {
     let payload: any;
@@ -380,26 +388,12 @@ const LoginPage = () => {
     }
     // VK's grant JSON, read off the token page the WebView loaded itself.
     if (payload.__cap === "grant") {
-      const raw = String(payload.data ?? "");
-      console.log("[login] grant response from device, len", raw.length);
-      if (!grantSent.current) {
-        grantSent.current = true;
-        const base = apiUrls.authNextUrl;
-        setBusy(true);
-        setUri(`${base}${base.includes("?") ? "&" : "?"}d=${encodeURIComponent(raw)}`);
-      }
+      forwardDeviceResult("grant", apiUrls.authNextUrl, String(payload.data ?? ""));
       return;
     }
     // auth.validatePhone's JSON, fetched by the page via JSONP.
     if (payload.__cap === "resend") {
-      const raw = String(payload.data ?? "");
-      console.log("[login] 2FA resend response from device, len", raw.length);
-      if (!grantSent.current) {
-        grantSent.current = true;
-        const base = apiUrls.authValidateNextUrl;
-        setBusy(true);
-        setUri(`${base}${base.includes("?") ? "&" : "?"}d=${encodeURIComponent(raw)}`);
-      }
+      forwardDeviceResult("resend", apiUrls.authValidateNextUrl, String(payload.data ?? ""));
       return;
     }
     if (payload.__cap === "granterr") {
@@ -514,13 +508,8 @@ const LoginPage = () => {
     // code field, the same failure as the old stuck captcha spinner.
     if (url.includes("/auth/")) setBusy(false);
 
-    // A fresh step (not the grant handoff itself) re-arms the grant capture.
-    if (
-      url.includes("/auth/vk") &&
-      !url.includes("/auth/vk/next") &&
-      !url.includes("/auth/vk/validate-next")
-    ) {
-      grantSent.current = false;
+    // A fresh backend step re-arms the one-shot grant bounce.
+    if (url.includes("/auth/vk") && !url.includes("/auth/vk/next")) {
       bounced.current = false;
     }
 
@@ -633,7 +622,6 @@ const LoginPage = () => {
                 onPress={() => {
                   handled.current = false;
                   resuming.current = false;
-                  grantSent.current = false;
                   setCaptchaError(null);
                   setUri(apiUrls.authAppUrl);
                 }}
@@ -650,7 +638,6 @@ const LoginPage = () => {
           onPress={() => {
             handled.current = false;
             resuming.current = false;
-            grantSent.current = false;
             setUri(apiUrls.authFallbackUrl);
           }}
         >
