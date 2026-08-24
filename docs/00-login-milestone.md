@@ -229,7 +229,26 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
     one URL further along. `busy` now clears on any `/auth/` navigation; only the grant-capture
     re-arm still skips the handoff URLs.
 
-22. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
+22. **`setUri()` navigations are invisible to `onShouldStartLoadWithRequest`.** After the captcha,
+    `resumeWith()` drives the WebView programmatically, and Android does not report that through
+    `onShouldStartLoadWithRequest` — so `processUrl` never saw `/auth/vk/resume` and never cleared
+    `grantSent`, which the FIRST grant (the `need_captcha` one) had already set. The post-captcha
+    grant — the one that finally carries the token — was therefore received and dropped, and the
+    spinner sat forever. The flags are now reset inside `resumeWith`, where a new grant round
+    actually begins. Any state keyed off "we navigated somewhere" has this hole; reset it at the
+    point of intent, not on the navigation.
+
+23. **A blocked account looks exactly like 2FA.** VK answers `need_validation` for it too, and only
+    `ban_info` tells them apart, so the app asked for a confirmation code that could never arrive.
+    Seen live on the test account after a day of grant hammering:
+    `{"error":"need_validation","error_description":"user has been banned","ban_info":{"message":
+    "Your account has been blocked"}}`. Now its own `GrantResult` and a page pointing at
+    `vk.com/restore`.
+
+    Operational lesson: repeated password grants against one account get it blocked. Test against a
+    throwaway account, and prefer synthetic JSON over live calls when checking response handling.
+
+24. **The UA does not matter.** A plain Chrome-mobile UA gets a token from the token endpoint just
     like `VKAndroidApp/7.7-9034` does (verified). So delegating the grant to the WebView needs no UA
     override — which matters, because overriding it would break the Chromium-version sniff and VK's
     own login page.
@@ -317,7 +336,7 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
   deploy `visky-api`, env from secret `visky-api-env`). Deploy with `scripts/build-api.sh --deploy`
   (add `--no-bump` when package.json is already at the target version). CD is NOT automated.
   Smoke-checked in prod: `POST /auth/vk` → `blank.html#g=…`, `/auth/vk/validate-resend` →
-  `blank.html#r=…`, `/auth/vk/next` → 200.
+  `blank.html#r=…`, `/auth/vk/next` → 200. **1.5.32** adds the blocked-account page.
 - **App:** EAS `@varg/visky`, pkg `com.envarg.visky`, production profile (app-bundle, auto-submit
   to the Play internal track), built with `scripts/build-app.sh`.
   - **vc53** (`055ff92`) — device-side grant + captcha diagnostics, but **no** TLS trust anchor, so
@@ -394,6 +413,23 @@ Remaining constraint if a captcha ever does appear: **the WebView must be Chromi
   With real credentials the same path yields `access_token` instead of `invalid_client`.
   Note this ran against the deployed api **1.5.29**, exercising the app-side bounce; 1.5.30 only
   removes the extra hop.
+- **The captcha branch, on a MODERN WebView.** VK's widget needs Chromium ≥ 94, which no installed
+  emulator image had, so a fresh API 34 AVD was created (`VK_API34`, WebView 113) via the official
+  `cmdline-tools` from `dl.google.com`. There the widget renders in full and the whole chain runs:
+
+  ```
+  [captcha api] settings / componentDone …
+  [captcha bridge] xhr {"response":{"status":"OK","success_token":"eyJ…
+  [captcha bridge] -> success_token captured, keyed resume
+  [login] -> resume WITH success_token
+  [login nav] https://oauth.vk.com/blank.html#g=…
+  [login] grant response from device, len 983
+  [login nav] https://visky.envarg.com/auth/vk/next?d=…
+  ```
+
+  On one run the captcha passed with no interaction at all; on another the user ticked the box.
+  The final response was `need_validation` + `ban_info` — the test account had been blocked (cause
+  23), not a flow failure.
 - **The blank.html hop is safe to inject into** — `https://oauth.vk.com/blank.html` returns
   `200 text/html` with **no** `Content-Security-Policy` (checked), so the injected script and its
   same-origin fetch are not blocked.
