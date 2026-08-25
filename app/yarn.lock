@@ -2204,6 +2204,11 @@ babel-preset-expo@~57.0.8:
     babel-plugin-transform-flow-enums "^0.0.2"
     debug "^4.3.4"
 
+badgin@^1.1.5:
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/badgin/-/badgin-1.2.3.tgz#994b5f519827d7d5422224825b2c8faea2bc43ad"
+  integrity sha512-NQGA7LcfCpSzIbGRbkgjgdWkjy7HI+Th5VLxTJfW5EeaAf3fnS+xWQaQOCYiny+q6QSvxqoSO04vCx+4u++EJw==
+
 balanced-match@^1.0.0:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/balanced-match/-/balanced-match-1.0.2.tgz#e83e3a7e3f300b34cb9d87f615fa0cbf357690ee"
@@ -3069,6 +3074,11 @@ exif-parser@^0.1.12:
   resolved "https://registry.yarnpkg.com/exif-parser/-/exif-parser-0.1.12.tgz#58a9d2d72c02c1f6f02a0ef4a9166272b7760922"
   integrity sha512-c2bQfLNbMzLPmzQuOr8fy0csy84WmwnER81W88DzTp9CYNPJ6yzOj2EZAh9pywYpqHnshVLHQJ8WzldAyfY+Iw==
 
+expo-application@~57.0.2:
+  version "57.0.2"
+  resolved "https://registry.yarnpkg.com/expo-application/-/expo-application-57.0.2.tgz#0c0abb9a82c365f4bd5d3ad8d81420072c46c827"
+  integrity sha512-q31YwcXyymviAmdrtDfAg3Dld4VMxLCNAfgMHip7vZpPX4lzF/AfwsywqBJUAjQnJknzaNAkzqvMVjO5XmKYDA==
+
 expo-asset@~57.0.14:
   version "57.0.14"
   resolved "https://registry.yarnpkg.com/expo-asset/-/expo-asset-57.0.14.tgz#e38da89c25baa190d648475d3ef73cee1a7b7149"
@@ -3148,6 +3158,17 @@ expo-modules-jsi@~57.0.5:
   resolved "https://registry.yarnpkg.com/expo-modules-jsi/-/expo-modules-jsi-57.0.5.tgz#cd7fd231ba23e31c673d27ca959372d02559ef33"
   integrity sha512-NQF7MUF0j3rQHV8KJqETYA1SrJr3USvQ/AWEhODo+unMRFBDP9BKpn8+aNGGmx6fa2XLnqC2qulVw4DT6Gp13Q==
 
+expo-notifications@~57.0.14:
+  version "57.0.14"
+  resolved "https://registry.yarnpkg.com/expo-notifications/-/expo-notifications-57.0.14.tgz#295dc9282c4b3a2e6a4c484fc5ac9c88dcdd3c49"
+  integrity sha512-YDTW6vUEF1NnBwdXLJTaUbk+ZgtFCO3qIEaNkrXV56U+az2a5GBRgTnqGUI3ts7tR3oDthJVa/0UBn52f7ngsA==
+  dependencies:
+    "@expo/image-utils" "^0.11.5"
+    abort-controller "^3.0.0"
+    badgin "^1.1.5"
+    expo-application "~57.0.2"
+    expo-constants "~57.0.14"
+
 expo-router@~57.0.16:
   version "57.0.16"
   resolved "https://registry.yarnpkg.com/expo-router/-/expo-router-57.0.16.tgz#d0a6b6b5c60bb92f4413a856bb0c5a475b940ffc"
@@ -3212,6 +3233,13 @@ expo-symbols@^57.0.2:
   dependencies:
     "@expo-google-fonts/material-symbols" "^0.4.1"
     sf-symbols-typescript "^2.0.0"
+
+expo-task-manager@~57.0.13:
+  version "57.0.13"
+  resolved "https://registry.yarnpkg.com/expo-task-manager/-/expo-task-manager-57.0.13.tgz#0f15d63daa90acc4ca08ff93ea52851afed4c4f0"
+  integrity sha512-kQ1TrhLCAg/dcs6U09lriJGWpEb807PExgkByMCceq5pr9H1g2edyPnncTsaWYWOma94J24vAEpJPQPs0xrn+w==
+  dependencies:
+    unimodules-app-loader "~57.0.1"
 
 expo@~57.0.16:
   version "57.0.16"
@@ -6389,6 +6417,11 @@ unicode-property-aliases-ecmascript@^2.0.0:
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/unicode-property-aliases-ecmascript/-/unicode-property-aliases-ecmascript-2.2.0.tgz#301d4f8a43d2b75c97adfad87c9dd5350c9475d1"
   integrity sha512-hpbDzxUY9BFwX+UeBnxv3Sh1q7HFxj48DTmXchNgRa46lO8uj3/1iEn3MiNUYTg1g9ctIqXCCERn8gYZhHC5lQ==
+
+unimodules-app-loader@~57.0.1:
+  version "57.0.1"
+  resolved "https://registry.yarnpkg.com/unimodules-app-loader/-/unimodules-app-loader-57.0.1.tgz#3f9a98026cb379e36b95c146319c3a2cfe083a75"
+  integrity sha512-wey5ChoJkCTq0j0JWdIMu2QB81vVrdhmrNAP14ZZ6WDslnZ7ff7Ezv8rMdEnVHaCKz3xK4mIVXbVU51xHgdyCA==
 
 universalify@^2.0.0:
   version "2.0.1"

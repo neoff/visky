@@ -1,9 +1,11 @@
 import {apiUrls, headers} from "@/constants";
+import {ensureDeviceId} from "@/helpers/device";
 import {unknownTrackImageUri} from "@/constants/images";
 import {TrackWithPlaylist} from "@/helpers/types";
 import axios, {AxiosError, AxiosRequestConfig, Method} from "axios";
 import {TrackType} from "react-native-track-player";
 import {AuthFragments} from "@/types/auth";
+import {PlaybackDeviceInfo, PlaybackState} from "@/types/playback";
 
 /**
  * RN axios does not persist the server session cookie, so authenticated calls
@@ -20,11 +22,23 @@ export const setAuthHeaders = (session: AuthFragments | null): void => {
       ...(session.secret ? {"x-auth-secret": session.secret} : {}),
       ...(session.device_id ? {"x-auth-device": session.device_id} : {}),
     };
+    // A session stored before the app kept a device id has none. The provider
+    // writes one back into the session, but that is a storage round trip — fill
+    // the header straight away so even the very first playlist refresh or token
+    // refresh of this launch identifies the device.
+    if (!session.device_id) {
+      void ensureDeviceId().then((id) => {
+        if (authHeaders["x-auth-token"] === session.access_token) authHeaders["x-auth-device"] = id;
+      });
+    }
   } else {
     authHeaders = {};
   }
   console.debug("==setAuthHeaders:", Object.keys(authHeaders));
 };
+
+/** The id every request identifies this installation with. */
+export const currentDeviceId = (): string | null => authHeaders["x-auth-device"] ?? null;
 
 const registerInterceptors = () => {
   console.log("registerAuth");
@@ -332,4 +346,59 @@ export const fetchFavoritesPage = async (
   console.info(`GET ${url}`);
   const data = await apiRequest(url, 'GET', {});
   return mapApiTracks(data?.items).map((item: any) => ({...item, favorite: item.favorite ?? true}));
+};
+
+
+// ===========================================================================
+// CROSS-DEVICE PLAYBACK ("Connect")
+//
+// The socket in services/playbackSync is the live path; these are the cold
+// ones — app start, and anything that has to work while the socket is down.
+// ===========================================================================
+
+/** The whole session: what is playing, where, and on which devices it could. */
+export const loadPlaybackState = async (): Promise<{
+  state: PlaybackState
+  position_now_ms: number
+  server_now_ms: number
+  devices: PlaybackDeviceInfo[]
+}> => {
+  return await apiRequest(apiUrls.playerStateUrl, 'GET', {});
+};
+
+/** Register this device (and its wake-up push token) with the account. */
+export const registerPlaybackDevice = async (device: {
+  name?: string
+  platform?: string
+  app_version?: string
+  push_token?: string
+}): Promise<{devices: PlaybackDeviceInfo[]}> => {
+  return await apiRequest(apiUrls.playerDevicesUrl, 'POST', {data: device});
+};
+
+/** Hand the sound to another device without a socket (fallback path). */
+export const transferPlayback = async (
+  toDeviceId: string,
+  play?: boolean,
+): Promise<{state: PlaybackState}> => {
+  return await apiRequest(apiUrls.playerTransferUrl, 'POST', {
+    data: {to_device_id: toDeviceId, ...(play === undefined ? {} : {play})},
+  });
+};
+
+/**
+ * Re-resolve a track by its VK ids.
+ *
+ * A transfer carries ids, never a url: VK signs the stream per session, so the
+ * receiving device has to ask for its own copy.
+ */
+export const fetchTrackById = async (ownerId: number | string, id: number | string) => {
+  const item = await apiRequest(`${apiUrls.playerTrackUrl}/${ownerId}/${id}`, 'GET', {});
+  return {
+    ...item,
+    date: item?.date?.toString(),
+    type: TrackType.HLS,
+    album: item?.album?.title ?? 'Unknown Album',
+    artwork: item?.artwork ?? item?.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+  };
 };

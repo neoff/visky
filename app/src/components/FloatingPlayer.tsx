@@ -1,11 +1,16 @@
 import {MovingText} from "@/components/MovingText";
+import {DevicePicker} from "@/components/DevicePicker";
+import {StopPropagation} from "@/components/utils/StopPropagation";
 import {PlayerButtonType, PlayPauseButton, SkipToNextButton} from "@/components/PlayerControls";
 import {unknownTrackImageUri} from "@/constants/images";
 import {useLastActiveTrack} from "@/hooks/useLastActiveTrack";
 import {colors, fonts, layout} from "@/constants";
 import {defaultStyles} from "@/styles";
+import {useRemoteDevice} from "@/store/playback";
+import {MaterialCommunityIcons} from "@expo/vector-icons";
 import {useRouter} from "expo-router";
-import {StyleSheet, TouchableOpacity, View, ViewProps} from "react-native";
+import {useState} from "react";
+import {StyleSheet, Text, TouchableOpacity, View, ViewProps} from "react-native";
 import FastImage from "react-native-fast-image";
 import {useActiveTrack} from "react-native-track-player";
 
@@ -14,6 +19,9 @@ export const FloatingPlayer = ({style}: ViewProps) => {
   const activeTrack = useActiveTrack()
   const lastActiveTrack = useLastActiveTrack()
   const displayedTrack = activeTrack ?? lastActiveTrack
+  // the device that owns the sound, when it is not this one
+  const remoteDevice = useRemoteDevice()
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const handlePress = () => {
     router.navigate('/player')
@@ -37,12 +45,31 @@ export const FloatingPlayer = ({style}: ViewProps) => {
             text={displayedTrack.title ?? ''}
             animationThreshold={25}
           />
+          {/* where the sound actually is, when it is not here */}
+          {remoteDevice && (
+            <Text style={styles.remoteLabel} numberOfLines={1}>
+              Playing on {remoteDevice.name ?? 'another device'}
+            </Text>
+          )}
         </View>
 
         <View style={styles.trackControlsContainer}>
+          {/* the picker: hand the track to another device, or take it back.
+              Wrapped so the tap does not also open the full player. */}
+          <StopPropagation>
+            <TouchableOpacity onPress={() => setPickerOpen(true)} hitSlop={10}>
+              <MaterialCommunityIcons
+                name={remoteDevice ? 'cast-connected' : 'cast'}
+                size={22}
+                color={remoteDevice ? colors.primary : colors.icon}
+              />
+            </TouchableOpacity>
+          </StopPropagation>
           <PlayPauseButton iconSize={24} type={PlayerButtonType.SMALL}/>
           <SkipToNextButton iconSize={22} type={PlayerButtonType.SMALL}/>
         </View>
+
+        <DevicePicker visible={pickerOpen} onClose={() => setPickerOpen(false)}/>
 
         <View style={styles.divider} pointerEvents="none"/>
       </>
@@ -94,10 +121,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingLeft: 10,
   },
+  // second line, only while another device is making the sound
+  remoteLabel: {
+    color: colors.primary,
+    fontSize: fonts.xs,
+    paddingLeft: 10,
+  },
   trackControlsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    columnGap: 20,
+    columnGap: 16,
     marginRight: 16,
     paddingLeft: 16,
   },

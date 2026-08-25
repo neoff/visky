@@ -3,6 +3,7 @@ import {Redirect, router, SplashScreen, Stack, useRouter} from 'expo-router';
 import {apiUrls, authPage, colors} from "@/constants";
 import React, {useCallback, useRef, useState} from "react";
 import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
+import {usePlaybackSync} from "@/hooks/usePlaybackSync";
 import {useLogTrackPlayerState} from "@/hooks/useLogTrackPlayerState";
 import {useSession} from "@/components/SessionProvider";
 import {AuthFragments} from "@/types/auth";
@@ -10,6 +11,12 @@ import {AuthFragments} from "@/types/auth";
 export default function AppLayout() {
   const { getSession, isLoading } = useSession();
   const userSession: AuthFragments = getSession() as AuthFragments;
+
+  // Joins this device to the account's playback session: it can be handed the
+  // sound from another device, and it restores the last track on a cold start.
+  // Hooks cannot sit behind the early returns below, so it runs unconditionally
+  // and stays idle until there is a session to sync with.
+  usePlaybackSync();
 
   if (isLoading) {
     console.log("--AppLayout=Loading...");

@@ -18,7 +18,8 @@
           "visky"
         ],
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "remote-notification"
         ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false,
@@ -64,6 +65,7 @@
         }
       ],
       "expo-font",
+      "expo-notifications",
       "./plugins/withVkTrustAnchor"
     ],
     "experiments": {
