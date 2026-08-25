@@ -1,7 +1,10 @@
-# 01 — Design parity (iOS ⇄ Android) + playlist sorting milestone
+# 01 — Design parity, favourites, search and playback milestone
 
-Full record of the UI-parity pass and the backend sorting fix, so the work can be resumed.
-Written 2026-08-24.
+Full record of the milestone, so the work can be resumed. Started 2026-08-24 as a UI-parity pass
+and a backend sorting fix; grew into favourites, playlists, search and playback.
+
+> **CLOSED 2026-08-25.** See "Milestone 01 — what shipped" at the end for the summary, and
+> "OPEN QUESTIONS" for what is deliberately left open.
 
 Baseline: side-by-side screenshots of Samsung Galaxy S21+ (Android) and iPhone simulator
 (iOS 26.1) on the player screen, the songs list, and the scrolled songs list.
@@ -608,6 +611,451 @@ Android artifact, which is the one being shipped.
 
 ---
 
+# Round 8 — favourites (2026-08-24)
+
+Reported: no heart in the list, the heart in the player does nothing, the Favorites tab behaves as
+if there were no playlist at all. All three were real, and they had three separate causes.
+
+## The Favorites tab was calling a URL that does not exist
+
+`apiUrls.playListUrl` was `${playlistUrl}/playlist` — i.e. `/api/playlist/playlist`. No such route
+is mounted, so every refresh of the tab 404'd and the list stayed empty. That is the "нет плейлиста"
+feeling exactly. The tab now calls `GET /api/playlist/frisky/favorites`.
+
+## The heart in the player was a stub
+
+`player.tsx` literally held
+
+```ts
+//temp fix
+const isFavorite = false
+const toggleFavorite = () => {
+}
+//const { isFavorite, toggleFavorite } = useTrackPlayerFavorite()
+```
+
+so the icon was hard-wired to the outline and the press handler was empty. The hook it replaced was
+broken too, which is presumably why it was stubbed out: `favorites` was an unresolved **Promise**
+kept in zustand state, so `isFavorite ? … : …` was ALWAYS truthy, tracks were matched by `url` — VK
+re-signs those on every `audio.get`, so nothing ever matched — and nothing was ever sent to VK. The
+same file also coloured the *hide* icon by `isFavorite`; that is now `isHidedSong`.
+
+## There was no heart in the list at all
+
+`TrackListItem` never rendered one. It now shows ♥ / ♡ before the ⋯ button, and tapping it toggles
+without starting playback. The title block moved from `width: '100%'` to `flex: 1, minWidth: 0` so
+the trailing icons keep their place instead of being pushed past the right edge.
+
+## Favourites are server state now
+
+They live in the user's VK playlist **Frisky-favorites**, which the backend already knew how to
+create — nothing in the app ever called those endpoints.
+
+* `GET /api/playlist/frisky` now stamps every track with `favorite`, so the heart in the list comes
+  straight from the API.
+* `GET /api/playlist/frisky/favorites` **creates the playlist on first use** instead of answering
+  404. An empty Favorites tab is a valid state; a missing one is not.
+* `PUT` does the same before adding, so the very first heart a new user taps works.
+* `DELETE /frisky/favorites/:id` takes the id **as the app knows it** (the frisky one) and resolves
+  the user's own copy before deleting. This matters: `audio.add` COPIES a track into the user's
+  library under a NEW id, so the old code — `audio.delete(audio_id=<frisky id>, owner_id=<user id>)`
+  — was addressing a track that does not exist. Nothing is deleted when the resolution fails.
+* Tracks are matched across copies by `artist|title` (cleaned, i.e. without `FRISKY | `), because
+  that is the only thing a track and its copy share.
+* The playlist lookup uses `audio.getPlaylists` for the session user, falling back to the old
+  `audio.searchPlaylists` filtered by owner. `searchPlaylists` searches ALL of VK: it can miss the
+  user's own playlist and can return a stranger's playlist of the same name.
+* `formatPlaylist` finally emits `owner_id`, which the openapi `TrackItem` has always declared.
+* The favourites index is cached per user for 60s and dropped on every write, so lighting the hearts
+  does not cost two extra VK calls on every page of the Songs list.
+
+App side, `@/store/favorites` holds the playlist keyed by `artist|title` plus the toggles made since
+the last fetch. The optimistic flip rolls back if the server refuses. The Songs list feeds it the
+server flags, the Favorites tab replaces them wholesale (it IS the playlist), and the tab re-reads
+itself on focus because hearts are toggled on other screens.
+
+`usePlaylistState` grew a `merge` flag: the Songs tab keeps merging (it pages), Favorites must not —
+merging would resurrect an un-hearted track from the MMKV cache forever.
+
+## Three more bugs, found only by running it
+
+**`audio.delete` does not remove a track from a playlist.** VK answers `response: 1` and the track is
+served again by the very next `audio.get` on the playlist — verified on a real account: the heart
+went out, the tab refreshed, and the row was back. The membership has to be dropped explicitly, so
+the delete is now two calls: `audio.removeFromPlaylist(owner_id, playlist_id, audio_ids)` first, then
+`audio.delete` of the copy to keep the library tidy. After the fix the playlist went 117 → 116 and
+the row stayed gone.
+
+**A debug build could not talk to Metro or to the dev API.** `plugins/withVkTrustAnchor.js` sets
+`android:networkSecurityConfig`, and that REPLACES the platform default — including the
+`android:usesCleartextTraffic="true"` Expo puts in the debug manifest. Every request died with
+`CLEARTEXT communication to 10.0.2.2 not permitted by network security policy`, the app fell back to
+a bundle that is not packaged in a debug APK, and showed the red "Unable to load script" screen. That
+is why the emulator kept showing old code no matter what was rebuilt. The generated config now
+carries a `cleartextTrafficPermitted="true"` block for `10.0.2.2`, `localhost` and `127.0.0.1` —
+loopback and the emulator's view of it, nothing production ever talks to.
+
+**The Favorites tab kept the stock white header titled "index".** `favorites/_layout.tsx` hid a
+screen called `index_`; the file is `index.tsx`, so nothing was ever hidden. Fixed, and the screen
+now uses the same `AnimatedSearchHeader` ("Favorites" / "Find in favorites"), paddings and scroll
+handling as the Songs tab, so the two tabs are identical on both platforms.
+
+Also on the way: `ios/Pods` + `Podfile.lock` were stale against the SDK 57 patch bumps, so
+`expo run:ios` died in `pod install` ("could not find compatible versions for ExpoModulesWorklets",
+then `ExpoFileSystem`, …). A clean `rm -rf ios/Pods ios/Podfile.lock && pod install` fixed it;
+`expo run:ios` then reported **Build Succeeded, 0 error(s)**.
+
+## What was verified
+
+* api: 8 suites / **57 tests** green, including auto-creation, the copy resolution on delete, the
+  `removeFromPlaylist`-before-`delete` order, and refusing to delete when the track is not in the
+  playlist.
+* app: `tsc --noEmit` clean apart from the two pre-existing errors (`MovingText`, `TrackShortcutsMenu`).
+* **On the Android emulator, against the real VK account** (debug build on Metro, dev API on :3000):
+  the heart renders in the list; tapping it PUTs and the row lights up; the track then appears at the
+  top of the Favorites tab; tapping it again DELETEs and the tab drops it on the next focus; the
+  player's heart shows the right state, toggles, and the list reflects it when the player is
+  dismissed. The account was left as found (the test track was removed again; playlist back to 116).
+* **On the iOS simulator**: the app builds, runs, logs in, lists songs with hearts, and the Favorites
+  tab renders identically to Android. Taps were NOT injected — see open question 2b, iOS still has no
+  touch injection here.
+
+---
+
+# Round 9 — the playlist picker on Favorites (2026-08-25)
+
+A control to the right of the search box on the Favorites tab, with three kinds of choice:
+
+* **Frisky** — the `Frisky-favorites` playlist. The default, and the only list the hearts write to.
+* **All** — the user's whole VK audio library (`audio.get` with no `playlist_id`).
+* any of the user's own playlists, listed with their track counts.
+
+The filter is **not** sticky: every time the tab comes into focus it snaps back to Frisky. Browsing
+somebody's old "Intelligent Electro Music" is a look around, not a mode to get stuck in — and the
+heart always means the same thing, so a filter left on would only mislead.
+
+## The playlist is born on the first heart
+
+`GET /frisky/favorites` no longer creates anything. If the user has no `Frisky-favorites` yet, the
+tab is simply empty; the playlist is created by `PUT /frisky/favorites`, i.e. when the first track is
+hearted. (Round 8 had the GET create it too, which meant merely opening the tab wrote to the user's
+VK account.)
+
+## Endpoints
+
+* `GET /api/playlist/frisky/playlists` — the user's playlists as `{id, title, count, is_frisky}`.
+  `is_frisky` saves the app from matching on the title.
+* `GET /api/playlist/frisky/favorites?playlist_id=<id|all>` — `all` drops the `playlist_id` from the
+  VK call, an id reads that playlist, and no parameter means Frisky-favorites.
+
+The heart means "is in Frisky-favorites" **everywhere**, so for `all` and for any other playlist the
+flag is resolved through the artist|title index; only when the list IS Frisky-favorites is every row
+lit by definition. Tapping a heart in those views therefore adds to (or removes from) Frisky —
+exactly what it does on the Songs tab.
+
+The Frisky playlist id is now resolved ONCE per request. VK allows three calls a second and this
+handler already spends two or three of them.
+
+## Two bugs in the making, caught on the device
+
+**The picker's choice was wiped on the next render.** `useFocusEffect` re-runs its effect whenever
+the callback identity changes, and `usePlaylistState` returns a fresh `handleRefresh` on every
+render — so the focus effect, which resets the filter to Frisky, was firing constantly. The request
+for the chosen playlist went out and the answer was thrown away. `handleRefresh` now lives in a ref
+and the effect has stable dependencies.
+
+**Other playlists must not reach the cache.** `usePlaylistState` took a `shouldCache` predicate: the
+Favorites tab caches only the Frisky list, or opening the tab after browsing "All" would seed it with
+791 unrelated tracks from MMKV.
+
+## What was verified
+
+* api: 8 suites / **60 tests** green, including `playlist_id=all`, an explicit playlist id, the
+  playlists listing, and the GET that returns an empty list instead of creating the playlist.
+* On the Android emulator against the real account: the picker opens with Frisky checked, "All"
+  switches to the full library, "Intelligent Electro Music" shows its 7 tracks with dark hearts
+  (none of them are in Frisky-favorites), and leaving the tab and coming back snaps the filter back
+  to Frisky.
+* On the iOS simulator: the same header and button render identically. Taps were not injected
+  (open question 2b).
+
+---
+
+# Round 10 — search that actually searches (2026-08-25)
+
+Both search boxes were filtering the array already on screen. On the Songs tab that meant the ~100
+tracks of the current page out of a group that holds **10 000**; on Favorites the local filter was
+dead code left over from the old header. Search now runs on the API.
+
+## Songs — the whole Frisky group
+
+VK has no "search inside this owner", so the backend pulls the group's catalogue (6000 tracks per
+page, two pages) and filters it there, keeping it for five minutes. Verified: "sonder" returns 55
+matches including episodes from July and June that were never loaded into the app.
+
+`GET /api/playlist/frisky?q=…` — every word of the query must appear in "artist title", so
+"dunn sonder" finds "Graham Dunn — Sonder Part 1" whatever the order.
+
+## Favorites — the selected playlist, and then the rest of VK
+
+`GET /api/playlist/frisky/favorites?playlist_id=…&q=…` reads the WHOLE selected list (count 6000)
+and filters it. With **All** the answer also carries `global`: `audio.search` across VK, with the
+heart resolved against Frisky-favorites so a track the user already has is never shown empty.
+
+The screen renders the user's own matches, then a hairline seam, then the heading **Suggested for
+you** above the VK-wide results. That section belongs to the **All** view only — with a playlist
+selected the search stays inside it, and the app checks the selection as well as the payload. The
+upper list drops its tab-bar bottom padding while the second section is present, or the seam floats
+a screenful below the last row.
+
+Queries are debounced 400ms and ignored under two characters.
+
+## What was verified
+
+* api: 8 suites / **63 tests** green — new cases for the group catalogue search (including Part 1
+  before Part 2 in the results), for searching inside a playlist with `count: 6000`, and for the
+  `all` + `q` answer carrying `global`.
+* On the Android emulator against the real account: "sonder" on Songs returns older episodes that
+  were not in the loaded page; "patrize" on Favorites returns the two matches inside
+  Frisky-favorites; "moby" with **All** shows the user's own Moby track, the divider, and then
+  the "Suggested for you" heading and the VK-wide results (In My Heart, Wait for me, Go, …).
+* On iOS the tab renders unchanged. The search itself was NOT exercised there — typing needs touch
+  injection, see open question 2b.
+
+---
+
+# Round 11 — the heart writes where you are looking (2026-08-25)
+
+Until now every heart, everywhere, meant the `Frisky-favorites` playlist. Now it means **the list on
+screen**:
+
+* Favorites with a playlist selected → that playlist;
+* Favorites with **All** → the VK library itself, no playlist involved;
+* the Songs tab, the player, anywhere without a picker → `Frisky-favorites`, created on the first add.
+
+`PUT /frisky/favorites` and `DELETE /frisky/favorites/:id` take the same `playlist_id` the list does
+(`<id>` / `all` / absent). App-side the store carries a `scope`, which the Favorites tab sets from
+its picker and the Songs tab resets to Frisky when it comes into focus. Changing the scope clears
+the heart state — the same row means something different in a different list.
+
+Removing is scoped too, and it is no longer a delete: `audio.removeFromPlaylist` takes the track out
+of the selected playlist, and `audio.delete` runs **only** under `all`, where there is no playlist to
+leave. Deleting the library copy would have taken the track out of every other playlist as well.
+
+## Sorted by when it was added
+
+The Favorites tab no longer part-sorts. VK returns a library and a playlist newest-added first, and
+that is the order this tab wants; grouping "Part 2" next to its "Part 1" moved old tracks to the top.
+Verified: a freshly hearted track is the first row.
+
+## A bug the type system could not see
+
+`resolveTarget` did `requested?.trim()`. A query string sends the playlist id as text, but the app's
+JSON body sends it as a **number** — so the first add to a real playlist answered
+`{"errMessage":"requested?.trim is not a function"}`. Coerced with `String(...)`, and there is a test
+for the numeric form now.
+
+## What was verified
+
+* api: 8 suites / **66 tests** green.
+* On the Android emulator against the real account: hearting a suggestion under **All** adds it to
+  the library only (`playlist_id: all`, no `album_id`) and it becomes the first row of the list;
+  un-hearting it there removes it from the library; on the Songs tab the heart still posts without a
+  `playlist_id`, i.e. to Frisky-favorites, and the playlist went 116 → 117 → 116 across the round
+  trip. Adding to an arbitrary playlist and removing again was exercised against the user's empty
+  "VKMessages" playlist (0 → 1 → 0), which also showed that `audio.removeFromPlaylist` leaves no
+  copy behind in the library.
+* The account was left exactly as found.
+
+---
+
+# Round 12 — the sig bug, and what a refocus should not reset (2026-08-25)
+
+## Every multi-word VK search was silently failing
+
+"moby heart" found nothing while "moby" alone found "Moby — In My Heart". The reason was not
+matching at all: `searchVkAudio` passed `encodeURIComponent(query)` to `vkMethod`, which signs the
+url it builds — but VK verifies the signature against the **decoded** parameters. So the request was
+signed over `q=moby%20heart` and checked as `q=moby heart`, and VK answered
+
+```
+error 5: User authorization failed: sig param is incorrect
+```
+
+which the `catch` turned into an empty suggestions list. Single words have nothing to encode, which
+is why they worked and made it look like a relevance problem. The query now goes through raw, with
+`& = # ?` stripped so it cannot break the query string.
+
+There is also a fallback for the case where VK genuinely finds nothing for the phrase: each word is
+searched on its own and the results are kept only if they contain **all** the words — a full-text
+search, not a phrase match. It is spaced out by 350ms because VK allows three calls a second.
+
+While there: the "All" search already fetches the whole library, so the library index for the hearts
+is now built from that response instead of fetching all 6000 tracks a second time.
+
+## Closing the player is not "entering the tab"
+
+The filter reset lived in `useFocusEffect`, and opening and closing the player refocuses the screen
+— so coming back from a track threw away the selected playlist. The reset now hangs off `tabPress`
+instead: entering the tab from the tab bar returns you to Frisky, everything else leaves the list
+alone. The listener is attached to the parent navigator as well, because this screen sits inside its
+own Stack and never receives `tabPress` itself.
+
+The search's empty state also stopped taking a screenful: with suggestions underneath, an empty
+result is one grey line instead of the placeholder artwork.
+
+## What was verified
+
+* api: 8 suites / **66 tests** green, with the search test now asserting the raw (unencoded) query.
+* On the Android emulator: "moby heart" under **All** returns "In My Heart" and four more Moby
+  tracks under "Suggested for you"; selecting **All**, opening the player and closing it leaves the
+  filter on All; switching to Songs and back returns it to Frisky.
+
+---
+
+# Round 13 — the Settings screen knows who is signed in (2026-08-25)
+
+It greeted "Welcome, undefined!" and drew an `<Image>` with no source, because it read
+`state.user` — a prop a route component never receives. Nothing ever fetched a profile.
+
+`GET /api/auth/me` now answers with the four fields the screen shows — id, first/last name,
+screen_name and `photo_200` — off `users.get`. The existing `/profile` was no use here: it is
+`execute.getUserInfo`, which returns the whole VK bootstrap (ad limits, feature flags, hundreds of
+lines) and no avatar at all.
+
+The screen shows the avatar on a round plate, `Welcome, <name>!`, and under it the account the app
+is actually signed in as — `@screen_name · id <vk id>`. That replaced "or should we call you …?",
+which was a second guess at the same name. The `App url` debug line is untouched, by request.
+
+## What was verified
+
+* api: 8 suites / **68 tests** green, including the new `/api/auth/me` cases (the four fields, and
+  404 when VK returns nobody).
+* On both the Android emulator and the iOS simulator the screen renders the real avatar, name,
+  `@envarg · id 37758500`, the Logout button and the untouched debug line.
+
+---
+
+# Round 14 — a window over the archive, and playback that follows the list (2026-08-25)
+
+## The list is now a window, not a page
+
+Both tabs fetched exactly one page of 100 and stopped: the group holds **10 000** tracks, so almost
+all of it was unreachable. Loading everything instead would grow the scroll without bound.
+
+`useWindowedTracks` keeps at most **4 pages of 50**. Reaching the end appends the next page and drops
+the first; reaching the top prepends the previous one and drops the last. FlashList v2 keeps the
+visible rows still while that happens (`maintainVisibleContentPosition` is on by default), so the
+scroll neither jumps nor grows. Both tabs share it — the Songs list and every favourites list.
+
+For that to work at all the list had to start scrolling itself. It used to sit inside an
+`Animated.ScrollView` with `scrollEnabled={false}`, which mounts every row at once and makes paging
+impossible; the header animation now rides a plain `onScroll` off the list.
+
+**A short page is not the end.** The first attempt stopped after two pages because
+`/frisky?count=50&offset=50` answers with **49** items — VK drops restricted tracks from a page.
+Only an empty page ends the walk now. Verified by scrolling to `offset=2400` and back.
+
+## Playback follows the list, not the row number
+
+`trackKey` now includes `owner_id`: VK audio ids are unique **per owner**, so the group's track
+456263688 and a track 456263688 in the user's library are two different songs, and skipping by the
+bare id landed on the wrong one.
+
+The queue is built from the visible list starting at the tapped track and contains only tracks that
+have a url, so when one ends the next row plays and an unplayable one is stepped over.
+
+## Played tracks are marked
+
+A show runs an hour and the list is a chronological archive, so `usePlayedStore` (MMKV-backed)
+remembers what ran to the end — `PlaybackActiveTrackChanged` marks the outgoing track only when it
+was within 15s of its duration, so skipping through the list does not tick everything off. A played
+row shows a ✓ and a muted title.
+
+## What was verified
+
+* api: 8 suites / **68 tests** green.
+* On the Android emulator: scrolling pulls `offset=50, 100, … 1250, … 2400`, scrolling back up
+  pulls the earlier pages again; the Favorites tab pages the same way; tapping a row plays exactly
+  that track; seeking to the end of it starts the NEXT row automatically and the finished one comes
+  back with a ✓ and a dimmed title.
+* On the iOS simulator the rebuilt list renders unchanged.
+
+---
+
+# Round 15 — calls pause, notifications duck (2026-08-25)
+
+A phone call killed the show and left it stopped; a notification sound did the same.
+
+`setupPlayer` now asks the platform to arbitrate audio focus — `autoHandleInterruptions: true`,
+`androidAudioContentType: Music`, `iosCategory: Playback` — and `updateOptions` sets
+`android.alwaysPauseOnInterruption: false`. With content type Music a *short* interruption (an SMS)
+only ducks: the system lowers the volume for as long as the sound plays and restores it after. A
+call takes focus transiently, which pauses playback and hands it back when the call ends.
+
+The playback service also listens to `Event.RemoteDuck` and keeps a `resumeAfterInterruption` flag:
+it pauses on `paused: true`, resumes on `paused: false` if it had been playing, and on `permanent:
+true` (another player took over for good) it stays paused. Both paths are idempotent, so it does not
+fight the automatic handling.
+
+## What was verified
+
+* On the Android emulator, against `dumpsys audio` and `dumpsys media_session`:
+  * incoming call → our focus entry shows `loss: LOSS_TRANSIENT` and the session freezes
+    (`speed=0.0`, position stops at 95133);
+  * call ended → focus back with `loss: none` and the session resumes (`speed=1.0`, position 95135);
+  * `adb emu sms send` → the session stays `PLAYING` at `speed=1.0`, i.e. the notification ducks
+    instead of stopping the show.
+* iOS is configured the same way but was NOT exercised: a call cannot be injected into the
+  simulator. See open question 2b.
+
+---
+
+# Milestone 01 — what shipped
+
+Fifteen rounds, all verified on the Android emulator against the real VK account, and rendered
+side by side on the iOS simulator. iOS taps were never injectable here (open question 2b).
+
+**Parity and layout** (rounds 1–7). One layout for both platforms: zeroed the per-platform
+`modifiers`, one font weight, shared rgba plates instead of `expo-blur`, a mini player docked on
+the tab bar with a divider, halved side paddings, an opaque stack background that stopped the
+plates bleeding through the player, and a rewritten welcome screen.
+
+**Backend list correctness.** `Part 1` before `Part 2` in the *new* VK title format without losing
+the old rules, `FRISKY | ` stripped from artist and title, and `owner_id` finally emitted by
+`formatPlaylist`.
+
+**Favourites** (rounds 8, 11). They live in the user's VK playlist `Frisky-favorites`, created on
+the first hearted track. The heart renders in the list and in the player, and writes to **the list
+on screen**: the selected playlist, the VK library under "All", or Frisky-favorites everywhere
+else. Removal drops playlist membership (`audio.removeFromPlaylist`) and only deletes the library
+copy under "All" — `audio.delete` alone leaves the track in the playlist, which VK reports as
+success.
+
+**The playlist picker** (rounds 9, 10, 12). A filter button beside the search box: Frisky, All, or
+any of the user's playlists, reset when the tab is entered but not when the player closes. Search
+runs on the server — the whole 10 000-track group for Songs, the whole selected list for
+Favorites — and under "All" it also returns VK-wide matches under "Suggested for you".
+
+**Playback and paging** (round 14). The list is a sliding window of 4 × 50 pages over the archive
+instead of one fixed page of 100. Tapping a row plays *that* track (`trackKey` now includes
+`owner_id`, because VK ids are unique per owner), the next row follows automatically, unplayable
+tracks are skipped, and a track that ran to the end is marked played (✓, muted title, MMKV-backed).
+
+**Interruptions** (round 15). A call pauses and resumes; a notification ducks.
+
+**Settings** (round 13) shows the real profile: avatar, name, `@screen_name · id`.
+
+**Three bugs that only running it could find:** `audio.delete` not removing playlist membership;
+`android:networkSecurityConfig` blocking cleartext, which meant a debug build could reach neither
+Metro nor the dev API; and `encodeURIComponent` on a VK query breaking the request signature, which
+silently emptied every multi-word search.
+
+Tests: api **8 suites / 68 tests**. The app typechecks clean apart from two pre-existing errors
+(`MovingText`, `TrackShortcutsMenu`).
+
+---
+
 # OPEN QUESTIONS — need your decision / your hands
 
 1. ~~**iOS: the mini-player expand gesture.**~~ **RESOLVED** — confirmed by the user on 2026-08-24:
@@ -639,5 +1087,27 @@ Android artifact, which is the one being shipped.
    than the iPhone in dp — which is what the old `modifiers` fudges were compensating. Revert with
    `adb shell wm density reset`, but then Android will legitimately look "smaller" again.
 
-7. **`favorites` / `artists` still use the old native `useNavigationSearch` header**, not
-   `AnimatedSearchHeader`, so they will not match the `songs` screen until they are migrated.
+7. ~~**`favorites` / `artists` still use the old native header**~~ **PARTLY RESOLVED** — `favorites`
+   now uses `AnimatedSearchHeader` and matches `songs` on both platforms. `artists` is still a stub
+   screen ("Artist Screen") with nothing to migrate yet.
+
+8. **Nothing about favourites has been exercised against real VK.** The emulator has a RELEASE build
+   (`versionCode=1`, no `DEBUGGABLE` flag, embedded bundle — Metro served it 0 bundles) with a live
+   VK session in its storage. Loading the new JS means installing the debug APK, whose signature
+   differs, which means uninstalling first — and that wipes the session, which only you can restore
+   because logging in needs your credentials and the 2FA code. So, per your rule, **nothing was
+   deployed and nothing was installed**.
+
+   What still needs a real account, once a build with this code is on the device:
+   * `audio.getPlaylists` actually lists the user's playlists with this Kate-Mobile token;
+   * `audio.createPlaylist` succeeds and the new playlist is found again by the next lookup;
+   * `audio.add` with `album_id` puts the track in the playlist and returns the copy id;
+   * `audio.delete` of the resolved copy removes it from the playlist;
+   * the `artist|title` match holds for real data (a title that VK stores differently in the copy
+     would break the heart, though never destructively — a failed match deletes nothing).
+
+   **RESOLVED on 2026-08-25** — you logged in on both emulators and the whole flow was exercised
+   against the real account: `audio.getPlaylists`, `audio.createPlaylist`, `audio.add` with
+   `album_id`, and the delete path (which is where `audio.removeFromPlaylist` turned out to be
+   required). The `artist|title` match held for real data. What is still untested by hand is the iOS
+   side of the same taps — open question 2b.
