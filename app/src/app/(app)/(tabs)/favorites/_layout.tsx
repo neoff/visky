@@ -5,7 +5,7 @@ import { View } from "react-native"
 const FavoriteScreenLayout = () => {
     return (<View style={defaultStyles.container}> 
             <Stack>
-                <Stack.Screen name="index_" options={{
+                <Stack.Screen name="index" options={{
                     headerShown: false,
                 }}/>
             </Stack>

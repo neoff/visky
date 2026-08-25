@@ -160,8 +160,14 @@ export const apiUrls = {
   tokenUrl: `${authUrl}/token`,
   refreshUrl: `${authUrl}/refresh`,
   profileUrl: `${authUrl}/profile`,
+  meUrl: `${authUrl}/me`,
   friskyListUrl: `${playlistUrl}/frisky`,
-  playListUrl: `${playlistUrl}/playlist`,
+  // NOTE: `${playlistUrl}/playlist` used to be here — /api/playlist/playlist is
+  // not a route, so the Favorites tab 404'd on every refresh and stayed empty.
+  playListUrl: `${playlistUrl}`,
+  favoritesUrl: `${playlistUrl}/frisky/favorites`,
+  playlistsUrl: `${playlistUrl}/frisky/playlists`,
+  createFavoritesUrl: `${playlistUrl}/frisky/create-favorites`,
   eqUrl: `${playerUrl}/equaliser`,
   statusUrl: `${playerUrl}`,
 }

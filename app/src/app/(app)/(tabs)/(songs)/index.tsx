@@ -1,154 +1,88 @@
 import {TrackList} from "@/components/TrackList"
 import {layout, screenPadding} from "@/constants"
-import {trackTitleFilter} from '@/helpers/filter'
-import {generateTracksListId, reducer} from '@/helpers/miscellaneous'
-import {loadPlayListData, loadFriskyListData} from "@/helpers/network"
-import {TrackWithPlaylist} from "@/helpers/types"
-import {useNavigationSearch} from '@/hooks/useNavigationSearch'
-import {storage} from '@/store/library'
+import {generateTracksListId} from '@/helpers/miscellaneous'
+import {fetchFriskyPage, searchFriskyList} from "@/helpers/network"
 import {defaultStyles} from '@/styles'
-import {useEffect, useMemo, useRef, useState} from 'react'
-import {ActivityIndicator, NativeScrollEvent, RefreshControl, ScrollView, StatusBar, View} from 'react-native'
-import {useMMKVStorage} from "react-native-mmkv-storage"
+import {useCallback, useEffect, useState} from 'react'
+import {ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, StatusBar, View} from 'react-native'
 import {Track} from 'react-native-track-player'
-import {useSession} from "@/components/SessionProvider";
-import {usePlaylistState} from "@/hooks/usePlaylistState";
-import {useSearchStore} from "@/hooks/useSearchStore";
-import Animated, {useAnimatedRef, useSharedValue, useAnimatedScrollHandler} from "react-native-reanimated";
+import {useSharedValue} from "react-native-reanimated";
 import {AnimatedSearchHeader} from "@/components/AnimatedSearchHeader";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
+import {useFavoritesStore} from "@/store/favorites";
+import {useDebouncedValue} from "@/hooks/useDebouncedValue";
+import {useFocusEffect} from "expo-router";
+import {useWindowedTracks} from "@/hooks/useWindowedTracks";
 
 
 const SongsScreen = () => {
-  const {refreshing, search, tracks, filteredTracks, handleRefresh} = usePlaylistState('tracks')
   const insets = useSafeAreaInsets()
-  //const updateOffset = useRef<boolean>(false)
 
+  // A sliding window over the group's archive instead of one fixed page of 100:
+  // scrolling to the end pulls the next page in and drops the oldest one, and
+  // scrolling back up does the reverse. See useWindowedTracks.
+  const {tracks, refreshing, loadingMore, reset, loadMore, loadPrevious} =
+    useWindowedTracks(useCallback((offset: number, count: number) => fetchFriskyPage(offset, count), []))
 
-
-  //const { getSession , signIn} = useSession();
-  //const [refreshing, setRefreshing] = useState(false);
-
-  //const [cachedTrack, setCachedTrack] = useMMKVStorage<TrackWithPlaylist[]>('tracks', storage, []);
-  //const [tracks, setTracks] = useState<Track[]>(cachedTrack);
-  /*const search = useNavigationSearch({
-    searchBarOptions: {
-      placeholder: 'Find in songs',
-    },
-  })*/
-
-  /*const mergeTracks = async (data: any) => {
-    console.debug(`Merging tracks ${data?.items.length} with ${tracks.length}`)
-    setCachedTrack(data?.items)
-    const result = reducer([...data?.items, ...tracks])
-    console.debug(`-->SongsScreen Result ${result.length}`)
-    setTracks(result);
-    return result;
-  }*/
-
-
-  /*const handleRefresh = () => {
-    console.log('-->SongsScreen refreshing')
-    loadPlaylistData({
-      onLoad: mergeTracks,
-      onError: loadError,
-      cache: setCachedTrack,
-      getSession: getSession,
-      updateSession: signIn,
-      offset: 0
-    })
-      .finally(() => setRefreshing(false))
-  }*/
-
-  /*useEffect(() => {
-    if (tracks.length < 1) {
-      setRefreshing(true)
-      handleRefresh();
-    }
-
-  }, []);*/
-
-
-  /*const filteredTracks: Track[] = useMemo(() => {
-    if (!search) return tracks
-
-    return tracks.filter(trackTitleFilter(search))
-  }, [search, tracks])*/
-
-  /*const isCloseToBottom = ({layoutMeasurement, contentOffset, contentSize}: NativeScrollEvent) => {
-    const paddingToBottom = 100;
-    //console.log('isCloseToBottom', layoutMeasurement.height + contentOffset.y, contentSize.height - paddingToBottom)
-    return layoutMeasurement.height + contentOffset.y >=
-      contentSize.height - paddingToBottom;
-  };*/
-  /*onScroll={({nativeEvent}) => {
-          //console.log('End of list ->> refresh:', updateOffset.current)
-          if (updateOffset.current) return
-          if (isCloseToBottom(nativeEvent)) {
-            updateOffset.current = true
-            //console.log('Set refresh:', updateOffset.current)
-            loadPlaylistData({
-              onLoad: (data: any) => data,
-              onError: loadError,
-              cache: (data: any) => data,
-              offset: tracks.length
-            })
-              .then((data) => {
-                //console.debug(`Merging tracks ${data?.items.length} with ${tracks.length}`)
-                const result = reducer([...tracks, ...data?.items])
-                //console.debug(`Result ${result.length}`)
-                setTracks(result);
-                updateOffset.current = false
-              })
-              .finally(() => {
-                //setRefreshing(false)
-              })
-          }
-        }}*/
-
-
-  const refreshFn = () => {
-    handleRefresh(loadFriskyListData);
-  }
+  // Search runs on the SERVER, over the whole Frisky group: VK has no
+  // "search inside this owner", so the API keeps the group's catalogue and
+  // filters it there. Filtering the loaded page locally — which is what this
+  // screen used to do — could only ever find what was already on screen.
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebouncedValue(query, 400)
+  const [searchResults, setSearchResults] = useState<Track[]>([])
+  const [searching, setSearching] = useState(false)
 
   useEffect(() => {
-    if (tracks.length < 1) {
-      //setRefreshing(true)
-      refreshFn();
+    const term = debouncedQuery.trim()
+    if (term.length < 2) {
+      setSearchResults([])
+      setSearching(false)
+      return
     }
 
-  }, []);
+    let cancelled = false
+    setSearching(true)
+    searchFriskyList(term)
+      .then((items) => {
+        if (!cancelled) setSearchResults(items as Track[])
+      })
+      .catch((error) => console.warn('Search failed', error))
+      .finally(() => {
+        if (!cancelled) setSearching(false)
+      })
 
-  const searchs = useNavigationSearch({
-    searchBarOptions: {
-      placeholder: 'Find in songs',
-    },
-  })
-  const filteredTrack: Track[] = useMemo(() => {
-    if (!searchs) return tracks
-    return tracks.filter(trackTitleFilter(searchs))
-  }, [searchs, tracks])
+    return () => {
+      cancelled = true
+    }
+  }, [debouncedQuery])
 
-  const query = useSearchStore((s) => s.query)
-  const filteredSongs = tracks.filter(() =>{
-    if (!searchs) return tracks
-    return tracks.filter(trackTitleFilter(query.toLowerCase()))
-  })
+  const isSearching = debouncedQuery.trim().length >= 2
+  const visibleTracks: Track[] = isSearching ? searchResults : tracks
 
-  //const scrollRef = useAnimatedRef<ScrollView>();
-  const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const scrollY = useSharedValue(0);
-  const scrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollY.value = event.contentOffset.y;
-    },
-  });
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollY.value = event.nativeEvent.contentOffset.y;
+  }, [scrollY]);
   // the header is pinned under the status bar, so its height is the shared
   // content height plus the real top inset — identical on iOS and Android
   const HEADER_HEIGHT = layout.headerContentHeight + insets.top;
 
+  // the API stamps each track with `favorite`; hand that to the store so the
+  // player's heart is right even for a track that reached it through the queue
+  const applyServerFlags = useFavoritesStore((state) => state.applyServerFlags)
+  useEffect(() => {
+    applyServerFlags(tracks as any)
+  }, [tracks, applyServerFlags]);
 
-  const isFetchingMore = useRef(false);
+  // hearts here always mean the Frisky playlist, whatever the Favorites tab was
+  // last showing
+  const setScope = useFavoritesStore((state) => state.setScope)
+  useFocusEffect(
+    useCallback(() => {
+      setScope(undefined)
+    }, [setScope])
+  );
 
   return (
     <View style={{...defaultStyles.container}}>
@@ -156,34 +90,42 @@ const SongsScreen = () => {
       <AnimatedSearchHeader
         title="Songs"
         placeholder="Find in songs"
-        onSearchChange={(text) => useSearchStore.getState().setQuery(text)}
+        onSearchChange={setQuery}
         scrollY={scrollY}
       />
-      <Animated.ScrollView
-        ref={scrollRef}
-        onScroll={scrollHandler}
+      <TrackList
+        id={generateTracksListId(isSearching ? 'songs-search' : 'songs', visibleTracks.length, debouncedQuery)}
+        tracks={visibleTracks}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
         // we pad the list manually by HEADER_HEIGHT; letting iOS add its own
         // content inset on top of that is what shifted the two platforms apart
         contentInsetAdjustmentBehavior="never"
-        style={{ paddingHorizontal: screenPadding.horizontal, flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={{ paddingTop: HEADER_HEIGHT, minHeight: '100%', }}
+        contentContainerStyle={{
+          paddingTop: HEADER_HEIGHT,
+          paddingBottom: layout.tabBarContentHeight + 80,
+          paddingHorizontal: screenPadding.horizontal,
+        }}
+        // paging is off while a search is on screen: those results are a whole
+        // answer, not a window into the archive
+        onEndReached={isSearching ? undefined : loadMore}
+        onEndReachedThreshold={0.6}
+        onStartReached={isSearching ? undefined : loadPrevious}
+        onStartReachedThreshold={0.4}
+        ListFooterComponent={
+          (searching || loadingMore)
+            ? <ActivityIndicator color="white" style={{marginVertical: 16}}/>
+            : undefined
+        }
         refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refreshFn}
-          tintColor="white"
-          progressViewOffset={HEADER_HEIGHT}
-          colors={['white']} />
-      }
-      >
-        <TrackList
-          id={generateTracksListId('songs', tracks.length, searchs)}
-          tracks={filteredSongs}
-          scrollEnabled={false}
-          refresh={!refreshing}
-        />
-      </Animated.ScrollView>
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={reset}
+            tintColor="white"
+            progressViewOffset={HEADER_HEIGHT}
+            colors={['white']}/>
+        }
+      />
     </View>
   )
 }

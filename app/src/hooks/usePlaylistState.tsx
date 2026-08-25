@@ -12,7 +12,21 @@ import {trackTitleFilter} from "@/helpers/filter";
 import {AxiosError} from "axios";
 import {AuthFragments} from "@/types/auth";
 
-export const usePlaylistState = (name: string) => {
+/**
+ * @param name    MMKV key the list is cached under
+ * @param merge   keep tracks the server no longer returns (the Songs tab grows
+ *                by paging, so it merges). Favourites MUST NOT merge: a track
+ *                that was un-hearted is gone from the server list, and merging
+ *                would resurrect it from the cache forever.
+ * @param shouldCache  asked before every write to MMKV. The Favorites tab can
+ *                show other playlists, and those must not end up in the cache
+ *                that seeds the tab on the next launch.
+ */
+export const usePlaylistState = (
+  name: string,
+  merge: boolean = true,
+  shouldCache: () => boolean = () => true,
+) => {
   const {getSession, signIn} = useSession();
   const userSession: AuthFragments = getSession() as AuthFragments;
   const [refreshing, setRefreshing] = useState(false);
@@ -27,8 +41,8 @@ export const usePlaylistState = (name: string) => {
   const mergeTracks: (data: any) => Promise<any[]> = async (data: any): Promise<any[]> => {
     //console.debug(`Merging ->>>`, data)
     console.debug(`Merging tracks ${data?.length} with ${tracks?.length}`)
-    setCachedTrack(data)
-    const result = reducer([...data, ...tracks])
+    if (shouldCache()) setCachedTrack(data)
+    const result = merge ? reducer([...data, ...tracks]) : data
     console.debug(`-->SongsScreen Result ${result.length}`)
     setTracks(result);
     return result;

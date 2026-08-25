@@ -18,6 +18,7 @@ import PlayerTrackListBar from "@/components/PlayerTrackListBar";
 import React from "react";
 import {router} from "expo-router";
 import PlayerEditInfoBar from "@/components/PlayerEditInfoBar";
+import {useIsFavorite, useToggleFavorite} from "@/store/favorites";
 
 const PlayerScreen = () => {
   const activeTrack = useActiveTrack()
@@ -25,11 +26,10 @@ const PlayerScreen = () => {
 
   const {top, bottom} = useSafeAreaInsets()
 
-  //temp fix
-  const isFavorite = false
-  const toggleFavorite = () => {
-  }
-  //const { isFavorite, toggleFavorite } = useTrackPlayerFavorite()
+  // favourites live on VK (the "Frisky-favorites" playlist); the store keeps the
+  // heart in sync with the list without waiting for a refresh
+  const isFavorite = useIsFavorite(activeTrack)
+  const toggleFavorite = useToggleFavorite()
 
   const isHidedSong = false
   const toggleHideSong = () => {
@@ -89,7 +89,7 @@ const PlayerScreen = () => {
                   <MaterialCommunityIcons
                     name={isHidedSong ? 'eye-off' : 'eye-off-outline'}
                     size={23}
-                    color={isFavorite ? colors.primary : colors.icon}
+                    color={isHidedSong ? colors.primary : colors.icon}
                     style={{marginLeft: 14}}
                     onPress={toggleHideSong}
                   />
@@ -99,7 +99,7 @@ const PlayerScreen = () => {
                     size={20}
                     color={isFavorite ? colors.primary : colors.icon}
                     style={{marginHorizontal: 7}}
-                    onPress={toggleFavorite}
+                    onPress={() => activeTrack && toggleFavorite(activeTrack)}
                   />
                 </View>
 

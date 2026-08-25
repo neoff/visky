@@ -1,6 +1,13 @@
 import PlayerRegisterService from "@/components/PlayerRegisterService";
 import { useEffect } from 'react';
-import TrackPlayer, { Capability, RatingType, RepeatMode } from 'react-native-track-player';
+import TrackPlayer, {
+  AndroidAudioContentType,
+  Capability,
+  IOSCategory,
+  IOSCategoryMode,
+  RatingType,
+  RepeatMode,
+} from 'react-native-track-player';
 
 /*export const setupPlayer = async () => {
   await TrackPlayer.setupPlayer({
@@ -39,10 +46,23 @@ const setupPlayer = async () => {
   const repeatMode = /*cachedState?.repeatMode || */RepeatMode.Off
   await TrackPlayer.setupPlayer({
     maxCacheSize: 1024 * 10,
+    // Let the platform arbitrate audio focus for us. A phone call takes focus
+    // away transiently: playback pauses and starts again by itself when the
+    // call ends. A notification sound (an SMS) only asks to duck, and with
+    // content type Music the system lowers our volume for the length of it
+    // instead of stopping the show — see `alwaysPauseOnInterruption` below.
+    autoHandleInterruptions: true,
+    androidAudioContentType: AndroidAudioContentType.Music,
+    iosCategory: IOSCategory.Playback,
+    iosCategoryMode: IOSCategoryMode.Default,
   })
 
   await TrackPlayer.updateOptions({
     ratingType: RatingType.Heart,
+    android: {
+      // false = a short interruption ducks instead of pausing
+      alwaysPauseOnInterruption: false,
+    },
     capabilities: [
       Capability.Play,
       Capability.Pause,

@@ -1,5 +1,5 @@
 import { unknownTrackImageUri } from "@/constants/images";
-import { layout } from '@/constants';
+import { colors, layout } from '@/constants';
 import { isSameTrack } from '@/helpers/miscellaneous';
 import { utilsStyles } from '@/styles';
 import {ActivityIndicator, FlatList, FlatListProps, Text, View} from "react-native";
@@ -10,9 +10,15 @@ import {useQueue} from "@/store/queue";
 import {FlashList, FlashListProps} from "@shopify/flash-list";
 import unknownTrackImage from '@/assets/unknown_track.png'
 
+/** a heading between two groups of rows, e.g. "Suggested for you" */
+export type TrackListSection = {__section: string}
+
+const isSection = (item: unknown): item is TrackListSection =>
+  typeof item === 'object' && item !== null && '__section' in (item as any)
+
 export type TrackListProps = Partial<FlashListProps<unknown>> & {
   id: string
-  tracks: Track[]
+  tracks: (Track | TrackListSection)[]
   refresh?: boolean
   hideQueueControls?: boolean
 }
@@ -33,7 +39,7 @@ export const TrackList = ({
     await TrackPlayer.play()
   }*/
   const handleTrackSelect = async (selectedTrack: Track) => {
-    const playableTracks = tracks.filter(
+    const playableTracks = (tracks.filter((item) => !isSection(item)) as Track[]).filter(
       (track) => typeof track.url === 'string' && track.url.trim().length > 0,
     )
     const trackIndex = playableTracks.findIndex((track) => isSameTrack(track, selectedTrack))
@@ -78,16 +84,13 @@ export const TrackList = ({
       console.warn('Unable to start selected track', error)
     }
   }
-  console.log('TrackList', unknownTrackImageUri, unknownTrackImage)
   return (
     <FlashList
       data={tracks}
+      // the list scrolls ITSELF now. It used to sit inside a ScrollView with
+      // scrollEnabled={false}, which meant every row was mounted at once and
+      // paging was impossible — the archive is thousands of tracks long.
       contentContainerStyle={{paddingTop: 10, paddingBottom: layout.tabBarContentHeight + 80}}
-      /*ListHeaderComponent={
-        !hideQueueControls ? (
-          <QueueControls tracks={tracks} style={{ paddingBottom: 20 }} />
-        ) : undefined
-      }*/
       ListFooterComponent={ItemDivider}
       ItemSeparatorComponent={ItemDivider}
       ListEmptyComponent={
@@ -101,7 +104,9 @@ export const TrackList = ({
         </View>
       }
       renderItem={({ item: track }) => (
-        <TrackListItem  onTrackSelect={handleTrackSelect} track={track as Track} />
+        isSection(track)
+          ? <SectionHeading title={track.__section}/>
+          : <TrackListItem onTrackSelect={handleTrackSelect} track={track as Track} />
       )}
       {...flatListProps}
     />
@@ -112,3 +117,12 @@ export const TrackList = ({
 const ItemDivider = () => {
   return <View style={{...utilsStyles.itemSeparator}}/>
 }
+
+const SectionHeading = ({title}: {title: string}) => (
+  <View>
+    <View style={{height: 1, backgroundColor: colors.surfaceDivider, marginTop: 24}}/>
+    <Text style={{color: colors.text, fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 4}}>
+      {title}
+    </Text>
+  </View>
+)

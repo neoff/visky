@@ -1,12 +1,14 @@
 import {unknownTrackImageUri} from "@/constants/images"
 import {colors} from "@/constants"
 import {trackListStyles} from "@/styles"
-import {ActivityIndicator, Text, TouchableHighlight, View} from "react-native"
+import {ActivityIndicator, Text, TouchableHighlight, TouchableOpacity, View} from "react-native"
 import FastImage from "react-native-fast-image"
 import {Track, useActiveTrack, useIsPlaying} from "react-native-track-player";
-import {Entypo, Ionicons} from "@expo/vector-icons";
+import {Entypo, FontAwesome, Ionicons} from "@expo/vector-icons";
 import dayjs from "dayjs";
 import {isSameTrack} from "@/helpers/miscellaneous";
+import {useIsFavorite, useToggleFavorite} from "@/store/favorites";
+import {useIsPlayed} from "@/store/played";
 
 export type TracksListItemProps = {
   track: Track
@@ -20,6 +22,11 @@ export const TrackListItem = ({
   const {playing, bufferingDuringPlay} = useIsPlaying()
   // by id, not by url — VK's signed urls change on every refresh
   const isActiveTrack = isSameTrack(useActiveTrack(), track)
+  const isFavorite = useIsFavorite(track)
+  const toggleFavorite = useToggleFavorite()
+  // a show runs an hour and the list is an archive, so "already heard" is worth
+  // seeing at a glance
+  const isPlayed = useIsPlayed(track)
 
   return (
     <TouchableHighlight onPress={() => handleTrackSelect(track)}>
@@ -56,14 +63,24 @@ export const TrackListItem = ({
           alignItems: 'center',
         }}>
           {/* Track title + artist */}
-          <View style={{width: '100%'}}>
-            <Text numberOfLines={1} style={{
-              ...trackListStyles.trackTitleText,
-              color: !track.url ? colors.textMuted : isActiveTrack ? colors.primary : colors.text,
-              textDecorationLine: !track.url ? 'line-through' : 'none',
-            }}>
-              {track.title}
-            </Text>
+          <View style={{flex: 1, minWidth: 0}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+              {isPlayed && !isActiveTrack && (
+                <Ionicons name="checkmark-circle" size={14} color={colors.textMutedDarker}/>
+              )}
+              <Text numberOfLines={1} style={{
+                ...trackListStyles.trackTitleText,
+                color: !track.url
+                  ? colors.textMuted
+                  : isActiveTrack
+                    ? colors.primary
+                    : isPlayed ? colors.textMuted : colors.text,
+                textDecorationLine: !track.url ? 'line-through' : 'none',
+                flexShrink: 1,
+              }}>
+                {track.title}
+              </Text>
+            </View>
 
             <View style={{
               flex: 1,
@@ -89,6 +106,19 @@ export const TrackListItem = ({
               </View>
             </View>
           </View>
+          {/* Favorite toggle — the heart is what the Favorites tab is built from */}
+          <TouchableOpacity
+            onPress={() => toggleFavorite(track)}
+            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+            style={{paddingHorizontal: 10}}
+          >
+            <FontAwesome
+              name={isFavorite ? 'heart' : 'heart-o'}
+              size={16}
+              color={isFavorite ? colors.primary : colors.icon}
+            />
+          </TouchableOpacity>
+
           <Entypo name="dots-three-horizontal" size={18} color={colors.icon}/>
         </View>
       </View>

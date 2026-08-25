@@ -18,6 +18,8 @@ interface AnimatedSearchHeaderProps {
   placeholder?: string;
   onSearchChange?: (text: string) => void;
   scrollY?: SharedValue<number>;
+  /** optional control shown to the RIGHT of the search box (e.g. a filter) */
+  action?: React.ReactNode;
 }
 
 export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
@@ -25,6 +27,7 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
                                                                             placeholder,
                                                                             onSearchChange,
                                                                             scrollY: externalScrollY,
+                                                                            action,
                                                                           }) => {
   const localScrollY = useSharedValue(0);
   const scrollY = externalScrollY ?? localScrollY;
@@ -70,8 +73,8 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
         <Text style={styles.title}>{title}</Text>
       </Animated.View>
 
-      <Animated.View style={[searchAnimatedStyle]}>
-        <View style={styles.searchBox} >
+      <Animated.View style={[searchAnimatedStyle, styles.searchRow]}>
+        <View style={[styles.searchBox, {flex: 1}]} >
           <Ionicons name="search" size={20} color={colors.textMutedDarker}/>
           <TextInput
             placeholder={placeholder || 'Search'}
@@ -88,6 +91,7 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
             </TouchableOpacity>
           )}
         </View>
+        {action}
       </Animated.View>
     </View>
   );
@@ -112,6 +116,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 12,
     includeFontPadding: false,
+  },
+  // the search box and the optional action share one row; the box takes the
+  // spare width so the action keeps its natural size
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    overflow: 'hidden',
   },
   searchBox: {
     flexDirection: 'row',

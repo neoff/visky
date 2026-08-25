@@ -43,8 +43,16 @@ export const reducer = (data: any[]) => {
  * after each refresh. Comparing by url made the active row lose its highlight
  * and its play icon, and made `TrackPlayer.skip` land on the wrong track.
  */
-export const trackKey = (track: { id?: string | number; url?: string } | null | undefined) =>
-  track == null ? undefined : (track.id != null ? String(track.id) : track.url)
+export const trackKey = (
+  track: { id?: string | number; owner_id?: string | number; url?: string } | null | undefined,
+) => {
+  if (track == null) return undefined
+  if (track.id == null) return track.url
+  // owner_id is part of the identity: VK audio ids are unique per OWNER, so the
+  // group's track 456263688 and a track 456263688 in the user's library are two
+  // different songs. Skipping by id alone landed on the wrong one.
+  return track.owner_id == null ? String(track.id) : `${track.owner_id}_${track.id}`
+}
 
 export const isSameTrack = (
   a: { id?: string | number; url?: string } | null | undefined,
