@@ -205,3 +205,47 @@ describe('/api/auth/profile', () => {
     expect(res.status).toBe(500);
   });
 });
+
+describe('/api/auth/me', () => {
+  beforeAll(() => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'debug').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterAll(() => jest.restoreAllMocks());
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns the four fields the Settings screen shows', async () => {
+    mockMethod.mockResolvedValueOnce({
+      response: [{
+        id: 37758500,
+        first_name: 'Varg',
+        last_name: 'Varg',
+        screen_name: 'envarg',
+        photo_200: 'https://example.com/avatar.jpg',
+        // users.get answers with plenty more; none of it belongs on screen
+        is_closed: true
+      }]
+    });
+
+    const res = await request(app).get('/api/auth/me');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: 37758500,
+      first_name: 'Varg',
+      last_name: 'Varg',
+      screen_name: 'envarg',
+      photo: 'https://example.com/avatar.jpg'
+    });
+  });
+
+  it('answers 404 when VK returns nobody', async () => {
+    mockMethod.mockResolvedValueOnce({response: []});
+
+    const res = await request(app).get('/api/auth/me');
+
+    expect(res.status).toBe(404);
+  });
+});

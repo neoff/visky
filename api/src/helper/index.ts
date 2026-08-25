@@ -131,6 +131,9 @@ export const formatPlaylist = (data: VkPlaylistResponse, offset?: number): Track
         items: data.items.map((item): TrackItem => {
             return {
                 id: item.id,
+                // the app needs owner_id to talk about a track to VK
+                // (audio.add / audio.delete are addressed by owner_id + audio_id)
+                owner_id: item.owner_id,
                 url: item.url,
                 title: item.title,
                 artist: item.artist,

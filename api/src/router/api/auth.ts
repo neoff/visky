@@ -242,6 +242,39 @@ auth.get("/profile", checkAuthAndroid, async (req: Request, res: Response) => {
     })
 })
 
+/**
+ * A compact profile for the Settings screen.
+ * GET /api/auth/me
+ *
+ * `execute.getUserInfo` (behind /profile) answers with the whole VK bootstrap —
+ * ad limits, feature flags, hundreds of lines — and no avatar. This is the four
+ * fields the app actually shows.
+ */
+auth.get("/me", checkAuthAndroid, async (req: Request, res: Response) => {
+  try {
+    const response = await vkMethod(req, "users.get", {
+      user_ids: req.session.user_id,
+      fields: "photo_200,screen_name"
+    }, true);
+
+    const user = ((response.response as any) ?? [])[0];
+    if (!user) {
+      res.status(404).send({errMessage: "Profile not found"});
+      return;
+    }
+
+    res.status(200).send({
+      id: user.id,
+      first_name: user.first_name ?? "",
+      last_name: user.last_name ?? "",
+      screen_name: user.screen_name ?? "",
+      photo: user.photo_200 ?? ""
+    });
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
+
 auth.get('/vk', async (req: Request, res: Response) => {
   console.log("===Redirect =====> /auth/vk")
   res.redirect("/auth/vk")
