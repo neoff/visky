@@ -1056,6 +1056,21 @@ Tests: api **8 suites / 68 tests**. The app typechecks clean apart from two pre-
 
 ---
 
+# Release — 2026-08-25 (milestone 01)
+
+* pushed `ebf0ce1..d96e91f` — api, app, docs and the version bump.
+* **api `varg/visky-api:1.5.35`** built and pushed, `deployment "visky-api" successfully rolled
+  out` (ctx=oracle, ns=frisky), health 200, the pod runs 1.5.35.
+* **Android built LOCALLY** with `scripts/build-app-local.sh` (profile `production`, JDK 17,
+  `eas build --local`): artifact stayed on the machine at
+  `app/build/visky-20260825-124611.aab` (77 MB) and only the store received it —
+  submitted to Google Play, internal track, versionCode **61**.
+  Submission: https://expo.dev/accounts/varg/projects/visky/submissions/423eb0b5-a278-49fd-b2a3-4c83c3544ab2
+* Shipped with open question 2b still open: iOS renders identically but no tap was ever injected
+  into that simulator.
+
+---
+
 # OPEN QUESTIONS — need your decision / your hands
 
 1. ~~**iOS: the mini-player expand gesture.**~~ **RESOLVED** — confirmed by the user on 2026-08-24:
