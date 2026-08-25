@@ -221,3 +221,73 @@ Pull requests приветствуются! Для major изменений сн
 
 - **Issues**: https://github.com/neoff/visky-api/issues
 - **Discussions**: https://github.com/neoff/visky-api/discussions
+
+## 🔊 Cross-device playback (Connect)
+
+Один аккаунт — одна сессия воспроизведения. Трек, запущенный на iPhone, продолжается
+на Android с той же секунды; на исходном устройстве звук останавливается.
+
+### Как устроено
+
+```
+устройство ──WSS──> visky-api ──> Kafka  visky.playback.state.v1  (compact, key=user_id)
+                         │              visky.playback.events.v1  (retention 7d)
+                         └──> Postgres  users / devices  (+ push token)
+```
+
+* **WSS `/api/player/ws`** — единственный канал команд устройствам. Авторизация теми же
+  `x-auth-*` заголовками; токен один раз проверяется в VK (`users.get`) и кешируется.
+* **Kafka** — хранилище состояния. Топик log-compacted и ключуется `user_id`, поэтому
+  последний снимок на пользователя живёт вечно: реплика при старте перечитывает топик
+  с начала и восстанавливает мир. Устройства с Kafka не разговаривают никогда.
+* **Postgres** — долговечные идентичности: какому пользователю принадлежит устройство
+  и чем его будить.
+* **Silent push** (`services/wake.ts`) — только звонок в дверь: разбудить устройство,
+  у которого умер сокет, чтобы оно переподключилось и само забрало состояние. Пуш не
+  несёт состояния и не может начать воспроизведение (iOS не будит выгруженное
+  приложение и не даёт стартовать аудио из фонового пуша).
+
+Позиция хранится не как число, а как функция: `position_ms` — это позиция на момент
+`updated_at_ms` (серверные часы). «Где сейчас» = `position_ms + (now - updated_at_ms)`
+при `playing`. Устройство сикает туда, куда сказал сервер, поэтому расхождение часов
+телефонов ни на что не влияет. `version` монотонна и решает конфликты: обновление со
+старой версией отбрасывается.
+
+### Эндпоинты
+
+| | |
+|---|---|
+| `GET /api/player/state` | вся сессия + список устройств (холодный старт) |
+| `PUT /api/player/state` | что играет это устройство (fallback для сокета) |
+| `GET /api/player/devices` | список устройств |
+| `POST /api/player/devices` | регистрация устройства + push token |
+| `POST /api/player/transfer` | передать звук на другое устройство |
+| `GET /api/player/track/:owner_id/:id` | пере-резолв трека (VK подписывает ссылку под сессию) |
+
+### Переменные окружения
+
+Всё опционально — без них API работает, просто состояние живёт в памяти процесса.
+
+```bash
+# Kafka (локально docker; в кластере ns default)
+KAFKA_BROKERS=localhost:29092                       # кластер: kafka-kafka.default.svc.cluster.local:29092
+KAFKA_STATE_TOPIC=visky.playback.state.v1
+KAFKA_EVENTS_TOPIC=visky.playback.events.v1
+
+# Postgres (users/devices)
+DB_HOST=localhost                                   # кластер: postgres-postgres.database.svc.cluster.local
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=visky
+
+# Silent push (Expo Push API)
+PUSH_ENABLED=true
+PUSH_MIN_INTERVAL_MS=20000                          # APNs троттлит фоновые пуши
+
+# Локальная разработка: пропустить проверку токена в VK при апгрейде сокета
+PLAYBACK_TRUST_HEADERS=true
+```
+
+Миграция создаётся автоматически при старте (`initDataSource` → `runMigrations`).
+Базу нужно создать заранее: `CREATE DATABASE visky`.

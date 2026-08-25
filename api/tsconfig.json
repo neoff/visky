@@ -6,6 +6,10 @@
     "lib": ["dom", "dom.iterable","esnext"],
 
     "strict": true,
+    // TypeORM entities: legacy decorators. `emitDecoratorMetadata` is deliberately
+    // NOT enabled — esbuild cannot emit it, so every column carries an explicit
+    // `type` and every relation an explicit target instead.
+    "experimentalDecorators": true,
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
