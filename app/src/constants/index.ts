@@ -124,6 +124,9 @@ if (__DEV) {
 const redirectUrl: string = '?redirect=' + baseHost;
 
 export const baseUrl: string = `${baseHost}/api`
+// The playback socket rides the same host and the same TLS as the REST API, so
+// http -> ws and https -> wss; traefik upgrades it without any extra config.
+const wsHost: string = baseHost.replace(/^http/, "ws")
 const authUrl: string = `${baseUrl}/auth`
 const playlistUrl: string = `${baseUrl}/playlist`
 const playerUrl: string = `${baseUrl}/player`
@@ -170,5 +173,11 @@ export const apiUrls = {
   createFavoritesUrl: `${playlistUrl}/frisky/create-favorites`,
   eqUrl: `${playerUrl}/equaliser`,
   statusUrl: `${playerUrl}`,
+  // cross-device playback ("Connect")
+  playerSocketUrl: `${wsHost}/api/player/ws`,
+  playerStateUrl: `${playerUrl}/state`,
+  playerDevicesUrl: `${playerUrl}/devices`,
+  playerTransferUrl: `${playerUrl}/transfer`,
+  playerTrackUrl: `${playerUrl}/track`,
 }
 

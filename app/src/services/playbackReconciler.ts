@@ -1,0 +1,215 @@
+import TrackPlayer, {Track} from 'react-native-track-player'
+import {fetchTrackById} from '@/helpers/network'
+import {trackKey} from '@/helpers/miscellaneous'
+import {projectPosition, usePlaybackStore} from '@/store/playback'
+import {PlaybackState} from '@/types/playback'
+
+/**
+ * Make the local player agree with the session.
+ *
+ * Everything here is a consequence of one rule: the server owns the session,
+ * the device owns the speaker. So:
+ *   * the sound is ours  -> load the track, seek to where the SERVER says it is
+ *                           by now, and match play/pause;
+ *   * the sound is theirs -> stop making noise, but keep the track on screen so
+ *                           the mini player can say "playing on the tablet";
+ *   * nothing is ours yet -> restore the last track, PAUSED, so a cold start
+ *                           opens on whatever was last played anywhere.
+ */
+
+/** How far out of step we tolerate before seeking (a seek is audible). */
+const DRIFT_TOLERANCE_MS = 2_500
+
+/**
+ * True while we are steering the player ourselves.
+ *
+ * The player emits the same events for our own seek/pause as for the user's,
+ * and reporting those back would fight the transfer we are in the middle of
+ * applying.
+ */
+let applying = false
+export const isApplyingRemote = (): boolean => applying
+
+/** A cold start restores the last track once; after that the session drives. */
+let restored = false
+
+/**
+ * The last revision we acted on.
+ *
+ * The active device's own progress ticks come back down the socket. Acting on
+ * those would put the player in "applying" mode every few seconds, swallowing
+ * the user's own play/pause in the meantime — so an echo of a revision we have
+ * already applied is skipped.
+ */
+let lastAppliedVersion = -1
+let lastAppliedPlaying: boolean | null = null
+
+export const __resetReconciler = (): void => {
+  chain = Promise.resolve()
+  applying = false
+  restored = false
+  lastAppliedVersion = -1
+  lastAppliedPlaying = null
+}
+
+/**
+ * One job at a time.
+ *
+ * The cached restore and the first frame from the socket arrive within
+ * milliseconds of each other, and both want to load a track. Run concurrently
+ * they each reset the queue under the other's feet — the player ends up loading
+ * twice and firing `ended` on a track nobody finished. Serialising them means
+ * the second one finds the track already loaded and does nothing.
+ */
+let chain: Promise<void> = Promise.resolve()
+const serialize = (work: () => Promise<void>): Promise<void> => {
+  chain = chain.then(work, work)
+  return chain
+}
+
+const withApplying = async (work: () => Promise<void>): Promise<void> => {
+  applying = true
+  try {
+    await work()
+  } finally {
+    // Let the player's own events settle before we listen to them again.
+    // Loading a track is asynchronous inside the native player, so its
+    // "active track changed" arrives well after our call returns.
+    setTimeout(() => {
+      applying = false
+    }, 1_200)
+  }
+}
+
+/** Put the session's track in the player, however that has to happen. */
+const ensureTrackLoaded = async (state: PlaybackState): Promise<boolean> => {
+  const wanted = state.track
+  if (!wanted) return false
+
+  const active = await TrackPlayer.getActiveTrack()
+  if (trackKey(active as never) === wanted.track_id) return true
+
+  // already queued (the usual case: the same list is open on both devices)
+  const queue = await TrackPlayer.getQueue()
+  const index = queue.findIndex((item) => trackKey(item as never) === wanted.track_id)
+  if (index !== -1) {
+    await TrackPlayer.skip(index)
+    return true
+  }
+
+  try {
+    const track = (await fetchTrackById(wanted.owner_id, wanted.id)) as Track
+    if (!track?.url) {
+      console.warn('==playback: VK returned no stream for', wanted.track_id)
+      return false
+    }
+    await TrackPlayer.reset()
+    await TrackPlayer.add([track])
+    return true
+  } catch (error) {
+    console.warn('==playback: could not resolve the track', wanted.track_id, error)
+    return false
+  }
+}
+
+const seekIfDrifted = async (targetMs: number): Promise<void> => {
+  const {position} = await TrackPlayer.getProgress()
+  if (Math.abs(position * 1000 - targetMs) > DRIFT_TOLERANCE_MS) {
+    await TrackPlayer.seekTo(targetMs / 1000)
+  }
+}
+
+/** This device owns the sound: load, seek to the projected position, play. */
+const becomeActive = async (state: PlaybackState): Promise<void> => {
+  await withApplying(async () => {
+    if (!(await ensureTrackLoaded(state))) return
+    // projected, not stored: the frame spent time in flight, and the show did
+    // not stop for it
+    await seekIfDrifted(projectPosition(state))
+    // `playWhenReady` is the INTENT, which is what we are matching. The
+    // reported state is not: a track that has just been added sits in Buffering
+    // or Ready and would look like it is already playing (or about to), and the
+    // play() that actually starts it would never be sent.
+    const playWhenReady = await TrackPlayer.getPlayWhenReady()
+    if (state.playing && !playWhenReady) await TrackPlayer.play()
+    if (!state.playing && playWhenReady) await TrackPlayer.pause()
+  })
+}
+
+/** Another device owns the sound: go quiet, keep the track visible. */
+const becomePassive = async (state: PlaybackState): Promise<void> => {
+  await withApplying(async () => {
+    if (await TrackPlayer.getPlayWhenReady()) await TrackPlayer.pause()
+    // Keep showing what the account is playing, so the mini player can label it
+    // with the other device's name instead of going blank.
+    if (!restored) {
+      restored = true
+      await ensureTrackLoaded(state)
+      await seekIfDrifted(projectPosition(state))
+    }
+  })
+}
+
+/**
+ * Nothing is playing anywhere: put the last track back on screen, paused, at
+ * the position it was left at — on whichever device that was.
+ */
+const restoreLast = async (state: PlaybackState): Promise<void> => {
+  if (restored) return
+  restored = true
+  await withApplying(async () => {
+    const active = await TrackPlayer.getActiveTrack()
+    if (active) return // the user already started something; leave it alone
+    if (!(await ensureTrackLoaded(state))) return
+    await TrackPlayer.seekTo(state.position_ms / 1000)
+  })
+}
+
+/**
+ * Put the last known track on screen before the socket has said anything.
+ *
+ * Cold start reads the cached snapshot from MMKV, and it may be stale in any
+ * direction — so this NEVER starts playback, it only restores what to look at
+ * and where the needle was. The first frame from the server then decides
+ * whether this device should be making sound.
+ */
+export const restoreCached = async (state: PlaybackState): Promise<void> => {
+  if (restored || !state.track) return
+  restored = true
+  await serialize(() => withApplying(async () => {
+    if (await TrackPlayer.getActiveTrack()) return
+    if (!(await ensureTrackLoaded(state))) return
+    await TrackPlayer.seekTo(state.position_ms / 1000)
+  }))
+}
+
+export const reconcile = async (state: PlaybackState): Promise<void> => {
+  const deviceId = usePlaybackStore.getState().deviceId
+  if (!state.track || !deviceId) return
+
+  // our own tick, same revision, same play/pause: nothing to apply
+  if (
+    state.origin_device_id === deviceId &&
+    state.version === lastAppliedVersion &&
+    state.playing === lastAppliedPlaying
+  ) {
+    return
+  }
+  lastAppliedVersion = state.version
+  lastAppliedPlaying = state.playing
+
+  await serialize(async () => {
+    try {
+      if (state.active_device_id === deviceId) {
+        restored = true // the session itself has put us where we belong
+        await becomeActive(state)
+      } else if (state.active_device_id) {
+        await becomePassive(state)
+      } else {
+        await restoreLast(state)
+      }
+    } catch (error) {
+      console.warn('==playback: could not apply the session state', error)
+    }
+  })
+}
