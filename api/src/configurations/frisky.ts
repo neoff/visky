@@ -32,9 +32,18 @@ export const frisky = {
   requestGapMs: int(process.env.FRISKY_API_GAP_MS, 250),
   /** page size for /artists and /mixes */
   pageSize: int(process.env.FRISKY_API_PAGE_SIZE, 100),
-  /** the artist directory is a name -> id map; it changes slowly */
-  artistIndexTtlMs: int(process.env.FRISKY_ARTIST_INDEX_TTL_MS, 7 * 24 * 60 * 60 * 1000),
-  /** an artist's mixes are re-pulled when a new VK track of theirs shows up */
+  /**
+   * How many hits per model /search may answer with. It caps each of Mixes,
+   * Shows, Episodes and Artists independently, and a long-running show has
+   * dozens of mixes with the SAME title — so this has to be wide enough that the
+   * right month is in the answer at all.
+   */
+  searchLimit: int(process.env.FRISKY_API_SEARCH_LIMIT, 60),
+  /**
+   * How long an artist's full run of mixes is trusted. `/search` finds the
+   * artist; the run is paged once a day per artist because search answers with
+   * at most `searchLimit` hits and a decade-old weekly show has hundreds.
+   */
   artistMixesTtlMs: int(process.env.FRISKY_ARTIST_MIXES_TTL_MS, 24 * 60 * 60 * 1000),
   /** how long a track stays "unmatched" before the worker tries it again */
   retryAfterMs: int(process.env.FRISKY_RETRY_AFTER_MS, 6 * 60 * 60 * 1000),

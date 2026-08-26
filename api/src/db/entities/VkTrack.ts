@@ -62,6 +62,14 @@ export class VkTrack {
   @Column({name: "frisky_mix_id", type: "int", nullable: true})
   friskyMixId?: number | null;
 
+  /**
+   * The broadcast, which is what a VK row really maps to: Part 1 and Part 2 are
+   * two VK tracks and ONE episode, and they share its tracklist.
+   */
+  @Index("idx_vk_tracks_episode")
+  @Column({name: "frisky_episode_id", type: "int", nullable: true})
+  friskyEpisodeId?: number | null;
+
   /** how sure the match is (0..1) — kept so a bad threshold can be re-judged */
   @Column({name: "match_score", type: "real", nullable: true})
   matchScore?: number | null;

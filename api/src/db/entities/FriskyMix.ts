@@ -36,6 +36,7 @@ export class FriskyMix {
   artistTitle?: string | null;
 
   /** sorted, normalised words of the show title — see friskyMatch.titleKey */
+  @Index("idx_frisky_mixes_title_key")
   @Column({name: "title_key", type: "text"})
   titleKey!: string;
 
@@ -62,8 +63,21 @@ export class FriskyMix {
   @Column({name: "show_title", type: "text", nullable: true})
   showTitle?: string | null;
 
+  /**
+   * The broadcast this mix is a piece of. SEVERAL mixes share one episode, and
+   * the tracklist often sits on only one of them — so metadata is merged across
+   * the episode, not read off a single mix.
+   */
+  @Index("idx_frisky_mixes_episode")
   @Column({name: "episode_id", type: "int", nullable: true})
   episodeId?: number | null;
+
+  @Column({name: "episode_title", type: "text", nullable: true})
+  episodeTitle?: string | null;
+
+  /** the episode's own air date — authoritative, unlike the slug */
+  @Column({name: "air_start", type: "timestamptz", nullable: true})
+  airStart?: Date | null;
 
   @Column({name: "genre", type: "jsonb", nullable: true})
   genre?: string[] | null;

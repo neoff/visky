@@ -11,8 +11,9 @@
 //   1. a playlist request writes its rows to `vk_tracks` (NEVER the audio urls —
 //      those are signed per token/device and are always re-read from VK) and
 //      merges whatever frisky data is already cached into the response;
-//   2. rows nothing is known about are picked up by the background worker,
-//      which pages the artist's mixes off frisky and matches them;
+//   2. rows nothing is known about are picked up by the background worker, which
+//      asks `/v3/search` for the show and matches what comes back — one call per
+//      show, not per track;
 //   3. the next refresh — or the next tab switch — serves the merged version,
 //      and the sockets are told so the app can refresh itself.
 //
@@ -27,7 +28,15 @@ import {FriskyArtist} from "@/db/entities/FriskyArtist";
 import {FriskyMix} from "@/db/entities/FriskyMix";
 import {VkTrack} from "@/db/entities/VkTrack";
 import {airDateOf, artistKey, bestMatch, partNumber, periodMs, periodOf, titleKey} from "@/helper/friskyMatch";
-import {fetchArtist, fetchArtistMixes, fetchArtistPage, FriskyArtistDto, FriskyMixDto} from "@/services/friskyApi";
+import {
+  fetchArtist,
+  FriskyArtistDto,
+  FriskyEpisodeDto,
+  FriskyMixDto,
+  FriskySearchResult,
+  fetchArtistMixes,
+  search,
+} from "@/services/friskyApi";
 import {TrackItem} from "@/__genedated__/openapi/vk";
 
 export const isFriskyCacheEnabled = (): boolean => db.enabled && cfg.enabled;
@@ -134,13 +143,33 @@ const trackList = (tracks: Array<{title?: string; artist?: string}> | null | und
   }));
 
 /**
+ * Is this "tracklist" just a divider?
+ *
+ * frisky sometimes fills the second piece of a broadcast with a single row
+ * reading "Part 2" instead of leaving it empty — a label for a human reading the
+ * page, and nonsense in a tracklist. Treated as empty so a sibling that carries
+ * the real thing wins.
+ */
+export const isPartMarker = (tracks: Array<{title?: string; artist?: string}> | null | undefined): boolean =>
+  !!tracks?.length && tracks.every((track) => /^\s*part\s*\d*\s*$/i.test(track.title ?? ""));
+
+export const usableTrackList = (
+  tracks: Array<{title?: string; artist?: string}> | null | undefined,
+): Array<{title?: string; artist?: string}> => (!tracks?.length || isPartMarker(tracks) ? [] : tracks);
+
+/**
  * Merge everything already known about these tracks into the VK response.
+ *
+ * Everything is read off the EPISODE, not off one mix. A broadcast is cut into
+ * pieces on both sides — VK caps a track at an hour, frisky splits for its own
+ * reasons — and the tracklist usually sits on exactly one of those pieces
+ * (episode 7486 has fourteen mixes, and one of them carries all 25 tracks). So
+ * Part 1 and Part 2 of a VK show resolve to one episode and are served the same
+ * tracklist, which is what they are: one show.
  *
  * Additive only: a field VK filled stays as VK filled it (the artwork it serves
  * is the one the app has been showing all along), and a track with nothing
- * cached is returned untouched. What was hardcoded in `formatPlaylist`
- * — one "Unknown Genre", one placeholder tracklist row — is replaced by the
- * real thing when there is one, and by an empty list when there is not.
+ * cached is returned untouched.
  */
 export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
   if (!isFriskyCacheEnabled() || items.length === 0) return items;
@@ -152,10 +181,22 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
     const ids = items.map((item) => trackIdOf(item.owner_id, item.id));
     const rows = await ds.getRepository(VkTrack).find({where: {trackId: In(ids)}});
     const mixIds = [...new Set(rows.map((row) => row.friskyMixId).filter((id): id is number => !!id))];
+    const episodeIds = [...new Set(rows.map((row) => row.friskyEpisodeId).filter((id): id is number => !!id))];
     if (mixIds.length === 0) return items;
 
-    const mixes = await ds.getRepository(FriskyMix).find({where: {id: In(mixIds)}});
+    // the matched mixes AND every sibling piece of their episodes
+    const repository = ds.getRepository(FriskyMix);
+    const mixes = await repository.find({
+      where: episodeIds.length ? [{id: In(mixIds)}, {episodeId: In(episodeIds)}] : {id: In(mixIds)},
+    });
     const mixById = new Map(mixes.map((mix) => [mix.id, mix]));
+    const byEpisode = new Map<number, FriskyMix[]>();
+    for (const mix of mixes) {
+      if (!mix.episodeId) continue;
+      const bucket = byEpisode.get(mix.episodeId);
+      if (bucket) bucket.push(mix);
+      else byEpisode.set(mix.episodeId, [mix]);
+    }
 
     const artistIds = [...new Set(mixes.map((mix) => mix.artistId).filter((id): id is number => !!id))];
     const artists = artistIds.length
@@ -169,20 +210,33 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
       const row = rowByTrack.get(trackIdOf(item.owner_id, item.id));
       const mix = row?.friskyMixId ? mixById.get(row.friskyMixId) : undefined;
       if (!mix) return item;
+
+      const episodeId = row?.friskyEpisodeId ?? mix.episodeId ?? null;
+      // the matched piece first, so its own data wins a tie with a sibling's
+      const pieces = [mix, ...(episodeId ? byEpisode.get(episodeId) ?? [] : []).filter((s) => s.id !== mix.id)];
       const artist = mix.artistId ? artistById.get(mix.artistId) : undefined;
+
+      // the longest real tracklist anywhere in the episode
+      const tracks = pieces
+        .map((piece) => usableTrackList(piece.trackList))
+        .reduce((best, current) => (current.length > best.length ? current : best), [] as Array<{title?: string; artist?: string}>);
+      const genres = pieces.find((piece) => piece.genre?.length)?.genre ?? artist?.genre;
+      const artwork = pieces.find((piece) => piece.artwork)?.artwork;
 
       return {
         ...item,
         // VK's own cover wins: it is what the list has been rendering
-        artwork: item.artwork || mix.artwork || artist?.photoUrl || undefined,
-        genre_list: genreList(mix.genre?.length ? mix.genre : artist?.genre),
-        track_list: trackList(mix.trackList),
+        artwork: item.artwork || artwork || artist?.photoUrl || undefined,
+        genre_list: genreList(genres),
+        track_list: trackList(tracks),
         multipart: row?.part !== null && row?.part !== undefined,
         frisky: {
           mix_id: mix.id,
+          episode_id: episodeId,
           url: mix.url ?? null,
           show_id: mix.showId ?? null,
           show_title: mix.showTitle ?? null,
+          air_start: mix.airStart ? new Date(mix.airStart).toISOString() : null,
           artist_id: mix.artistId ?? null,
           artist_url: artist?.url ?? null,
           artist_photo: artist?.photoUrl ?? null,
@@ -231,38 +285,69 @@ const artistRow = (dto: FriskyArtistDto): Partial<FriskyArtist> => {
 };
 
 /**
- * `artist` is the record the mixes were pulled for, and it is what the title key
- * is built against: frisky writes the artist INTO the title
- * ("Tech Coast Tribal - 06 May 2016 - El Reyalto") while VK keeps it in its own
- * field, so the name has to come out of both sides or every mix by one artist
- * would look alike.
+ * "Hurly Burly - May 2026 - Fady Ferraye" — show first, artist last.
+ *
+ * The artist has to come out of the title before the title key is built: frisky
+ * writes it in, VK keeps it in its own field, and a name left on one side only
+ * would make every show by that artist look alike. When the search answered with
+ * the artist record the name comes from there; this is the fallback, and it
+ * holds across every mix title seen.
  */
-const mixRow = (dto: FriskyMixDto, artist: FriskyArtist): Partial<FriskyMix> => {
-  // the slug carries the exact day, the title only the month — the slug wins
-  const air = airDateOf(dto.url);
-  const period = air.year !== null ? air : periodOf(dto.title);
-  const airMs = periodMs(air);
+const splitMixTitle = (title: string | null | undefined): {show: string | null; artist: string | null} => {
+  const parts = String(title ?? "").split(" - ").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return {show: parts[0] ?? null, artist: null};
+  return {show: parts[0], artist: parts[parts.length - 1]};
+};
+
+/** What one search answer knows about the mixes in it, indexed for the ingest. */
+interface IngestContext {
+  artistById: Map<number, FriskyArtistDto>;
+  episodeById: Map<number, FriskyEpisodeDto>;
+}
+
+const mixRow = (dto: FriskyMixDto, context: IngestContext): Partial<FriskyMix> => {
+  const fromTitle = splitMixTitle(dto.title);
+  const artistId = dto.artist_id?.id ?? null;
+  const artistTitle = (artistId ? context.artistById.get(artistId)?.title : null) ?? fromTitle.artist;
+
+  const episodeId = dto.episode_id?.id ?? null;
+  const episode = episodeId ? context.episodeById.get(episodeId) : undefined;
+
+  // the episode states the air date; the slug only approximates it and the title
+  // gives the month at best
+  const airStartMs = episode?.air_start ? Date.parse(episode.air_start) : NaN;
+  const slug = airDateOf(dto.url);
+  const airMs = Number.isFinite(airStartMs) ? airStartMs : periodMs(slug);
+  const period = Number.isFinite(airStartMs)
+    ? {
+        year: new Date(airStartMs).getUTCFullYear(),
+        month: new Date(airStartMs).getUTCMonth() + 1,
+        day: new Date(airStartMs).getUTCDate(),
+      }
+    : slug.year !== null
+      ? slug
+      : periodOf(dto.title);
+
   return {
     id: dto.id,
     title: dto.title ?? null,
     url: dto.url ?? null,
-    artistId: dto.artist_id?.id ?? artist.id,
-    artistKey: artist.key,
-    artistTitle: artist.title ?? null,
-    titleKey: titleKey(dto.title, artist.title),
+    artistId,
+    artistKey: artistKey(artistTitle),
+    artistTitle: artistTitle ?? null,
+    titleKey: titleKey(dto.title, artistTitle),
     periodYear: period.year,
     periodMonth: period.month,
     periodDay: period.day,
-    airDate: airMs === null ? null : new Date(airMs),
+    airDate: airMs === null || Number.isNaN(airMs) ? null : new Date(airMs),
+    airStart: Number.isFinite(airStartMs) ? new Date(airStartMs) : null,
     showId: dto.show_id?.id ?? null,
-    // "Tech Coast Tribal - August 2026 - El Reyalto": frisky puts the show name
-    // first and gives the mix only a reference to the show record, so reading
-    // the prefix is a whole HTTP call cheaper than resolving /v3/shows/{id}
-    showTitle: String(dto.title ?? "").split(" - ")[0].trim() || null,
-    episodeId: dto.episode_id?.id ?? null,
-    genre: dto.genre ?? null,
+    showTitle: fromTitle.show,
+    episodeId,
+    episodeTitle: episode?.title ?? null,
+    genre: dto.genre?.length ? dto.genre : episode?.genre ?? null,
     trackList: dto.track_list ?? null,
-    artwork: dto.image?.url ?? null,
+    artwork: dto.image?.url ?? episode?.image?.url ?? episode?.thumbnail?.url ?? null,
     reach: dto.reach === undefined ? null : String(dto.reach),
     favoriteCount: dto.favorite_count ?? null,
     fetchedAt: new Date(),
@@ -270,120 +355,177 @@ const mixRow = (dto: FriskyMixDto, artist: FriskyArtist): Partial<FriskyMix> => 
 };
 
 /**
- * Page the whole artist directory into Postgres.
+ * Write one search answer down: the artists it named, and every mix in it with
+ * its episode's air date folded in.
  *
- * frisky has no artist search, so "which frisky artist is this VK track by" can
- * only be answered from a local copy of the list. It is a few thousand rows and
- * changes by a handful a month, hence the week-long TTL.
+ * Returns the mixes as match candidates, so the caller does not have to read
+ * back what it just wrote.
  */
-export const syncArtistDirectory = async (force = false): Promise<number> => {
+const ingest = async (result: FriskySearchResult): Promise<FriskyMix[]> => {
   const ds = await initDataSource();
-  if (!ds) return 0;
+  if (!ds) return [];
 
-  const repository = ds.getRepository(FriskyArtist);
-  if (!force) {
-    const newest = await repository
-      .createQueryBuilder("artist")
-      .select("MAX(artist.fetched_at)", "at")
-      .getRawOne<{at: Date | null}>();
-    const at = newest?.at ? new Date(newest.at).getTime() : 0;
-    if (at && Date.now() - at < cfg.artistIndexTtlMs) return 0;
-  }
+  const context: IngestContext = {
+    artistById: new Map(result.Artists.filter((dto) => dto?.id !== undefined).map((dto) => [dto.id, dto])),
+    episodeById: new Map(result.Episodes.filter((dto) => dto?.id !== undefined).map((dto) => [dto.id, dto])),
+  };
 
-  let written = 0;
-  for (let offset = 0; ; offset += cfg.pageSize) {
-    const page = await fetchArtistPage(offset);
-    if (page.length === 0) break;
-    const rows = page.filter((dto) => dto?.id !== undefined).map(artistRow);
-    if (rows.length) {
-      await repository.upsert(rows as FriskyArtist[], ["id"]);
-      written += rows.length;
-    }
-    if (page.length < cfg.pageSize) break;
-  }
-  if (written) console.log(`==frisky: artist directory synced (${written} artists)`);
-  return written;
+  const artists = result.Artists.filter((dto) => dto?.id !== undefined).map(artistRow);
+  if (artists.length) await ds.getRepository(FriskyArtist).upsert(artists as FriskyArtist[], ["id"]);
+
+  const mixes = result.Mixes.filter((dto) => dto?.id !== undefined).map((dto) => mixRow(dto, context));
+  if (mixes.length) await ds.getRepository(FriskyMix).upsert(mixes as FriskyMix[], ["id"]);
+
+  return mixes as FriskyMix[];
 };
 
 /**
- * Page one artist's mixes in.
+ * Page an artist's WHOLE run of mixes.
  *
- * `artist_key` is stamped from the artist row rather than parsed out of the mix
- * title: frisky writes the artist at the END of the title, sometimes with a
- * different spelling than the artist record, and the artist id is unambiguous.
+ * `/search` answers with at most `searchLimit` hits per model, and a weekly show
+ * that has run for a decade has hundreds — the month a VK track needs is very
+ * often not in that answer. Search finds the artist; this makes the pool
+ * complete. `/mixes` carries no episode records, so the air dates here come from
+ * the slug; the search pass fills in `air_start` for the ones it saw.
+ *
+ * Guarded by `mixes_synced_at`: once a day per artist, however many of their
+ * shows are waiting.
  */
-export const syncArtistMixes = async (artist: FriskyArtist, force = false): Promise<number> => {
+const syncArtistMixes = async (artistId: number, force = false): Promise<number> => {
   const ds = await initDataSource();
   if (!ds) return 0;
 
-  const syncedAt = artist.mixesSyncedAt ? new Date(artist.mixesSyncedAt).getTime() : 0;
+  const artists = ds.getRepository(FriskyArtist);
+  const artist = await artists.findOne({where: {id: artistId}});
+  const syncedAt = artist?.mixesSyncedAt ? new Date(artist.mixesSyncedAt).getTime() : 0;
   if (!force && syncedAt && Date.now() - syncedAt < cfg.artistMixesTtlMs) return 0;
+
+  const context: IngestContext = {
+    artistById: new Map(artist?.title ? [[artistId, {id: artistId, title: artist.title}]] : []),
+    episodeById: new Map(),
+  };
 
   const repository = ds.getRepository(FriskyMix);
   let written = 0;
   for (let offset = 0; ; offset += cfg.pageSize) {
-    const page = await fetchArtistMixes(artist.id, offset);
+    const page = await fetchArtistMixes(artistId, offset);
     if (page.length === 0) break;
-    const rows = page.filter((dto) => dto?.id !== undefined).map((dto) => mixRow(dto, artist));
+    const rows = page.filter((dto) => dto?.id !== undefined).map((dto) => mixRow(dto, context));
     if (rows.length) {
-      await repository.upsert(rows as FriskyMix[], ["id"]);
+      // NOT a plain upsert: `/mixes` carries no episode records, so every row
+      // built here has a null `air_start` and `episode_title`. Overwriting with
+      // those would wipe the authoritative air date that the `/search` pass just
+      // wrote — which is exactly what happened, and left every mix dateless.
+      await repository
+        .createQueryBuilder()
+        .insert()
+        .into(FriskyMix)
+        .values(rows)
+        .orUpdate(
+          [
+            "title", "url", "artist_id", "artist_key", "artist_title", "title_key",
+            "period_year", "period_month", "period_day", "air_date",
+            "show_id", "show_title", "episode_id", "genre", "track_list",
+            "artwork", "reach", "favorite_count", "fetched_at",
+          ],
+          ["id"],
+        )
+        .execute();
       written += rows.length;
     }
     if (page.length < cfg.pageSize) break;
   }
 
-  await ds.getRepository(FriskyArtist).update({id: artist.id}, {mixesSyncedAt: new Date()});
-  if (written) console.log(`==frisky: ${written} mixes cached for ${artist.title ?? artist.id}`);
+  if (artist) await artists.update({id: artistId}, {mixesSyncedAt: new Date()});
+  if (written) console.log(`==frisky: ${written} mixes cached for ${artist?.title ?? artistId}`);
   return written;
 };
 
-/** Refresh one artist record (bio, photo, genres) when it is only a directory stub. */
-const ensureArtistDetail = async (artist: FriskyArtist): Promise<FriskyArtist> => {
-  if (artist.biography || artist.photoUrl) return artist;
+/** Fill in an artist frisky named but did not describe (no bio, no photo). */
+const ensureArtistDetail = async (artistId: number | null | undefined): Promise<void> => {
+  if (!artistId) return;
   const ds = await initDataSource();
-  const dto = await fetchArtist(artist.id);
-  if (!ds || !dto) return artist;
-  const row = artistRow(dto);
-  await ds.getRepository(FriskyArtist).upsert(row as FriskyArtist, ["id"]);
-  return {...artist, ...row} as FriskyArtist;
+  if (!ds) return;
+  const existing = await ds.getRepository(FriskyArtist).findOne({where: {id: artistId}});
+  if (existing?.biography || existing?.photoUrl) return;
+  const dto = await fetchArtist(artistId);
+  if (dto) await ds.getRepository(FriskyArtist).upsert(artistRow(dto) as FriskyArtist, ["id"]);
 };
 
 /**
- * Resolve one artist's worth of pending tracks.
- *
- * Everything is keyed by artist because that is the only way to ask frisky for
- * a narrow set of mixes — `?artists_id=` is the one filter that works. One
- * artist therefore costs one page of mixes, however many of their shows are
- * waiting.
+ * A group of VK rows that are the same show by the same artist — Part 1 and
+ * Part 2, and every month of it that is still unresolved.
  */
-const resolveArtist = async (key: string, rows: VkTrack[]): Promise<string[]> => {
+interface ShowGroup {
+  artistKey: string;
+  titleKey: string;
+  artist: string | null;
+  rows: VkTrack[];
+}
+
+/**
+ * What to ask `/search` for.
+ *
+ * The artist and the show words together: the artist alone answers with their
+ * whole run of shows, the show title alone can be shared by several artists over
+ * the years ("Hurly Burly" has been hosted by five), and frisky matches the query
+ * against every model at once.
+ */
+const searchQuery = (group: ShowGroup): string =>
+  [group.artist ?? "", group.titleKey].join(" ").replace(/\s+/g, " ").trim();
+
+/**
+ * Resolve one show's worth of pending tracks.
+ *
+ * One search per show, not per track: Part 1, Part 2 and every unresolved month
+ * of the same programme are answered by the same call.
+ */
+const resolveShow = async (group: ShowGroup): Promise<string[]> => {
   const ds = await initDataSource();
   if (!ds) return [];
 
   const repository = ds.getRepository(VkTrack);
-  const artist = await ds.getRepository(FriskyArtist).findOne({where: {key}});
+  const query = searchQuery(group);
+  if (!query) return [];
 
-  if (!artist) {
-    // frisky has never heard of them: a VK upload by a guest, or a spelling the
-    // directory does not use. Marked so the worker moves on, retried later.
-    await repository.update({trackId: In(rows.map((row) => row.trackId))}, {matchState: "unmatched", matchedAt: new Date()});
-    return [];
+  const result = await search(query);
+  const found = await ingest(result);
+
+  // Which frisky artist this is. The search answers with the artist record and
+  // with mixes that name one; either will do, as long as the name is the name VK
+  // used — a search for "hurly burly" also returns the four OTHER artists who
+  // have hosted that show over the years.
+  const artistId =
+    found.find((mix) => mix.artistKey === group.artistKey)?.artistId ??
+    result.Artists.find((dto) => artistKey(dto.title) === group.artistKey)?.id ??
+    null;
+
+  if (artistId) {
+    await ensureArtistDetail(artistId);
+    // search alone is not enough coverage for a long-running show
+    await syncArtistMixes(artistId);
   }
 
-  const detailed = await ensureArtistDetail(artist);
-  await syncArtistMixes(detailed);
+  // everything cached for this artist, which now includes their whole run
+  const cached = group.artistKey
+    ? await ds.getRepository(FriskyMix).find({where: {artistKey: group.artistKey}})
+    : [];
+  const pool = new Map<number, FriskyMix>();
+  for (const mix of [...found, ...cached]) pool.set(mix.id, mix);
 
-  const mixes = await ds.getRepository(FriskyMix).find({where: {artistKey: key}});
-  const candidates = mixes.map((mix) => ({
-    id: mix.id,
-    titleKey: mix.titleKey ?? "",
-    year: mix.periodYear ?? null,
-    month: mix.periodMonth ?? null,
-    airMs: mix.airDate ? new Date(mix.airDate).getTime() : null,
-  }));
+  const candidates = [...pool.values()]
+    // a mix by a different artist that merely shares a word is not this show
+    .filter((mix) => !group.artistKey || !mix.artistKey || mix.artistKey === group.artistKey)
+    .map((mix) => ({
+      id: mix.id,
+      titleKey: mix.titleKey ?? "",
+      year: mix.periodYear ?? null,
+      month: mix.periodMonth ?? null,
+      airMs: mix.airDate ? new Date(mix.airDate).getTime() : null,
+    }));
 
-  const matchedIds: string[] = [];
-  for (const row of rows) {
+  const matched: string[] = [];
+  for (const row of group.rows) {
     const match = bestMatch(
       {
         titleKey: row.titleKey ?? "",
@@ -395,17 +537,27 @@ const resolveArtist = async (key: string, rows: VkTrack[]): Promise<string[]> =>
       },
       candidates,
     );
-    if (match) {
-      await repository.update(
-        {trackId: row.trackId},
-        {friskyMixId: match.id, matchScore: match.score, matchState: "matched", matchedAt: new Date()},
-      );
-      matchedIds.push(row.trackId);
-    } else {
+
+    if (!match) {
       await repository.update({trackId: row.trackId}, {matchState: "unmatched", matchedAt: new Date()});
+      continue;
     }
+
+    const mix = pool.get(match.id);
+    await repository.update(
+      {trackId: row.trackId},
+      {
+        friskyMixId: match.id,
+        friskyEpisodeId: mix?.episodeId ?? null,
+        matchScore: match.score,
+        matchState: "matched",
+        matchedAt: new Date(),
+      },
+    );
+    matched.push(row.trackId);
   }
-  return matchedIds;
+
+  return matched;
 };
 
 type EnrichedHandler = (trackIds: string[]) => void;
@@ -432,8 +584,6 @@ export const runOnce = async (): Promise<string[]> => {
     const ds = await initDataSource();
     if (!ds) return [];
 
-    await syncArtistDirectory();
-
     const retryBefore = new Date(Date.now() - cfg.retryAfterMs);
     const repository = ds.getRepository(VkTrack);
     const pending = await repository.find({
@@ -446,18 +596,28 @@ export const runOnce = async (): Promise<string[]> => {
     });
     if (pending.length === 0) return [];
 
-    const byArtist = new Map<string, VkTrack[]>();
+    // grouped by SHOW, not by track and not by artist: Part 1, Part 2 and every
+    // unresolved month of the same programme are answered by one search
+    const groups = new Map<string, ShowGroup>();
     for (const row of pending) {
-      const key = row.artistKey ?? "";
-      if (!key) continue;
-      const bucket = byArtist.get(key);
-      if (bucket) bucket.push(row);
-      else byArtist.set(key, [row]);
+      const key = `${row.artistKey ?? ""}|${row.titleKey ?? ""}`;
+      if (key === "|") continue;
+      const bucket = groups.get(key);
+      if (bucket) bucket.rows.push(row);
+      else {
+        groups.set(key, {
+          artistKey: row.artistKey ?? "",
+          titleKey: row.titleKey ?? "",
+          // the artist as VK spells it, which is what the search is asked for
+          artist: (row.artist ?? "").replace(/^\s*FRISKY\s*\|\s*/i, "").trim() || null,
+          rows: [row],
+        });
+      }
     }
 
     const matched: string[] = [];
-    for (const [key, rows] of byArtist) {
-      matched.push(...(await resolveArtist(key, rows)));
+    for (const group of groups.values()) {
+      matched.push(...(await resolveShow(group)));
     }
 
     if (matched.length) {
@@ -492,8 +652,7 @@ export const startFriskyWorker = (): void => {
     }
     return;
   }
-  // the first pass may page the whole artist directory in — let the API serve
-  // requests before that starts
+  // let the API serve requests before the first pass starts talking to frisky
   setTimeout(() => void runOnce(), cfg.workerStartDelayMs).unref?.();
   timer = setInterval(() => void runOnce(), cfg.workerIntervalMs);
   timer.unref?.();

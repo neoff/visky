@@ -73,6 +73,17 @@ describe('airDateOf', () => {
     expect(airDateOf(FRISKY_DATED_URL)).toEqual({year: 2016, month: 5, day: 6});
   });
 
+  /**
+   * The trailing digits are a COLLISION COUNTER, not part of the year and not a
+   * part number: frisky reuses a slug and appends 1, 2, ... 16. Reading them as
+   * a broken date is what made every mix of a long-running show dateless, which
+   * left the month tie-break nothing to work with.
+   */
+  it('reads through the collision counter frisky appends', () => {
+    expect(airDateOf('fady-ferraye-at-05-26-20261')).toEqual({year: 2026, month: 5, day: 26});
+    expect(airDateOf('16_bit_lolitas-at-01-01-200716')).toEqual({year: 2007, month: 1, day: 1});
+  });
+
   it('is empty for a slug with no date in it', () => {
     expect(airDateOf('tech_coast_tribal')).toEqual({year: null, month: null, day: null});
     expect(airDateOf(undefined)).toEqual({year: null, month: null, day: null});

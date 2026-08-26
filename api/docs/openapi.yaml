@@ -1380,9 +1380,20 @@ components:
         mix_id:
           description: frisky's own mix id
           type: number
+        episode_id:
+          description: >
+            The broadcast. SEVERAL mixes share one episode — a show longer than
+            an hour is cut up on both sides — so Part 1 and Part 2 of a VK show
+            carry the SAME episode_id and are served the same tracklist.
+          type: number
+          nullable: true
         url:
           description: mix slug, e.g. `el-reyalto-at-08-14-2026`
           type: string
+        air_start:
+          description: when the episode aired, ISO 8601
+          type: string
+          nullable: true
         show_id:
           type: number
           nullable: true
@@ -1410,7 +1421,9 @@ components:
           nullable: true
       example:
         mix_id: 73675
+        episode_id: 73672
         url: el-reyalto-at-08-14-2026
+        air_start: '2026-08-14T20:00:00.000Z'
         show_id: 211
         show_title: Tech Coast Tribal
         artist_id: 151

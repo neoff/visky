@@ -2,15 +2,16 @@
 //
 // A thin read-only client for the official radio API, api.frisky.fm/v3.
 //
-// Only three calls are needed and only two shapes come back:
-//
-//   GET /v3/artists?limit&offset          -> Artist[]   (the directory)
-//   GET /v3/artists/{id}                  -> Artist     (bio, photo, genres)
+//   GET /v3/search?query&limit&offset     -> {Mixes, Shows, Episodes, Artists}
 //   GET /v3/mixes?artists_id&limit&offset -> Mix[]      (tracklist, genres, show)
+//   GET /v3/mixes/{id}                    -> Mix
+//   GET /v3/artists/{id}                  -> Artist     (bio, photo, genres)
 //
-// There is NO search: `?title=`, `?url=` and `?q=` are accepted and silently
-// ignored (they return an empty body), so everything is filtered by id or
-// mirrored wholesale. That is the reason the artist directory is cached at all.
+// `/search` is the one text entry point, and it is easy to miss: the REST-looking
+// filters do NOT search. `/mixes?title=`, `?url=` and `?q=` are accepted and
+// answer with an empty body — silently, not with an error — and the only filters
+// that work on the collection routes are `<model>_id`. Everything textual goes
+// through `/search`, which answers with all four models at once.
 //
 // Nothing here throws into a request path — every caller is a background job,
 // and a frisky.fm outage must be invisible to the app.
@@ -46,6 +47,44 @@ export interface FriskyRef {
   link?: string;
 }
 
+/**
+ * A broadcast. SEVERAL mixes can share one episode: VK is not alone in cutting a
+ * two-hour show up — frisky does it too, and `episode_id` is what says the
+ * pieces belong together. `air_start` is the authoritative air date; the mix
+ * slug only approximates it and the mix title gives the month at best.
+ */
+export interface FriskyEpisodeDto {
+  id: number;
+  title?: string;
+  url?: string;
+  summary?: string;
+  genre?: string[];
+  air_start?: string;
+  air_end?: string;
+  show_id?: FriskyRef | null;
+  artist_id?: FriskyRef | null;
+  image?: FriskyPhoto | null;
+  thumbnail?: FriskyPhoto | null;
+}
+
+export interface FriskyShowDto {
+  id: number;
+  title?: string;
+  url?: string;
+  summary?: string;
+  genre?: string[] | null;
+  artist_id?: FriskyRef | null;
+  image?: FriskyPhoto | null;
+}
+
+/** Every model `/search` matched, each capped at `limit` independently. */
+export interface FriskySearchResult {
+  Mixes: FriskyMixDto[];
+  Shows: FriskyShowDto[];
+  Episodes: FriskyEpisodeDto[];
+  Artists: FriskyArtistDto[];
+}
+
 export interface FriskyMixDto {
   id: number;
   title?: string;
@@ -69,6 +108,13 @@ const http = (): AxiosInstance => {
       baseURL: cfg.baseUrl,
       timeout: cfg.timeoutMs,
       headers: {"User-Agent": "ViskyApi/1.0 (+https://github.com/neoff/visky)", accept: "application/json"},
+      // A SPACE MUST STAY %20. axios encodes query parameters itself and its
+      // default encoder finishes with `.replace(/%20/g, "+")` — and frisky does
+      // not read `+` as a space: `?query=hurly+burly` answers with four EMPTY
+      // arrays, exactly as if the show did not exist, while `hurly%20burly`
+      // returns 30 mixes. Every multi-word search silently found nothing, and
+      // the tracks were filed as "frisky has never heard of this show".
+      paramsSerializer: {encode: encodeURIComponent},
     });
   }
   return client;
@@ -101,12 +147,32 @@ const serialised = async <T>(run: () => Promise<T>, fallback: T): Promise<T> => 
 
 const asArray = <T>(data: unknown): T[] => (Array.isArray(data) ? (data as T[]) : []);
 
-/** One page of the artist directory. An empty page means the end of it. */
-export const fetchArtistPage = async (offset: number, limit = cfg.pageSize): Promise<FriskyArtistDto[]> =>
+/**
+ * Text search — the only one there is.
+ *
+ * Answers with all four models for the same query, so one call resolves a show
+ * title into its mixes, the episodes those mixes belong to (with the real air
+ * dates) and the artist record, without knowing any id up front.
+ */
+export const search = async (query: string, limit = cfg.searchLimit, offset = 0): Promise<FriskySearchResult> =>
   serialised(async () => {
-    const response = await http().get("/artists", {params: {limit, offset}});
-    return asArray<FriskyArtistDto>(response?.data);
-  }, []);
+    const response = await http().get("/search", {params: {query, limit, offset}});
+    const data = (response?.data ?? {}) as Partial<FriskySearchResult>;
+    return {
+      Mixes: asArray<FriskyMixDto>(data.Mixes),
+      Shows: asArray<FriskyShowDto>(data.Shows),
+      Episodes: asArray<FriskyEpisodeDto>(data.Episodes),
+      Artists: asArray<FriskyArtistDto>(data.Artists),
+    };
+  }, {Mixes: [], Shows: [], Episodes: [], Artists: []});
+
+/** One mix by id — used to fill in a tracklist the search result did not carry. */
+export const fetchMix = async (id: number): Promise<FriskyMixDto | null> =>
+  serialised(async () => {
+    const response = await http().get(`/mixes/${id}`);
+    const data = response?.data;
+    return data && typeof data === "object" && "id" in data ? (data as FriskyMixDto) : null;
+  }, null);
 
 export const fetchArtist = async (id: number): Promise<FriskyArtistDto | null> =>
   serialised(async () => {

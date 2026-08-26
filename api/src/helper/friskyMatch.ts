@@ -61,15 +61,23 @@ export const partNumber = (title: string | null | undefined): number | null => {
 
 export type Period = { year: number | null; month: number | null; day: number | null };
 
-/** `el-reyalto-at-08-14-2026` — the only place frisky states the exact air date. */
-const urlDateRegex = /-at-(\d{2})-(\d{2})-(\d{4})\b/;
+/**
+ * `el-reyalto-at-08-14-2026`, and `fady-ferraye-at-05-26-20261` for the second
+ * mix of the same day.
+ *
+ * The trailing digits are a COLLISION COUNTER, not a part number and not part of
+ * the year: frisky reuses a slug and appends 1, 2, ... 16. They were read as a
+ * broken date at first, which is why every mix of a long-running show lost its
+ * date and the month tie-break had nothing to work with.
+ */
+const urlDateRegex = /-at-(\d{2})-(\d{2})-((?:19|20)\d{2})\d*$/;
 
 /**
- * The exact day a mix aired, from its `url` slug.
+ * The day a mix aired, from its `url` slug.
  *
- * The title only ever says "August 2026", and a weekly show has four of those a
- * month — the slug is what tells them apart. Returns null for anything that does
- * not carry a date.
+ * This is the fallback. An episode's `air_start` is the authoritative date and is
+ * used when the search result carried the episode; the slug is what is left when
+ * it did not. Returns null for anything that carries no date at all.
  */
 export const airDateOf = (url: string | null | undefined): Period => {
   const match = String(url ?? "").match(urlDateRegex);
