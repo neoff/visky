@@ -67,14 +67,23 @@ export interface FriskyEpisodeDto {
   thumbnail?: FriskyPhoto | null;
 }
 
+/**
+ * A programme, and the only place its ARTWORK lives besides an episode: a mix
+ * has no `image` field at all.
+ */
 export interface FriskyShowDto {
   id: number;
   title?: string;
   url?: string;
   summary?: string;
+  channel?: string;
   genre?: string[] | null;
   artist_id?: FriskyRef | null;
+  /** the cover, `showmain/...` */
   image?: FriskyPhoto | null;
+  /** the small one, `showthumb/...` */
+  thumbnail?: FriskyPhoto | null;
+  album_art?: FriskyPhoto | null;
 }
 
 /** Every model `/search` matched, each capped at `limit` independently. */
@@ -165,6 +174,14 @@ export const search = async (query: string, limit = cfg.searchLimit, offset = 0)
       Artists: asArray<FriskyArtistDto>(data.Artists),
     };
   }, {Mixes: [], Shows: [], Episodes: [], Artists: []});
+
+/** One show by id — where a mix's artwork actually comes from. */
+export const fetchShow = async (id: number): Promise<FriskyShowDto | null> =>
+  serialised(async () => {
+    const response = await http().get(`/shows/${id}`);
+    const data = response?.data;
+    return data && typeof data === "object" && "id" in data ? (data as FriskyShowDto) : null;
+  }, null);
 
 /** One mix by id — used to fill in a tracklist the search result did not carry. */
 export const fetchMix = async (id: number): Promise<FriskyMixDto | null> =>

@@ -26,6 +26,7 @@ import {frisky as cfg} from "@/configurations/frisky";
 import {db} from "@/configurations/playback";
 import {FriskyArtist} from "@/db/entities/FriskyArtist";
 import {FriskyMix} from "@/db/entities/FriskyMix";
+import {FriskyShow} from "@/db/entities/FriskyShow";
 import {VkTrack} from "@/db/entities/VkTrack";
 import {airDateOf, artistKey, bestMatch, partNumber, periodMs, periodOf, titleKey} from "@/helper/friskyMatch";
 import {
@@ -34,7 +35,9 @@ import {
   FriskyEpisodeDto,
   FriskyMixDto,
   FriskySearchResult,
+  FriskyShowDto,
   fetchArtistMixes,
+  fetchShow,
   search,
 } from "@/services/friskyApi";
 import {TrackItem} from "@/__genedated__/openapi/vk";
@@ -204,6 +207,13 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
       : [];
     const artistById = new Map(artists.map((artist) => [artist.id, artist]));
 
+    // where the artwork actually lives — a mix has no image of its own
+    const showIds = [...new Set(mixes.map((mix) => mix.showId).filter((id): id is number => !!id))];
+    const shows = showIds.length
+      ? await ds.getRepository(FriskyShow).find({where: {id: In(showIds)}})
+      : [];
+    const showById = new Map(shows.map((show) => [show.id, show]));
+
     const rowByTrack = new Map(rows.map((row) => [row.trackId, row]));
 
     return items.map((item) => {
@@ -221,12 +231,19 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
         .map((piece) => usableTrackList(piece.trackList))
         .reduce((best, current) => (current.length > best.length ? current : best), [] as Array<{title?: string; artist?: string}>);
       const genres = pieces.find((piece) => piece.genre?.length)?.genre ?? artist?.genre;
-      const artwork = pieces.find((piece) => piece.artwork)?.artwork;
+      const show = mix.showId ? showById.get(mix.showId) : undefined;
+      // An episode carries the show's cover; a mix carries no image at all. The
+      // artist's PHOTO is deliberately NOT in this chain — falling through to it
+      // put a picture of the DJ where the programme's cover belongs, which is
+      // what the list was showing for every mix paged in by artist. The photo is
+      // still served, as `frisky.artist_photo`, for a UI that wants the person.
+      const artwork =
+        pieces.find((piece) => piece.artwork)?.artwork || show?.imageUrl || show?.albumArtUrl || show?.thumbUrl;
 
       return {
         ...item,
         // VK's own cover wins: it is what the list has been rendering
-        artwork: item.artwork || artwork || artist?.photoUrl || undefined,
+        artwork: item.artwork || artwork || undefined,
         genre_list: genreList(genres),
         track_list: trackList(tracks),
         multipart: row?.part !== null && row?.part !== undefined,
@@ -235,7 +252,8 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
           episode_id: episodeId,
           url: mix.url ?? null,
           show_id: mix.showId ?? null,
-          show_title: mix.showTitle ?? null,
+          show_title: show?.title ?? mix.showTitle ?? null,
+          show_artwork: show?.imageUrl ?? null,
           air_start: mix.airStart ? new Date(mix.airStart).toISOString() : null,
           artist_id: mix.artistId ?? null,
           artist_url: artist?.url ?? null,
@@ -373,6 +391,10 @@ const ingest = async (result: FriskySearchResult): Promise<FriskyMix[]> => {
   const artists = result.Artists.filter((dto) => dto?.id !== undefined).map(artistRow);
   if (artists.length) await ds.getRepository(FriskyArtist).upsert(artists as FriskyArtist[], ["id"]);
 
+  // free artwork: the search already matched the shows
+  const shows = result.Shows.filter((dto) => dto?.id !== undefined).map(showRow);
+  if (shows.length) await ds.getRepository(FriskyShow).upsert(shows as FriskyShow[], ["id"]);
+
   const mixes = result.Mixes.filter((dto) => dto?.id !== undefined).map((dto) => mixRow(dto, context));
   if (mixes.length) await ds.getRepository(FriskyMix).upsert(mixes as FriskyMix[], ["id"]);
 
@@ -439,6 +461,42 @@ const syncArtistMixes = async (artistId: number, force = false): Promise<number>
   if (artist) await artists.update({id: artistId}, {mixesSyncedAt: new Date()});
   if (written) console.log(`==frisky: ${written} mixes cached for ${artist?.title ?? artistId}`);
   return written;
+};
+
+const showRow = (dto: FriskyShowDto): Partial<FriskyShow> => ({
+  id: dto.id,
+  title: dto.title ?? null,
+  url: dto.url ?? null,
+  summary: dto.summary ?? null,
+  channel: dto.channel ?? null,
+  genre: dto.genre ?? null,
+  artistId: dto.artist_id?.id ?? null,
+  imageUrl: dto.image?.url ?? null,
+  thumbUrl: dto.thumbnail?.url ?? dto.image?.thumb_url ?? null,
+  albumArtUrl: dto.album_art?.url ?? null,
+  fetchedAt: new Date(),
+});
+
+/**
+ * Make sure the show behind these mixes is cached — it is where the artwork is.
+ *
+ * A search answers with the shows it matched, but mixes paged in through
+ * `/mixes?artists_id=` bring only a show REFERENCE, and those are the ones that
+ * had nothing to draw with.
+ */
+const ensureShows = async (showIds: Array<number | null | undefined>): Promise<void> => {
+  const ds = await initDataSource();
+  if (!ds) return;
+  const wanted = [...new Set(showIds.filter((id): id is number => !!id))];
+  if (wanted.length === 0) return;
+
+  const repository = ds.getRepository(FriskyShow);
+  const known = new Set((await repository.find({where: {id: In(wanted)}})).map((show) => show.id));
+  for (const id of wanted) {
+    if (known.has(id)) continue;
+    const dto = await fetchShow(id);
+    if (dto) await repository.upsert(showRow(dto) as FriskyShow, ["id"]);
+  }
 };
 
 /** Fill in an artist frisky named but did not describe (no bio, no photo). */
@@ -525,6 +583,7 @@ const resolveShow = async (group: ShowGroup): Promise<string[]> => {
     }));
 
   const matched: string[] = [];
+  const matchedShowIds: Array<number | null | undefined> = [];
   for (const row of group.rows) {
     const match = bestMatch(
       {
@@ -555,7 +614,11 @@ const resolveShow = async (group: ShowGroup): Promise<string[]> => {
       },
     );
     matched.push(row.trackId);
+    matchedShowIds.push(mix?.showId);
   }
+
+  // the artwork lives on the show; a mix only references it
+  await ensureShows(matchedShowIds);
 
   return matched;
 };

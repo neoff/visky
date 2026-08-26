@@ -1400,6 +1400,13 @@ components:
         show_title:
           type: string
           nullable: true
+        show_artwork:
+          description: >
+            The programme's cover. This is what `artwork` falls back to when VK
+            has none — NOT the artist's photo, which is a picture of a person and
+            was what the list wrongly showed for every mix paged in by artist.
+          type: string
+          nullable: true
         artist_id:
           type: number
           nullable: true
@@ -1426,6 +1433,7 @@ components:
         air_start: '2026-08-14T20:00:00.000Z'
         show_id: 211
         show_title: Tech Coast Tribal
+        show_artwork: https://s3.amazonaws.com/media.friskyradio.com/showmain/1348504166-tct.jpg
         artist_id: 151
         artist_url: el_reyalto
         artist_photo: https://s3.amazonaws.com/media.friskyradio.com/artist/1347487662-elreyalto.jpg

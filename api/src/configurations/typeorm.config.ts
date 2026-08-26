@@ -5,10 +5,12 @@ import {User} from '@/db/entities/User';
 import {Device} from '@/db/entities/Device';
 import {FriskyArtist} from '@/db/entities/FriskyArtist';
 import {FriskyMix} from '@/db/entities/FriskyMix';
+import {FriskyShow} from '@/db/entities/FriskyShow';
 import {VkTrack} from '@/db/entities/VkTrack';
 import {PlaybackDevices1756100000000} from '@/db/migrations/1756100000000-PlaybackDevices';
 import {FriskyCache1756600000000} from '@/db/migrations/1756600000000-FriskyCache';
 import {FriskyEpisodes1756700000000} from '@/db/migrations/1756700000000-FriskyEpisodes';
+import {FriskyShows1756800000000} from '@/db/migrations/1756800000000-FriskyShows';
 
 /**
  * Entities and migrations are listed explicitly rather than globbed: the API
@@ -23,8 +25,13 @@ export const AppDataSource = new DataSource({
   database: db.database,
   synchronize: db.synchronize,
   logging: db.logging,
-  entities: [User, Device, FriskyArtist, FriskyMix, VkTrack],
-  migrations: [PlaybackDevices1756100000000, FriskyCache1756600000000, FriskyEpisodes1756700000000],
+  entities: [User, Device, FriskyArtist, FriskyMix, FriskyShow, VkTrack],
+  migrations: [
+    PlaybackDevices1756100000000,
+    FriskyCache1756600000000,
+    FriskyEpisodes1756700000000,
+    FriskyShows1756800000000,
+  ],
   subscribers: [],
 });
 
