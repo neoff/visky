@@ -3,7 +3,11 @@ import {DataSource} from 'typeorm';
 import {db} from '@/configurations/playback';
 import {User} from '@/db/entities/User';
 import {Device} from '@/db/entities/Device';
+import {FriskyArtist} from '@/db/entities/FriskyArtist';
+import {FriskyMix} from '@/db/entities/FriskyMix';
+import {VkTrack} from '@/db/entities/VkTrack';
 import {PlaybackDevices1756100000000} from '@/db/migrations/1756100000000-PlaybackDevices';
+import {FriskyCache1756600000000} from '@/db/migrations/1756600000000-FriskyCache';
 
 /**
  * Entities and migrations are listed explicitly rather than globbed: the API
@@ -18,8 +22,8 @@ export const AppDataSource = new DataSource({
   database: db.database,
   synchronize: db.synchronize,
   logging: db.logging,
-  entities: [User, Device],
-  migrations: [PlaybackDevices1756100000000],
+  entities: [User, Device, FriskyArtist, FriskyMix, VkTrack],
+  migrations: [PlaybackDevices1756100000000, FriskyCache1756600000000],
   subscribers: [],
 });
 

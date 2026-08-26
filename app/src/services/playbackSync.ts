@@ -198,6 +198,12 @@ class PlaybackSync {
         }
         return
       }
+      case 'catalog':
+        // Metadata arrived for some tracks. Nothing about playback changed, so
+        // the state is left alone — the lists on screen re-read themselves.
+        console.debug(`==playback: ${frame.track_ids.length} tracks gained metadata`)
+        store.bumpCatalog()
+        return
       case 'error':
         console.warn('==playback: server said', frame.message)
         return

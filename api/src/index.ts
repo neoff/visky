@@ -5,7 +5,8 @@ import app from "@/router";
 import { initDataSource } from "@/configurations/typeorm.config";
 import { initKafka, shutdownKafka, whenReplayed } from "@/services/kafka";
 import { applyRemoteState, guardRestoredSessions } from "@/services/playback";
-import { attachPlaybackSocket, WS_PATH } from "@/ws/hub";
+import { onEnriched, startFriskyWorker } from "@/services/friskyCache";
+import { attachPlaybackSocket, broadcastCatalog, WS_PATH } from "@/ws/hub";
 //export * from "./helpers/strategies";
 
 
@@ -23,6 +24,12 @@ void initDataSource().catch(() => null);
 void initKafka(applyRemoteState).then(() => whenReplayed()).then(guardRestoredSessions);
 attachPlaybackSocket(server);
 console.log(`Playback socket at ws://0.0.0.0:${PORT}${WS_PATH}`);
+
+// The frisky.fm metadata cache. Needs Postgres; without it the playlist is
+// served as VK sends it and this is a no-op. When a background pass resolves
+// something, the sockets say so and the app refreshes the list it is on.
+onEnriched(broadcastCatalog);
+startFriskyWorker();
 
 const shutdown = (signal: string) => {
   console.log(`==${signal}: shutting down`);

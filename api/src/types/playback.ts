@@ -101,4 +101,9 @@ export type ServerFrame =
   | {t: "state"; state: PlaybackState; server_now_ms: number}
   | {t: "devices"; devices: PlaybackDeviceInfo[]; server_now_ms: number}
   | {t: "pong"; client_now_ms?: number; server_now_ms: number}
+  // Metadata for these tracks (`${owner_id}_${id}`) has just arrived from
+  // frisky.fm. Nothing about playback changed — it is the app's cue to re-read
+  // the list it is showing, so a tracklist appears without waiting for a manual
+  // pull-to-refresh. Ignoring the frame is harmless.
+  | {t: "catalog"; track_ids: string[]; server_now_ms: number}
   | {t: "error"; message: string};

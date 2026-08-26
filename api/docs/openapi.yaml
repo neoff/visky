@@ -1366,6 +1366,58 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TrackPartList'
+        frisky:
+          $ref: '#/components/schemas/TrackFrisky'
+    TrackFrisky:
+      description: >
+        What the official radio API (api.frisky.fm/v3) knows about this
+        broadcast, merged in from the metadata cache. Absent while the track has
+        not been resolved yet — the background worker resolves it and the
+        playback socket sends a `catalog` frame when it has.
+        No audio url is ever carried here: the stream always comes from VK.
+      type: object
+      properties:
+        mix_id:
+          description: frisky's own mix id
+          type: number
+        url:
+          description: mix slug, e.g. `el-reyalto-at-08-14-2026`
+          type: string
+        show_id:
+          type: number
+          nullable: true
+        show_title:
+          type: string
+          nullable: true
+        artist_id:
+          type: number
+          nullable: true
+        artist_url:
+          type: string
+          nullable: true
+        artist_photo:
+          type: string
+          nullable: true
+        biography:
+          type: string
+          nullable: true
+        reach:
+          type: number
+          nullable: true
+        part:
+          description: which part of a multipart show this VK row is
+          type: number
+          nullable: true
+      example:
+        mix_id: 73675
+        url: el-reyalto-at-08-14-2026
+        show_id: 211
+        show_title: Tech Coast Tribal
+        artist_id: 151
+        artist_url: el_reyalto
+        artist_photo: https://s3.amazonaws.com/media.friskyradio.com/artist/1347487662-elreyalto.jpg
+        reach: 7164
+        part: 1
     TrackGenre:
       description: Track genre
       type: object

@@ -36,11 +36,19 @@ interface PlaybackStore {
    * minute off still seeks to the right second.
    */
   clockOffsetMs: number
+  /**
+   * Bumped every time the API says a track gained metadata (a tracklist, a
+   * genre, an artist photo) from frisky.fm. It carries no data — the merged
+   * track comes from the playlist route like everything else — it is only a
+   * signal for the lists on screen to re-read themselves.
+   */
+  catalogRevision: number
   setConnected: (connected: boolean) => void
   setDeviceId: (deviceId: string | null) => void
   setState: (state: PlaybackState) => void
   setDevices: (devices: PlaybackDeviceInfo[]) => void
   setClockOffset: (offsetMs: number) => void
+  bumpCatalog: () => void
 }
 
 export const usePlaybackStore = create<PlaybackStore>()((set, get) => ({
@@ -49,6 +57,7 @@ export const usePlaybackStore = create<PlaybackStore>()((set, get) => ({
   state: readCached(),
   devices: [],
   clockOffsetMs: 0,
+  catalogRevision: 0,
 
   setConnected: (connected) => set({connected}),
   setDeviceId: (deviceId) => set({deviceId}),
@@ -67,6 +76,7 @@ export const usePlaybackStore = create<PlaybackStore>()((set, get) => ({
 
   setDevices: (devices) => set({devices}),
   setClockOffset: (clockOffsetMs) => set({clockOffsetMs}),
+  bumpCatalog: () => set({catalogRevision: get().catalogRevision + 1}),
 }))
 
 /** Server time as this device best understands it. */

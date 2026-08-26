@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import {Track} from 'react-native-track-player'
 import {storage} from '@/store/library'
 import {trackKey} from '@/helpers/miscellaneous'
+import {usePlaybackStore} from '@/store/playback'
 
 export const PAGE_SIZE = 50
 /** how many pages stay in the list; older ones are dropped as new ones arrive */
@@ -176,10 +177,50 @@ export const useWindowedTracks = (
     }
   }, [publish])
 
+  /**
+   * Re-read the pages that are ON SCREEN, keeping the window where it is.
+   *
+   * This is what a metadata update triggers, and it must not behave like a
+   * pull-to-refresh: `reset()` throws the window back to page 0, which would
+   * yank a user who is scrolled deep into the archive up to the top for a
+   * tracklist they did not ask for. A page that comes back empty keeps the one
+   * already held, so a hiccup never blanks the list.
+   */
+  const refreshWindow = useCallback(async () => {
+    const snapshot = pages.current
+    if (busy.current || snapshot.length === 0) return
+    busy.current = true
+    try {
+      const reloaded = await Promise.all(
+        snapshot.map((page) => loaderRef.current(page.index * PAGE_SIZE, PAGE_SIZE)),
+      )
+      pages.current = snapshot.map((page, at) => ({
+        index: page.index,
+        items: reloaded[at].length ? reloaded[at] : page.items,
+      }))
+      publish()
+      const first = pages.current.find((page) => page.index === 0)
+      if (first) writeCache(cacheKeyRef.current, first.items)
+    } catch (error) {
+      console.warn('Unable to refresh the window', error)
+    } finally {
+      busy.current = false
+    }
+  }, [publish])
+
   useEffect(() => {
     if (!enabled) return
     reset()
   }, [enabled, reset])
 
-  return {tracks, refreshing, loadingMore, reset, loadMore, loadPrevious, setTracks}
+  // The API resolved frisky.fm metadata for tracks it had none for and said so
+  // over the playback socket. Re-read what is on screen so the tracklist and
+  // the genres appear on their own.
+  const catalogRevision = usePlaybackStore((state) => state.catalogRevision)
+  useEffect(() => {
+    if (!enabled || catalogRevision === 0) return
+    void refreshWindow()
+  }, [catalogRevision, enabled, refreshWindow])
+
+  return {tracks, refreshing, loadingMore, reset, refreshWindow, loadMore, loadPrevious, setTracks}
 }
