@@ -11,6 +11,7 @@ import {PlaybackDevices1756100000000} from '@/db/migrations/1756100000000-Playba
 import {FriskyCache1756600000000} from '@/db/migrations/1756600000000-FriskyCache';
 import {FriskyEpisodes1756700000000} from '@/db/migrations/1756700000000-FriskyEpisodes';
 import {FriskyShows1756800000000} from '@/db/migrations/1756800000000-FriskyShows';
+import {VkTrackMixIndex1756900000000} from '@/db/migrations/1756900000000-VkTrackMixIndex';
 
 /**
  * Entities and migrations are listed explicitly rather than globbed: the API
@@ -31,6 +32,7 @@ export const AppDataSource = new DataSource({
     FriskyCache1756600000000,
     FriskyEpisodes1756700000000,
     FriskyShows1756800000000,
+    VkTrackMixIndex1756900000000,
   ],
   subscribers: [],
 });

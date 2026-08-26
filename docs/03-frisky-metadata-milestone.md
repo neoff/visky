@@ -205,6 +205,33 @@ first cut of this did, and the verification caught it: the backfill ran, reporte
 
 ---
 
+## What a rollout taught us about the worker
+
+Deploying the backfill knocked production over for about a minute, and the shape
+of the failure is worth keeping.
+
+Both pods — the new one *and* the old one, which had been serving happily for
+twenty minutes — started missing their health probes at the same moment. `/health`
+is a handler that calls `fs.statSync` and two `os` functions: no database, no
+network, nothing that can be slow. A 3-second timeout on it does not mean the
+handler is slow, it means **nothing was getting a turn on the event loop**.
+
+The cause was the backfill query. It ordered 5030 mix rows by a correlated
+subquery over `vk_tracks` containing an `OR`, which no index can serve, and ran
+it every 60s from every replica. During a rollout two replicas overlap on one
+small node that also hosts Postgres and Kafka, and that was enough.
+
+It is now two cheap queries — one driven by `vk_tracks` joining the mix by
+primary key, one a plain `GROUP BY` — plus the index on `vk_tracks.frisky_mix_id`
+that was missing all along (only `frisky_episode_id` had one). Liveness restarted
+the pod on its own and the deploy completed; nothing had to be rolled back.
+
+The general lesson: **a background worker on a shared node is a production
+dependency**, and the cheapest health endpoint in the world cannot report on an
+event loop that never gets scheduled.
+
+---
+
 ## The bug worth remembering
 
 **axios encodes a space as `+`, and frisky does not read `+` as a space.**

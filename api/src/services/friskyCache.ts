@@ -484,19 +484,26 @@ const showRow = (dto: FriskyShowDto): Partial<FriskyShow> => ({
  * `/mixes?artists_id=` bring only a show REFERENCE, and those are the ones that
  * had nothing to draw with.
  */
-const ensureShows = async (showIds: Array<number | null | undefined>): Promise<void> => {
+const ensureShows = async (showIds: Array<number | null | undefined>): Promise<number> => {
   const ds = await initDataSource();
-  if (!ds) return;
+  if (!ds) return 0;
   const wanted = [...new Set(showIds.filter((id): id is number => !!id))];
-  if (wanted.length === 0) return;
+  if (wanted.length === 0) return 0;
 
   const repository = ds.getRepository(FriskyShow);
   const known = new Set((await repository.find({where: {id: In(wanted)}})).map((show) => show.id));
+  let written = 0;
   for (const id of wanted) {
     if (known.has(id)) continue;
     const dto = await fetchShow(id);
-    if (dto) await repository.upsert(showRow(dto) as FriskyShow, ["id"]);
+    if (dto) {
+      await repository.upsert(showRow(dto) as FriskyShow, ["id"]);
+      written++;
+    }
   }
+  // what was actually written, not what was asked for: the two backfill queries
+  // can name the same show, and frisky can answer with nothing
+  return written;
 };
 
 /** Fill in an artist frisky named but did not describe (no bio, no photo). */
@@ -651,27 +658,43 @@ export const runOnce = async (): Promise<string[]> => {
     // list draws lives on the show, and a mix paged in through `/mixes?artists_id=`
     // brings only a reference — so without this the rows matched before shows were
     // a table would render with no cover at all.
-    // Ordered by what is actually on a screen: the shows behind tracks that have
-    // already matched come first. Taking any 25 orphans instead converges just as
-    // slowly for the archive and leaves the visible rows blank for passes on end,
-    // which is what the first cut of this did.
-    const orphanShows = await ds.query<Array<{show_id: number}>>(`
-      SELECT m.show_id
-      FROM frisky_mixes m
+    // Two cheap queries instead of one expensive one.
+    //
+    // The first is driven by `vk_tracks` — a hundred rows — and joins to the mix
+    // by primary key, so it costs an index lookup per track. The second is a
+    // plain GROUP BY with a PK-lookup NOT EXISTS. The version this replaces
+    // ordered 5030 mix rows by a correlated subquery over `vk_tracks` with an OR
+    // in it, which no index can serve; it ran every 60s from every replica, and
+    // during a rollout — when two of them overlap — both pods missed a 3s health
+    // probe on a handler that only calls fs.statSync.
+    const visibleShows = await ds.query<Array<{show_id: number}>>(`
+      SELECT DISTINCT m.show_id
+      FROM vk_tracks t
+      JOIN frisky_mixes m ON m.id = t.frisky_mix_id
       WHERE m.show_id IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM frisky_shows s WHERE s.id = m.show_id)
-      GROUP BY m.show_id
-      ORDER BY
-        max(CASE WHEN EXISTS (
-          SELECT 1 FROM vk_tracks t
-          WHERE t.frisky_mix_id = m.id OR t.frisky_episode_id = m.episode_id
-        ) THEN 1 ELSE 0 END) DESC,
-        m.show_id DESC
       LIMIT $1
     `, [cfg.batchSize]);
+
+    const showBudget = cfg.batchSize - visibleShows.length;
+    const archiveShows = showBudget > 0
+      ? await ds.query<Array<{show_id: number}>>(`
+          SELECT m.show_id
+          FROM frisky_mixes m
+          WHERE m.show_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM frisky_shows s WHERE s.id = m.show_id)
+          GROUP BY m.show_id
+          ORDER BY m.show_id DESC
+          LIMIT $1
+        `, [showBudget])
+      : [];
+
+    // what is on a screen first, the archive with whatever budget is left
+    const orphanShows = [...visibleShows, ...archiveShows];
+
     if (orphanShows.length) {
-      await ensureShows(orphanShows.map((row) => row.show_id));
-      console.log(`==frisky: ${orphanShows.length} shows backfilled`);
+      const written = await ensureShows(orphanShows.map((row) => row.show_id));
+      if (written) console.log(`==frisky: ${written} shows backfilled`);
     }
 
     const retryBefore = new Date(Date.now() - cfg.retryAfterMs);

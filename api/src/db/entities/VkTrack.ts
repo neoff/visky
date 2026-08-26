@@ -59,6 +59,7 @@ export class VkTrack {
   @Column({name: "part", type: "int", nullable: true})
   part?: number | null;
 
+  @Index("idx_vk_tracks_mix")
   @Column({name: "frisky_mix_id", type: "int", nullable: true})
   friskyMixId?: number | null;
 
