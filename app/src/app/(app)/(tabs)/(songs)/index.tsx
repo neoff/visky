@@ -14,6 +14,9 @@ import {useDebouncedValue} from "@/hooks/useDebouncedValue";
 import {useFocusEffect} from "expo-router";
 import {useWindowedTracks} from "@/hooks/useWindowedTracks";
 
+/** MMKV key the Songs window seeds itself from on a cold start */
+const SONGS_CACHE_KEY = 'songs-window'
+
 
 const SongsScreen = () => {
   const insets = useSafeAreaInsets()
@@ -21,8 +24,15 @@ const SongsScreen = () => {
   // A sliding window over the group's archive instead of one fixed page of 100:
   // scrolling to the end pulls the next page in and drops the oldest one, and
   // scrolling back up does the reverse. See useWindowedTracks.
+  //
+  // The first page is mirrored to MMKV, so a cold start paints the last known
+  // list right away instead of an empty screen waiting on the network.
   const {tracks, refreshing, loadingMore, reset, loadMore, loadPrevious} =
-    useWindowedTracks(useCallback((offset: number, count: number) => fetchFriskyPage(offset, count), []))
+    useWindowedTracks(
+      useCallback((offset: number, count: number) => fetchFriskyPage(offset, count), []),
+      true,
+      SONGS_CACHE_KEY,
+    )
 
   // Search runs on the SERVER, over the whole Frisky group: VK has no
   // "search inside this owner", so the API keeps the group's catalogue and

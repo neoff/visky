@@ -1,11 +1,35 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {Track} from 'react-native-track-player'
+import {storage} from '@/store/library'
+import {trackKey} from '@/helpers/miscellaneous'
 
 export const PAGE_SIZE = 50
 /** how many pages stay in the list; older ones are dropped as new ones arrive */
 const MAX_PAGES = 4
 
 export type TrackPageLoader = (offset: number, count: number) => Promise<Track[]>
+
+/** one loaded page, kept as its own bucket so trimming drops a WHOLE page */
+type LoadedPage = {index: number; items: Track[]}
+
+const readCache = (key: string | undefined): Track[] => {
+  if (!key) return []
+  try {
+    return (storage.getArray<Track>(key) ?? []) as Track[]
+  } catch (error) {
+    console.warn('Unable to read the cached page', error)
+    return []
+  }
+}
+
+const writeCache = (key: string | undefined, items: Track[]) => {
+  if (!key) return
+  try {
+    storage.setArray(key, items)
+  } catch (error) {
+    console.warn('Unable to cache the first page', error)
+  }
+}
 
 /**
  * A sliding window over a list that is thousands of tracks long.
@@ -19,99 +43,138 @@ export type TrackPageLoader = (offset: number, count: number) => Promise<Track[]
  * the last. FlashList's `maintainVisibleContentPosition` (on by default in v2)
  * keeps the visible rows still while that happens, so the scroll neither jumps
  * nor grows without bound.
+ *
+ * The window lives in a ref of whole pages, NOT in the `setTracks` updater.
+ * React runs a functional updater during the render pass, not at the call site,
+ * so bookkeeping written inside one lands AFTER the next `onEndReached` has
+ * already read it: two scroll events in the same frame both saw the old page
+ * number, fetched the SAME offset twice and appended it twice, while the page
+ * counter advanced only once. That is why the list grew without ever trimming
+ * and the scroll stuck at the bottom re-loading forever. Mutating the ref
+ * synchronously — and rebuilding `tracks` from it — keeps the two in step.
+ *
+ * @param cacheKey  MMKV key the first page is mirrored to. With one, a cold
+ *                  start renders the last known page immediately instead of an
+ *                  empty screen, and the network answer replaces it when it
+ *                  arrives.
  */
-export const useWindowedTracks = (loader: TrackPageLoader, enabled: boolean = true) => {
-  const [tracks, setTracks] = useState<Track[]>([])
+export const useWindowedTracks = (
+  loader: TrackPageLoader,
+  enabled: boolean = true,
+  cacheKey?: string,
+) => {
+  const cacheKeyRef = useRef(cacheKey)
+  cacheKeyRef.current = cacheKey
+
+  // the window, oldest page first; `tracks` is always its flattened form
+  const pages = useRef<LoadedPage[]>([])
+  if (pages.current.length === 0 && cacheKey) {
+    const cached = readCache(cacheKey)
+    if (cached.length) {
+      pages.current = [{index: 0, items: cached}]
+      console.debug(`==window ${cacheKey}: seeded ${cached.length} tracks from cache`)
+    }
+  }
+
+  const [tracks, setTracks] = useState<Track[]>(() => pages.current[0]?.items ?? [])
   const [refreshing, setRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  // the page range currently in `tracks`, as [first, last] inclusive
-  const range = useRef({first: 0, last: -1})
   const busy = useRef(false)
   const exhausted = useRef(false)
   const loaderRef = useRef(loader)
   loaderRef.current = loader
+
+  /** flatten the window into the list, dropping any track that appears twice */
+  const publish = useCallback(() => {
+    const seen = new Set<string>()
+    const flat: Track[] = []
+    for (const page of pages.current) {
+      for (const item of page.items) {
+        const key = trackKey(item as any) ?? ''
+        if (key && seen.has(key)) continue
+        if (key) seen.add(key)
+        flat.push(item)
+      }
+    }
+    console.debug(
+      `==window ${cacheKeyRef.current ?? 'list'}: pages ${pages.current.map((page) => page.index).join(',')}`
+      + ` -> ${flat.length} tracks`,
+    )
+    setTracks(flat)
+  }, [])
 
   const reset = useCallback(async () => {
     if (busy.current) return
     busy.current = true
     setRefreshing(true)
     try {
-      const page = await loaderRef.current(0, PAGE_SIZE)
-      range.current = {first: 0, last: 0}
+      const items = await loaderRef.current(0, PAGE_SIZE)
+      pages.current = [{index: 0, items}]
       // ONLY an empty page means the end. A short one does not: VK drops
       // restricted tracks from a page, so asking for 50 can answer with 49 and
       // there is still an archive behind it.
-      exhausted.current = page.length === 0
-      setTracks(page)
+      exhausted.current = items.length === 0
+      publish()
+      if (items.length) writeCache(cacheKeyRef.current, items)
     } catch (error) {
       console.warn('Unable to load the first page', error)
     } finally {
       busy.current = false
       setRefreshing(false)
     }
-  }, [])
+  }, [publish])
 
   const loadMore = useCallback(async () => {
-    if (busy.current || exhausted.current || range.current.last < 0) return
+    if (busy.current || exhausted.current || pages.current.length === 0) return
     busy.current = true
     setLoadingMore(true)
     try {
-      const next = range.current.last + 1
-      const page = await loaderRef.current(next * PAGE_SIZE, PAGE_SIZE)
-      if (page.length === 0) {
+      const next = pages.current[pages.current.length - 1].index + 1
+      const items = await loaderRef.current(next * PAGE_SIZE, PAGE_SIZE)
+      if (items.length === 0) {
         exhausted.current = true
         return
       }
 
-      setTracks((current) => {
-        const grown = [...current, ...page]
-        const pages = next - range.current.first + 1
-        if (pages <= MAX_PAGES) {
-          range.current = {first: range.current.first, last: next}
-          return grown
-        }
-        // over the cap: the oldest page leaves at the front
-        range.current = {first: range.current.first + 1, last: next}
-        return grown.slice(page.length)
-      })
+      const grown = [...pages.current, {index: next, items}]
+      // over the cap: the oldest pages leave at the front
+      pages.current = grown.length > MAX_PAGES ? grown.slice(grown.length - MAX_PAGES) : grown
+      publish()
     } catch (error) {
       console.warn('Unable to load the next page', error)
     } finally {
       busy.current = false
       setLoadingMore(false)
     }
-  }, [])
+  }, [publish])
 
   const loadPrevious = useCallback(async () => {
-    if (busy.current || range.current.first === 0) return
+    const first = pages.current[0]?.index ?? 0
+    if (busy.current || first === 0) return
     busy.current = true
     setLoadingMore(true)
     try {
-      const previous = range.current.first - 1
-      const page = await loaderRef.current(previous * PAGE_SIZE, PAGE_SIZE)
-      if (page.length === 0) return
+      const previous = first - 1
+      const items = await loaderRef.current(previous * PAGE_SIZE, PAGE_SIZE)
+      if (items.length === 0) return
 
-      setTracks((current) => {
-        const grown = [...page, ...current]
-        const pages = range.current.last - previous + 1
-        if (pages <= MAX_PAGES) {
-          range.current = {first: previous, last: range.current.last}
-          return grown
-        }
-        // over the cap: the newest page leaves at the end, and it can be
-        // fetched again by scrolling back down
-        range.current = {first: previous, last: range.current.last - 1}
+      const grown = [{index: previous, items}, ...pages.current]
+      if (grown.length > MAX_PAGES) {
+        // the newest page leaves at the end; scrolling back down fetches it again
+        pages.current = grown.slice(0, MAX_PAGES)
         exhausted.current = false
-        return grown.slice(0, grown.length - page.length)
-      })
+      } else {
+        pages.current = grown
+      }
+      publish()
     } catch (error) {
       console.warn('Unable to load the previous page', error)
     } finally {
       busy.current = false
       setLoadingMore(false)
     }
-  }, [])
+  }, [publish])
 
   useEffect(() => {
     if (!enabled) return

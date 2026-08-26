@@ -1071,6 +1071,95 @@ Tests: api **8 suites / 68 tests**. The app typechecks clean apart from two pre-
 
 ---
 
+# Round 16 — the window that never trimmed, and the cache that was lost (2026-08-26)
+
+Two bugs reported against the shipped build, both in the list:
+
+1. a cold start showed an empty screen until the API answered — the listing no longer used the
+   local cache;
+2. scrolling past ~200–300 tracks never unloaded anything. The list grew without bound and the
+   scroll stuck at the bottom re-loading forever.
+
+## The cache was dropped in the rewrite
+
+`usePlaylistState` mirrored the first page to MMKV and seeded the list from it on launch. Round 14
+replaced it with `useWindowedTracks`, which started from `useState<Track[]>([])` — nothing read the
+cache any more, and nothing wrote it. `usePlaylistState` is still in the tree with no callers.
+
+`useWindowedTracks` now takes a `cacheKey`. Page 0 is written to the same MMKV instance
+(`playlist`) after every successful load, and the hook's initial state is that page read back
+synchronously with `storage.getArray`, so the first frame already has rows. The network answer
+replaces them when it lands.
+
+* Songs → `songs-window`
+* Favorites → `favorites-window`, and **only** for the Frisky selection. The picker can put another
+  playlist on screen, and that must not become what the next cold start opens on — the same rule the
+  old `shouldCache` predicate enforced.
+
+## The bookkeeping ran a render too late
+
+The window kept its page range in `range.current`, but assigned it **inside** the `setTracks`
+updater:
+
+```ts
+setTracks((current) => {
+  ...
+  range.current = {first: range.current.first, last: next}   // runs during RENDER
+  return grown
+})
+busy.current = false                                          // runs NOW
+```
+
+React runs a functional updater in the render pass, not at the call site. `busy` was released
+immediately, so a second `onEndReached` in the same frame read the *old* `range.current.last`,
+fetched the **same** offset again and appended it a second time — while the page counter advanced
+only once. The list therefore grew by 100 per two events, `pages > MAX_PAGES` never became true, and
+the trim that was supposed to drop the front page never ran. That is exactly the reported symptom:
+endless appending, nothing unloaded, scroll frozen at the bottom.
+
+The trim itself had a second, smaller bug: it dropped `page.length` items from the front — the
+length of the *new* page. VK returns short pages (49 of 50 asked, restricted tracks removed), so the
+window drifted by a few tracks on every trim.
+
+Both are gone with a different shape. The window is a ref of whole pages:
+
+```ts
+type LoadedPage = {index: number; items: Track[]}
+const pages = useRef<LoadedPage[]>([])
+```
+
+mutated synchronously right after the fetch resolves, with `tracks` rebuilt from it by `publish()`.
+A trim now drops a **page**, not a count. `publish()` also de-duplicates by `trackKey`, so even a
+racing double fetch can no longer show a track twice.
+
+## Stable row keys
+
+`TrackList` had no `keyExtractor`, so FlashList keyed rows by index. The index of a track changes
+precisely when the window drops a page at the front or prepends one — which is the moment
+`maintainVisibleContentPosition` has to anchor on the row the user is looking at. Rows are now keyed
+by `trackKey` (sections by their title).
+
+## What was verified
+
+On the Android emulator, against the live account and the local API:
+
+* **cold start reads the cache** — `==window songs-window: seeded 50 tracks from cache` is logged
+  *before* `GET /api/playlist/frisky?count=50&offset=0`, and the same for `favorites-window`;
+* **the window trims** — 45 swipes down walked `pages 0 → 0,1 → 0,1,2,3 → 1,2,3,4 → … → 7,8,9,10`
+  and the flattened list stayed at 195–199 tracks the whole way, never above `MAX_PAGES`;
+* **no offset is fetched twice** — the request log is `offset=0,50,100,…,500`, strictly increasing,
+  no repeats (before the fix every offset appeared twice);
+* **scrolling up loads the previous pages** — offsets 250 then 200 came back, and the rows stayed
+  put;
+* **a short list still terminates** — Frisky-favorites has 116 tracks, so page 2 returned 16 and
+  page 3 was empty: `exhausted`, no loop;
+* the list is alive ~500 tracks deep (May 2026 rows on screen, smooth scroll).
+
+iOS: Fast Refresh applied, no red box, the list scrolls — but the taps still cannot be injected into
+that simulator, so it stays inside open question 2b.
+
+---
+
 # OPEN QUESTIONS — need your decision / your hands
 
 1. ~~**iOS: the mini-player expand gesture.**~~ **RESOLVED** — confirmed by the user on 2026-08-24:

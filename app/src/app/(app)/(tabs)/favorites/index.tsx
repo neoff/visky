@@ -17,6 +17,9 @@ import {useWindowedTracks} from "@/hooks/useWindowedTracks";
 
 const SUGGESTED: TrackListSection = {__section: 'Suggested for you'}
 
+/** MMKV key the Frisky favourites window seeds itself from on a cold start */
+const FAVORITES_CACHE_KEY = 'favorites-window'
+
 const FavoriteScreen = () => {
     const insets = useSafeAreaInsets()
     const [query, setQuery] = useState('')
@@ -30,7 +33,11 @@ const FavoriteScreen = () => {
       (offset: number, count: number) => fetchFavoritesPage(selectionQuery(selectionRef.current), offset, count),
       [],
     )
-    const {tracks, refreshing, loadingMore, reset, loadMore, loadPrevious} = useWindowedTracks(loadPage)
+    // Only the Frisky list is cached: it is what the tab opens on, and the other
+    // playlists must not end up in the cache that seeds the next cold start.
+    const cacheKey = selection.kind === 'frisky' ? FAVORITES_CACHE_KEY : undefined
+    const {tracks, refreshing, loadingMore, reset, loadMore, loadPrevious} =
+      useWindowedTracks(loadPage, true, cacheKey)
 
     const pickSelection = useCallback((next: PlaylistSelection) => {
         selectionRef.current = next;

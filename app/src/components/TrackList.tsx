@@ -1,6 +1,6 @@
 import { unknownTrackImageUri } from "@/constants/images";
 import { colors, layout } from '@/constants';
-import { isSameTrack } from '@/helpers/miscellaneous';
+import { isSameTrack, trackKey } from '@/helpers/miscellaneous';
 import { utilsStyles } from '@/styles';
 import {ActivityIndicator, FlatList, FlatListProps, Text, View} from "react-native";
 import FastImage from "react-native-fast-image";
@@ -102,6 +102,14 @@ export const TrackList = ({
             style={utilsStyles.emptyContentImage}
           />
         </View>
+      }
+      // Stable identity per row. FlashList falls back to the index otherwise,
+      // and the index of a track CHANGES whenever the window drops a page at
+      // the front or prepends one — which is exactly when
+      // `maintainVisibleContentPosition` needs to anchor on the row the user is
+      // looking at.
+      keyExtractor={(item, index) =>
+        isSection(item) ? `section-${item.__section}` : trackKey(item as Track) ?? `row-${index}`
       }
       renderItem={({ item: track }) => (
         isSection(track)
