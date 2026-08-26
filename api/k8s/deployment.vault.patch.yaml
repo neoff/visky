@@ -1,0 +1,61 @@
+# Vault agent injection for visky-api (ns frisky).
+#
+# The cluster Deployment is not templated anywhere — it is edited in place — so
+# this file is the record of what the Vault half of it looks like. Apply with:
+#
+#   kubectl --context oracle -n frisky patch deployment visky-api \
+#     --patch-file api/k8s/deployment.vault.patch.yaml
+#
+# It follows the same pattern as crypto-bits-api: the agent injector writes each
+# secret to its own file under /vault/secrets/, and the app is told where with
+# <NAME>_FILE (see `secret()` in src/configurations/playback.ts). Nothing
+# secret is written into the k8s Secret.
+#
+# Prerequisites, all already in place:
+#   * ServiceAccount `visky-api` in ns `frisky`
+#   * Vault kubernetes auth role `visky-api` bound to it
+#   * secret/database/visky/api  -> username, password  (Postgres role `visky`)
+#   * secret/visky-api/kafka     -> brokers
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "visky-api"
+
+        # Postgres credentials — the durable identities (which user owns which device)
+        vault.hashicorp.com/agent-inject-secret-db-user: "secret/data/database/visky/api"
+        vault.hashicorp.com/agent-inject-template-db-user: |
+          {{- with secret "secret/data/database/visky/api" -}}
+          {{ .Data.data.username }}
+          {{- end }}
+        vault.hashicorp.com/agent-inject-secret-db-password: "secret/data/database/visky/api"
+        vault.hashicorp.com/agent-inject-template-db-password: |
+          {{- with secret "secret/data/database/visky/api" -}}
+          {{ .Data.data.password }}
+          {{- end }}
+
+        # Kafka brokers — the store of record for playback state
+        vault.hashicorp.com/agent-inject-secret-kafka-brokers: "secret/data/visky-api/kafka"
+        vault.hashicorp.com/agent-inject-template-kafka-brokers: |
+          {{- with secret "secret/data/visky-api/kafka" -}}
+          {{ .Data.data.brokers }}
+          {{- end }}
+    spec:
+      serviceAccountName: visky-api
+      containers:
+        - name: visky-api
+          env:
+            # non-secret coordinates stay here; only the credentials come from Vault
+            - name: DB_HOST
+              value: "postgres-postgres.database.svc.cluster.local"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "visky"
+            - name: DB_USER_FILE
+              value: "/vault/secrets/db-user"
+            - name: DB_PASSWORD_FILE
+              value: "/vault/secrets/db-password"
+            - name: KAFKA_BROKERS_FILE
+              value: "/vault/secrets/kafka-brokers"

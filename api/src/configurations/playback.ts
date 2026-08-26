@@ -5,8 +5,33 @@
 // still serves playback state, it just keeps it in this process only — useful
 // for tests and for a bare `yarn dev`.
 import * as dotenv from "dotenv";
+import * as fs from "fs";
 
 dotenv.config();
+
+/**
+ * A value that may arrive as a FILE instead of an env var.
+ *
+ * The Vault agent injector writes each secret to its own file under
+ * `/vault/secrets/` and the pod is told where with `<NAME>_FILE`; the plain
+ * `<NAME>` stays for local runs, docker-compose and the tests. `<NAME>_FILE`
+ * wins when it is set AND readable — a missing file falls through to the env
+ * var rather than taking the process down, so a pod that starts before the
+ * agent has written its files still boots (memory-only) instead of crash-looping.
+ */
+const secret = (name: string, fallback = ""): string => {
+  const file = process.env[`${name}_FILE`];
+  if (file) {
+    try {
+      const value = fs.readFileSync(file, "utf8").trim();
+      if (value.length > 0) return value;
+      console.warn(`==config: ${name}_FILE (${file}) is empty — falling back to ${name}`);
+    } catch (error) {
+      console.warn(`==config: cannot read ${name}_FILE (${file}):`, (error as Error).message);
+    }
+  }
+  return process.env[name] ?? fallback;
+};
 
 const bool = (value: string | undefined, fallback = false): boolean =>
   value === undefined ? fallback : /^(1|true|yes|on)$/i.test(value);
@@ -28,7 +53,7 @@ const int = (value: string | undefined, fallback: number): number => {
  * Cluster: kafka-kafka.default.svc.cluster.local:29092 (ns `default`).
  */
 export const kafka = {
-  brokers: (process.env.KAFKA_BROKERS ?? "").split(",").map((b) => b.trim()).filter(Boolean),
+  brokers: secret("KAFKA_BROKERS").split(",").map((b) => b.trim()).filter(Boolean),
   clientId: process.env.KAFKA_CLIENT_ID ?? "visky-api",
   stateTopic: process.env.KAFKA_STATE_TOPIC ?? "visky.playback.state.v1",
   eventsTopic: process.env.KAFKA_EVENTS_TOPIC ?? "visky.playback.events.v1",
@@ -47,8 +72,8 @@ export const kafka = {
 export const db = {
   host: process.env.DB_HOST ?? "",
   port: int(process.env.DB_PORT, 5432),
-  username: process.env.DB_USER ?? "postgres",
-  password: process.env.DB_PASSWORD ?? "postgres",
+  username: secret("DB_USER", "postgres"),
+  password: secret("DB_PASSWORD", "postgres"),
   database: process.env.DB_NAME ?? "visky",
   synchronize: bool(process.env.DB_SYNCHRONIZE, false),
   logging: bool(process.env.DB_LOGGING, false),

@@ -335,13 +335,38 @@ Changed: `components/{FloatingPlayer,SessionProvider}.tsx`, `helpers/network.tsx
 
 ---
 
-## To deploy (not done)
+## Deployed — 2026-08-26 (api 1.5.36)
 
-1. Add to the `visky-api-env` secret (ns `frisky`): `KAFKA_BROKERS`,
-   `DB_HOST=postgres-postgres.database.svc.cluster.local`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`,
-   `DB_NAME=visky`. Without them the pod runs memory-only.
-2. `CREATE DATABASE visky` on the cluster Postgres — migrations run themselves on boot.
-3. A new native app build, or the push half stays inert (the rest works).
+Credentials come from **Vault**, not from the k8s Secret — the same shape `crypto-bits-api` uses.
+The agent injector writes each secret to its own file under `/vault/secrets/` and the pod is told
+where with `<NAME>_FILE`; `secret()` in `configurations/playback.ts` reads the file when it is set
+and readable, and otherwise falls back to the plain env var (local runs, docker-compose, the tests).
+A missing or empty file falls back rather than throwing, so a pod that starts before the agent has
+written its files boots memory-only instead of crash-looping.
+
+What was put in place:
+
+1. **Postgres role `visky`** — its own login, owner of database `visky` and of its `public` schema
+   (Postgres 17 does not let a non-owner create tables in `public`). The superuser password never
+   leaves the `database` namespace.
+2. **Vault KV**: `secret/database/visky/api` → `username`, `password`;
+   `secret/visky-api/kafka` → `brokers`. The kubernetes auth role `visky-api` and the
+   ServiceAccount `visky-api` in ns `frisky` already existed, unused, from 262 days ago.
+3. **Deployment patch** — `api/k8s/deployment.vault.patch.yaml`, the record of the Vault half of a
+   Deployment that is otherwise edited in place and templated nowhere. Non-secret coordinates
+   (`DB_HOST`, `DB_PORT`, `DB_NAME`) stay as plain env; only the credentials come from Vault.
+4. **`CREATE DATABASE visky`** was already done — migrations ran themselves on boot and created
+   `users`, `devices`, `migrations`, all owned by `visky`.
+
+Verified on the live pod: `/vault/secrets/{db-user,db-password,kafka-brokers}` are present,
+`==playback: postgres connected (…/visky)`, `==playback: created kafka topics
+visky.playback.state.v1, visky.playback.events.v1`, `kafka state replay complete`, `kafka
+connected`. The state topic came out with `cleanup.policy=compact` (rule 6). `/health` is 200 on
+both hosts and the socket answers `401` to an unauthenticated upgrade over HTTP/1.1, i.e. traefik
+passes the upgrade through and the API rejects it.
+
+Still open: a real two-device transfer against **prod** has not been run — the emulator here points
+at the local API, and the store build that points at prod is the one Google Play is rolling out.
 
 ---
 

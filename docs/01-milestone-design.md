@@ -1160,6 +1160,24 @@ that simulator, so it stays inside open question 2b.
 
 ---
 
+# Release — 2026-08-26 (round 16 + the connect milestone)
+
+* pushed `cb915d6..77decfe` (the list fix) and the follow-up commit with the Vault work.
+* **Android built LOCALLY** with `scripts/build-app-local.sh` (profile `production`, JDK 17):
+  artifact stayed on the machine at `app/build/visky-20260826-091218.aab` (75 MB), submitted to
+  Google Play internal, versionCode **63**.
+  Submission: https://expo.dev/accounts/varg/projects/visky/submissions/1f415e3c-8e2c-469e-ae6b-99fa0819d79a
+* **api `varg/visky-api:1.5.36`** built, pushed and rolled out (ctx=oracle, ns=frisky). This is the
+  first deploy that carries the cross-device playback code, so it also had to bring up its
+  infrastructure — see "Deployed — 2026-08-26" in `docs/02-connect-milestone.md`. Credentials come
+  from Vault via the agent injector, in the shape `crypto-bits-api` uses; nothing secret was written
+  into the k8s Secret.
+* Verified after the rollout: postgres connected, both kafka topics created (state topic
+  `cleanup.policy=compact`), replay complete, `/health` 200 on `frisky.envarg.com` and
+  `visky.envarg.com`, socket answers 401 to an unauthenticated upgrade.
+
+---
+
 # OPEN QUESTIONS — need your decision / your hands
 
 1. ~~**iOS: the mini-player expand gesture.**~~ **RESOLVED** — confirmed by the user on 2026-08-24:
@@ -1215,3 +1233,25 @@ that simulator, so it stays inside open question 2b.
    `album_id`, and the delete path (which is where `audio.removeFromPlaylist` turned out to be
    required). The `artist|title` match held for real data. What is still untested by hand is the iOS
    side of the same taps — open question 2b.
+
+9. **The Vault role `visky-api` carries the `admin` policy** (`path "*"` with `sudo`). It was
+   created 262 days ago and had never been used; the deploy on 2026-08-26 is the first thing to
+   authenticate with it. It works, but the app only ever reads two paths — a scoped policy
+   (`secret/data/database/visky/api`, `secret/data/visky-api/*`) would be the right shape. Not
+   changed, because it is your Vault role and nothing else in the cluster is scoped that way either.
+
+10. **The VK credentials are still a plain k8s Secret.** `visky-api-env` (OFFICIAL_APP_*,
+    VK_DIRECT_*, VK_ADMIN_ID) was left exactly as it was — only the new DB and Kafka values went to
+    Vault. Moving the rest is a separate migration: every one of those keys would need a
+    `<NAME>_FILE` read, and the app cannot be down while it happens.
+
+11. **`TimeoutNegativeWarning: -1787726086442 is a negative number`** is logged once at boot, right
+    after `Listening at …` and before Postgres connects. The magnitude is exactly a current epoch
+    in ms, so something is doing `setTimeout(0 - Date.now())`. It is not in our code — every
+    `setTimeout` in `api/src` takes a constant — so it comes from a dependency (kafkajs or typeorm
+    are the candidates that start there). Harmless (a negative delay fires immediately), but it is
+    new with 1.5.36 and nobody has traced it.
+
+12. **A real two-device transfer has never run against prod.** The connect milestone was verified
+    locally; the emulator here points at the local API, and the build that points at prod is the one
+    Google Play is rolling out. Needs two devices on the store build.
