@@ -18,7 +18,7 @@
 			"env": {
 				"EXPO_PUBLIC_LPI_URL": "http://localhost:3000",
 				"EXPO_PUBLIC_LPI_ANDROID_URL": "http://10.0.2.2:3000",
-				"EXPO_PUBLIC_API_URL": "https://visky.envarg.com",
+				"EXPO_PUBLIC_API_URL": "https://frisky.envarg.com",
 				"EXPO_PUBLIC_DEV": "false"
 			}
 		},
