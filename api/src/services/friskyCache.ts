@@ -647,6 +647,33 @@ export const runOnce = async (): Promise<string[]> => {
     const ds = await initDataSource();
     if (!ds) return [];
 
+    // Shows referenced by cached mixes but not cached themselves. The artwork the
+    // list draws lives on the show, and a mix paged in through `/mixes?artists_id=`
+    // brings only a reference — so without this the rows matched before shows were
+    // a table would render with no cover at all.
+    // Ordered by what is actually on a screen: the shows behind tracks that have
+    // already matched come first. Taking any 25 orphans instead converges just as
+    // slowly for the archive and leaves the visible rows blank for passes on end,
+    // which is what the first cut of this did.
+    const orphanShows = await ds.query<Array<{show_id: number}>>(`
+      SELECT m.show_id
+      FROM frisky_mixes m
+      WHERE m.show_id IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM frisky_shows s WHERE s.id = m.show_id)
+      GROUP BY m.show_id
+      ORDER BY
+        max(CASE WHEN EXISTS (
+          SELECT 1 FROM vk_tracks t
+          WHERE t.frisky_mix_id = m.id OR t.frisky_episode_id = m.episode_id
+        ) THEN 1 ELSE 0 END) DESC,
+        m.show_id DESC
+      LIMIT $1
+    `, [cfg.batchSize]);
+    if (orphanShows.length) {
+      await ensureShows(orphanShows.map((row) => row.show_id));
+      console.log(`==frisky: ${orphanShows.length} shows backfilled`);
+    }
+
     const retryBefore = new Date(Date.now() - cfg.retryAfterMs);
     const repository = ds.getRepository(VkTrack);
     const pending = await repository.find({
@@ -657,6 +684,8 @@ export const runOnce = async (): Promise<string[]> => {
       order: {lastSeen: "DESC"},
       take: cfg.batchSize,
     });
+    // not `return []` before the backfill above: a cache with everything matched
+    // and no shows is exactly the state that needs it
     if (pending.length === 0) return [];
 
     // grouped by SHOW, not by track and not by artist: Part 1, Part 2 and every

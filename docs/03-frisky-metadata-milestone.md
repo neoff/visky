@@ -103,12 +103,14 @@ Two rules the tests refused to go without:
 
 ## Part D — Where it lives
 
-Three tables (`1756600000000-FriskyCache`, `1756700000000-FriskyEpisodes`):
+Four tables (`1756600000000-FriskyCache`, `1756700000000-FriskyEpisodes`,
+`1756800000000-FriskyShows`):
 
 | Table | Holds |
 |---|---|
 | `vk_tracks` | the playlist as served: ids, artist, title, duration, VK upload date, artwork, the match keys, and the mix **and episode** it resolved to |
 | `frisky_mixes` | one row per piece: genres, `track_list`, show, episode, air date |
+| `frisky_shows` | the programme and, the reason it exists, **its artwork** |
 | `frisky_artists` | bio, photo, genres, links — filled from search hits, not mirrored |
 
 **`vk_tracks` has no `url` column, and must not grow one.** A VK audio link is signed for one
@@ -163,6 +165,46 @@ top, for a tracklist they did not ask for, is worse than not showing it.
 
 ---
 
+## Part F — Artwork: a mix has none
+
+`/v3/mixes` has no `image` field. Not an empty one — the key is absent. Only
+**episodes** and **shows** carry artwork, and an episode's image is the show's
+image anyway (`showmain/…`).
+
+That is invisible while a search is answering, because a search hands back the
+episodes too. It bites on the mixes paged in through `/mixes?artists_id=`, which
+is most of them for any long-running show: those arrive with a null image, and
+the merge used to fall through to `artist.photoUrl`. The list drew **a photo of
+the DJ where the programme's cover belongs**.
+
+So shows are cached, and the order is now:
+
+```
+VK's own cover  →  the episode's image  →  the show's (image → album_art → thumb)
+```
+
+The artist photo is **not in that chain at all**. It is still served, as
+`frisky.artist_photo`, for a UI that deliberately wants the person rather than
+the programme. `ensureShows` fills the table for mixes that carry only a show
+reference — exactly the ones that had nothing to draw with.
+
+### Backfilling what was already cached
+
+Removing the artist photo from the chain would have left every row matched
+*before* shows were a table with no cover at all — in production that was 2851 of
+5030 cached mixes, the ones paged in by artist. (Nothing wrong was ever stored:
+the photo was a runtime fallback, so `frisky_mixes.artwork` held zero artist
+photos. The rows were simply blank.)
+
+So each worker pass also fills in shows referenced by cached mixes,
+**ordered by what is on a screen** — the shows behind tracks that already matched
+come first. Taking any 25 orphans instead converges just as slowly for the
+archive while leaving the visible rows blank for passes on end, which is what the
+first cut of this did, and the verification caught it: the backfill ran, reported
+25 shows, and the cover was still missing.
+
+---
+
 ## The bug worth remembering
 
 **axios encodes a space as `+`, and frisky does not read `+` as a space.**
@@ -199,8 +241,15 @@ Against a throwaway Postgres container and the live frisky API:
   is served the **25** tracks its sibling 12710 holds under episode 7486
 - `air_start` survives the artist-paging pass (it did not at first: `/mixes` carries no episode
   records, so a plain upsert overwrote the search's dates with nulls)
+- every matched track resolves to a `showmain/…` cover and **none** to an artist photo
+- with `frisky_shows` emptied to reproduce the production state, one worker pass restores the
+  cover for the visible rows
 - an artist frisky has never heard of → `unmatched`, served as VK sent it, retried in 6h
-- 125 unit tests; `esbuild` bundle contains the new entities and both migrations
+- 125 unit tests; `esbuild` bundle contains the new entities and all three migrations
+
+In production (`varg/visky-api:1.5.37` onward): the pod comes up with
+`==frisky: metadata worker every 60s`, and `frisky_artists`, `frisky_mixes`,
+`frisky_shows` and `vk_tracks` exist with every migration recorded.
 
 ## Not done
 
@@ -208,5 +257,6 @@ Against a throwaway Postgres container and the live frisky API:
 - Nothing in the UI *shows* the tracklist yet — `PlayerTrackListBar` still has
   `isHaveTrackList = false` hardcoded. The data now arrives; drawing it is next.
 - Mixes whose episode has no tracklist anywhere on frisky stay empty. That is frisky's data.
-- `Shows` and `Episodes` from a search answer are read for their air dates and titles but are
-  not tables of their own; if show artwork or summaries are ever wanted, they will need to be.
+- `Episodes` are read for their air dates, images and titles but are not a table of their own —
+  what is needed from them is folded onto the mix. Shows now are one, because the artwork is
+  there and nowhere else.
