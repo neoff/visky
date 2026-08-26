@@ -4,6 +4,7 @@ import {Request, Response} from "@/types";
 import {checkAuthAndroid, vkMethod} from "@/helper/vk";
 import {cleanupData, cleanupDataAndSortPart, formatPlaylist} from "@/helper";
 import {Tracklist, type VkPlaylistResponse, VkResponse, TrackItem} from "@/__genedated__/openapi/vk";
+import {enrich, kick, remember} from "@/services/friskyCache";
 
 
 export const api = express.Router();
@@ -20,6 +21,9 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
     .then((vkResponse: VkResponse) => {
       //console.log("===>>frisky RAW data:", data);
       const response = vkResponse.response as VkPlaylistResponse;
+      // BEFORE the cleanup: it rewrites artist and title in place, and the
+      // "August 2026" it strips is half of what identifies the mix on frisky
+      remember(response?.items);
       const clean = cleanupDataAndSortPart(response);
       //console.log("===>>frisky data:", clean);
       return formatPlaylist(clean, offset);
@@ -218,6 +222,9 @@ const loadFriskyCatalog = async (req: Request): Promise<VkPlaylistResponse["item
       offset
     }, false);
     const chunk = (response.response as VkPlaylistResponse)?.items ?? [];
+    // the catalogue is the whole group, and it arrives raw exactly once per TTL
+    // — the cheapest moment there is to write the metadata cache
+    remember(chunk);
     items.push(...chunk);
     if (chunk.length < FRISKY_CATALOG_PAGE) break;
   }
@@ -266,6 +273,12 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
         favorite: byKey.has(favoriteKey(item))
       }));
     }
+
+    // Whatever frisky.fm already told us about these shows — tracklist, genres,
+    // artist photo. Tracks nothing is known about are served as VK sent them and
+    // picked up by the worker, which announces the result over the socket.
+    response.items = await enrich(response.items);
+    kick();
 
     res.status(200).send(response);
   } catch (error: Error | any) {
@@ -619,6 +632,8 @@ api.get("/frisky/favorites", checkAuthAndroid, async (req: Request, res: Respons
     }, false);
 
     const playlistResponse = response.response as VkPlaylistResponse;
+    // raw, before the cleanup — same reason as on /frisky
+    remember(playlistResponse?.items);
     // NO part-sorting here: VK returns a library and a playlist in the order
     // things were ADDED (newest first), and that is the order this tab wants.
     // Grouping "Part 2" next to its "Part 1" would move an old track to the top.
@@ -634,6 +649,11 @@ api.get("/frisky/favorites", checkAuthAndroid, async (req: Request, res: Respons
     // Every row of this tab is, by construction, in the list the heart writes to
     // — the selected playlist, or the library itself under "All".
     formatted.items = formatted.items.map((item) => ({...item, favorite: true}));
+
+    // the user's copies are different VK rows, but the same shows — so the same
+    // cached frisky metadata applies to them
+    formatted.items = await enrich(formatted.items);
+    kick();
 
     // "All" + a query also searches the rest of VK, below a divider the app
     // draws: the user's own audio first, everything else after it

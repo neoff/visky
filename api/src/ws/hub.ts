@@ -74,6 +74,22 @@ const broadcastDevices = async (userId: string): Promise<void> => {
   for (const connection of connections) send(connection, frame);
 };
 
+/**
+ * Tell every connected app that some tracks gained metadata.
+ *
+ * The frisky catalogue is the same for everybody — it is one radio station, not
+ * a per-user library — so this goes to all rooms rather than to an owner. It
+ * carries ids, not data: the app refreshes the list it is on and gets the merged
+ * version from the REST route, which is the only place the merge lives.
+ */
+export const broadcastCatalog = (trackIds: string[]): void => {
+  if (trackIds.length === 0) return;
+  const frame: ServerFrame = {t: "catalog", track_ids: trackIds, server_now_ms: Date.now()};
+  for (const connections of rooms.values()) {
+    for (const connection of connections) send(connection, frame);
+  }
+};
+
 const credentialsFrom = (request: IncomingMessage) => {
   const url = new URL(request.url ?? "/", "http://localhost");
   const header = (name: string): string | undefined => {

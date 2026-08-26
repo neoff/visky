@@ -143,21 +143,16 @@ export const formatPlaylist = (data: VkPlaylistResponse, offset?: number): Track
                 type: TrackItem.type.HLS,
                 favorite:  item.like?? false, //TODO: hardcoded
                 hidden:  false, //TODO: hardcoded
-                multipart: false, //TODO: hardcoded
-                genre_list: [{ //TODO: hardcoded
-                    id: 0,
-                    name: "Unknown Genre",
-                }],//item.genre_list?.map((genre) => ({
-                track_list: [{  //TODO: hardcoded
-                    id: 0,
-                    title: "string",
-                    artist: "string",
-                    duration: 0,
-                    time_code: "00:00:00",
-                    spotify: "string",
-                    youtube: "string",
-                    apple_music: "string",
-                }],//item.track_list?.map((track: TrackContent) => ({
+                // VK says nothing about parts; the title does, and it is the
+                // same rule the part-grouping above uses
+                multipart: partRegex.test(item.title ?? ""),
+                // EMPTY, not a placeholder. These two used to carry a fake
+                // "Unknown Genre" and a row reading "string — string", which the
+                // app rendered as if it were real. The genres and the tracklist
+                // come from frisky.fm (services/friskyCache) and are merged in
+                // after this — a track nothing is known about gets nothing.
+                genre_list: [],
+                track_list: [],
                 part_list: [{ //TODO: hardcoded
                     url: item.url,
                     part: 1,
