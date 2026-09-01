@@ -355,8 +355,9 @@ Zero skip lines after a clean boot, visky is the fifth entry in the media source
 Bluetooth Audio, Local Media, News and Radio, and selecting it renders the browse tree — Songs /
 Favorites / Artists with real tracks and artists.
 
-Not verified here: album art (the tiles fell back to placeholders), playback itself, and
-projection through the DHU, which stays blocked by the Play region.
+Not verified here: playback itself, and projection through the DHU, which stays blocked by
+the Play region. (The note that first stood here — that album art fell back to placeholders
+— was wrong; see Part H.)
 
 ---
 
@@ -462,8 +463,32 @@ transport controls.
 The phone was re-checked afterwards, because the entry point changed: launches clean, no
 crash buffer, `loading → buffering → ready`, playlist window at 49 tracks.
 
-Still open: album art in the car falls back to a placeholder, so the `content://` provider
-is not delivering.
+Album art is dealt with in Part H — the reading recorded here first was wrong.
+
+---
+
+## Part H — Album art: half a bug, and a correction
+
+I recorded twice that the `content://` provider was not delivering. That was wrong, and the
+mistake is worth keeping because of how it was made: I judged from the first four rows on
+screen. Those are `Feelin FRISKY August 2026` — tracks that have no artwork at all, on the
+phone exactly as much as in the car. Scrolling two screens down shows real covers on
+`Headspace August 2026`, `Plethora Muzik`, `Reimagine Sessions` and the rest. **Browse
+artwork was working the whole time.**
+
+There was a real bug next to it, and the wrong reading hid it. The *list* drew a correct
+cover for a track while the *now-playing* screen drew a placeholder for that same track.
+
+Two different paths feed those. Browse rows go through `artworkUri`, which was written for
+this and hands the car a `content://` uri. Now-playing is fed by the mirrored session
+instead, and the mirror copied react-native-track-player's metadata verbatim — including a
+remote `https` artwork url, which Automotive's image loader will not fetch. Same cause the
+browse path was already built to avoid, on the one path that had been left out.
+
+`localArtwork()` now rewrites the artwork keys in the mirrored metadata the same way, over
+`METADATA_KEY_ALBUM_ART_URI`, `METADATA_KEY_ART_URI` and `METADATA_KEY_DISPLAY_ICON_URI`,
+prefetching and re-publishing when the bytes land. Metadata went from 8 keys to 10, and the
+head unit draws the real cover — and derives its ambient background from it.
 
 ---
 

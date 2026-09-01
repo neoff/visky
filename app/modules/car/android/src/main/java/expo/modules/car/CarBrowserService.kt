@@ -462,7 +462,7 @@ class CarBrowserService : MediaBrowserServiceCompat() {
    */
   private val mirrorCallback = object : MediaControllerCompat.Callback() {
     override fun onMetadataChanged(metadata: MediaMetadataCompat?) {
-      metadata?.let { ownSession?.setMetadata(it) }
+      metadata?.let { ownSession?.setMetadata(localArtwork(it)) }
     }
 
     override fun onPlaybackStateChanged(state: PlaybackStateCompat?) {
@@ -471,6 +471,42 @@ class CarBrowserService : MediaBrowserServiceCompat() {
         PlaybackStateCompat.Builder(from).setActions(TRANSPORT_ACTIONS).build()
       )
     }
+  }
+
+  /**
+   * Point the mirrored metadata at artwork the car can actually open.
+   *
+   * The browse rows already do this — see [artworkUri] — but the now-playing
+   * screen is fed by this mirror instead, and react-native-track-player puts the
+   * remote https url straight into the session metadata. Automotive's image
+   * loader resolves content://, file:// and android.resource:// and quietly
+   * draws a placeholder for anything it would have to fetch itself, so the LIST
+   * showed a real cover while now-playing showed a placeholder for the very same
+   * track. That asymmetry is the whole symptom.
+   *
+   * Missing bytes are not an error: the placeholder stands until the fetch
+   * lands, and re-publishing the metadata then is what makes it appear.
+   */
+  private fun localArtwork(metadata: MediaMetadataCompat): MediaMetadataCompat {
+    val remote = ARTWORK_KEYS.firstNotNullOfOrNull { metadata.getString(it) }
+      ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+      ?: return metadata
+
+    val local = CarArtwork.uri(this, remote)
+    if (local == null) {
+      CarArtwork.prefetch(this, remote) {
+        // Same metadata, readable artwork this time. Re-read from the mirror
+        // rather than closing over this one: the track may have moved on.
+        handler.post {
+          mirror?.metadata?.let { ownSession?.setMetadata(localArtwork(it)) }
+        }
+      }
+      return metadata
+    }
+
+    return MediaMetadataCompat.Builder(metadata)
+      .apply { ARTWORK_KEYS.forEach { putString(it, local.toString()) } }
+      .build()
   }
 
   private fun startMirroring(token: MediaSessionCompat.Token) {
@@ -630,6 +666,13 @@ class CarBrowserService : MediaBrowserServiceCompat() {
         PlaybackStateCompat.ACTION_STOP
 
     private const val TAG = "==car"
+
+    /** Every key a head unit might read the cover from. */
+    private val ARTWORK_KEYS = listOf(
+      MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI,
+      MediaMetadataCompat.METADATA_KEY_ART_URI,
+      MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI,
+    )
     private const val FOREGROUND_CHANNEL = "car-runtime"
     private const val FOREGROUND_ID = 0x0CA5
     /** Long enough for a cold JS start, short enough not to strand a notification. */
