@@ -1,4 +1,19 @@
 replicaCount: 1
+
+# Blue/green: the running pod is torn down only after its replacement reports
+# ready. maxUnavailable 0 forbids dropping to zero endpoints, maxSurge 1 allows
+# the one extra pod needed to get there. Without this Helm falls back to the
+# 25%/25% default, which for a single replica happens to round to the same
+# numbers -- it is spelled out because that coincidence is not a guarantee.
+#
+# The cost is that two pods coexist during a rollout, both on the single node
+# named below. On 2026-09-01 that node stopped posting kubelet status mid-roll,
+# so keep an eye on it when the node is small.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
 name: sandbox
 appVersion: ""
 version: 0.0.0

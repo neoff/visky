@@ -83,7 +83,53 @@ export const cleanupData = (data: VkPlaylistResponse): VkPlaylistResponse => {
  */
 const PART_GROUP_WINDOW_S = 24 * 60 * 60
 
-type PartGroup = {anchor?: number; items: any[]}
+type PartGroup = {anchor?: number; order: number; items: any[]}
+
+/**
+ * The groups opened for one artist + base title, indexed by air date.
+ *
+ * `buckets` is keyed on `floor(anchor / window)`. Two moments less than a window
+ * apart always land in the same bucket or in adjacent ones, so a lookup reads
+ * three buckets rather than walking every group the key has ever opened. That
+ * distinction is the whole point on the search route, which sorts the entire
+ * catalogue in one pass: a weekly slot hosted by the same artist for years gives
+ * one key hundreds of groups, and a linear scan per item made the pass
+ * quadratic in the size of the catalogue.
+ */
+type KeySlot = {
+    /** Earliest group opened for the key — what an item with no date joins. */
+    first: PartGroup
+    /** floor(anchor / window) -> groups anchored there, in insertion order. */
+    buckets: Map<number, PartGroup[]>
+}
+
+const bucketOf = (date: number): number => Math.floor(date / PART_GROUP_WINDOW_S)
+
+/**
+ * The group an item belongs to, or undefined when it opens a new one. Mirrors
+ * the linear search this replaced, tie-break included: when more than one group
+ * is in range, the earliest-opened one wins.
+ */
+const findPartGroup = (slot: KeySlot, date: number | undefined): PartGroup | undefined => {
+    // An item with no date joins whatever group its title names: that is the
+    // pre-existing behaviour, and VK always sends a date anyway. It holds in
+    // reverse too — a group opened by a dateless item accepts any date — and
+    // such a group can only ever be the key's first, because a dateless item
+    // joins an existing group whenever there is one.
+    if (date === undefined || slot.first.anchor === undefined) return slot.first
+
+    let best: PartGroup | undefined
+    const centre = bucketOf(date)
+
+    for (let bucket = centre - 1; bucket <= centre + 1; bucket++) {
+        for (const candidate of slot.buckets.get(bucket) ?? []) {
+            if (Math.abs(candidate.anchor! - date) > PART_GROUP_WINDOW_S) continue
+            if (!best || candidate.order < best.order) best = candidate
+        }
+    }
+
+    return best
+}
 
 /**
  * Group tracks that belong to the same multipart show and order them Part 1,
@@ -98,8 +144,10 @@ type PartGroup = {anchor?: number; items: any[]}
  * fell into one group and came out interleaved — Part 1, Part 1, Part 2, Part 2.
  */
 export const  sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistResponse =>{
-    // artist + base title -> the groups opened for it so far, oldest first
-    const groups = new Map<string, PartGroup[]>();
+    // artist + base title -> the groups opened for it so far
+    const slots = new Map<string, KeySlot>();
+    // every group, in the order they were opened: `order` indexes into this
+    const allGroups: PartGroup[] = [];
     const sortedItems: any[] = [];
 
     for (const item of data.items) {
@@ -112,35 +160,39 @@ export const  sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistRespon
 
         const key = `${item.artist?.trim().toLowerCase() ?? ""}\u0000${match[1].toLowerCase()}`;
         const date = typeof item.date === "number" ? item.date : undefined;
-        const opened = groups.get(key);
-        // An item with no date joins whatever group its title names: that is the
-        // pre-existing behaviour, and VK always sends a date anyway.
-        const group = opened?.find((candidate) =>
-            candidate.anchor === undefined || date === undefined
-                ? true
-                : Math.abs(candidate.anchor - date) <= PART_GROUP_WINDOW_S,
-        );
+        let slot = slots.get(key);
+        const group = slot ? findPartGroup(slot, date) : undefined;
 
         if (group) {
             group.items.push(item);
             continue;
         }
 
-        const fresh: PartGroup = {anchor: date, items: [item]};
-        if (opened) opened.push(fresh);
-        else groups.set(key, [fresh]);
+        const fresh: PartGroup = {anchor: date, order: allGroups.length, items: [item]};
+        allGroups.push(fresh);
+
+        if (!slot) {
+            slot = {first: fresh, buckets: new Map()};
+            slots.set(key, slot);
+        }
+
+        if (date !== undefined) {
+            const bucket = bucketOf(date);
+            const anchored = slot.buckets.get(bucket);
+            if (anchored) anchored.push(fresh);
+            else slot.buckets.set(bucket, [fresh]);
+        }
+
         // placeholder: the whole group is spliced in at this position later
         sortedItems.push(fresh.items);
     }
 
-    for (const opened of groups.values()) {
-        for (const group of opened) {
-            group.items.sort((a, b) => {
-                const aNum = Number(a.title?.match(partRegex)![2]);
-                const bNum = Number(b.title?.match(partRegex)![2]);
-                return aNum - bNum;
-            })
-        }
+    for (const group of allGroups) {
+        group.items.sort((a, b) => {
+            const aNum = Number(a.title?.match(partRegex)![2]);
+            const bNum = Number(b.title?.match(partRegex)![2]);
+            return aNum - bNum;
+        })
     }
 
     data.items = sortedItems.flatMap((entry) => Array.isArray(entry) ? entry : [entry]);

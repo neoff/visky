@@ -156,6 +156,60 @@ describe('helpers', () => {
     expect(result.items.map(i => i.title)).toEqual(['Hurly Burly Part 1', 'Hurly Burly Part 2']);
   });
 
+  // The window is inclusive, and the bucket index the lookup uses is
+  // floor(date / window) -- so a pair straddling a bucket boundary has to be
+  // found in the NEIGHBOURING bucket, not just the item's own.
+  test('sortLocalPartTracks groups parts exactly one window apart', () => {
+    const day = 24 * 60 * 60;
+    // 1756000000 / 86400 is not an integer, so first and second sit in
+    // different buckets: the neighbour scan is what makes this pass.
+    const first = 1756000000;
+    const data: Tracklist = {
+      items: [
+        { title: 'Long Night Part 2', artist: 'Blue', date: first + day, type: 'hls' },
+        { title: 'Long Night Part 1', artist: 'Blue', date: first, type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = sortLocalPartTracks(data);
+    expect(result.items.map(i => i.title)).toEqual(['Long Night Part 1', 'Long Night Part 2']);
+  });
+
+  test('sortLocalPartTracks splits parts more than one window apart', () => {
+    const day = 24 * 60 * 60;
+    const first = 1756000000;
+    const data: Tracklist = {
+      items: [
+        { title: 'Long Night Part 2', artist: 'Blue', date: first + day + 1, type: 'hls' },
+        { title: 'Long Night Part 1', artist: 'Blue', date: first, type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = sortLocalPartTracks(data);
+    // Two separate editions: each keeps the position of its own first member,
+    // so the Part 2 that came in first stays first.
+    expect(result.items.map(i => i.date)).toEqual([first + day + 1, first]);
+  });
+
+  // The search route sorts the whole catalogue at once, where one artist can
+  // hold the same weekly slot for years. Every edition must stay its own group.
+  test('sortLocalPartTracks keeps many editions of one slot apart', () => {
+    const week = 7 * 24 * 60 * 60;
+    const base = 1700000000;
+    const items: any[] = [];
+    for (let edition = 0; edition < 200; edition++) {
+      const aired = base + edition * week;
+      items.push({ title: 'Weekly Part 1', artist: 'Blue', date: aired, type: 'hls' });
+      items.push({ title: 'Weekly Part 2', artist: 'Blue', date: aired + 60, type: 'hls' });
+    }
+    const result = sortLocalPartTracks({ items } as unknown as Tracklist);
+
+    expect(result.items).toHaveLength(400);
+    // Nothing merged across editions: the dates come back strictly ascending,
+    // each edition's Part 1 immediately followed by its own Part 2.
+    const dates = result.items.map(i => i.date as number);
+    expect(dates).toEqual([...dates].sort((a, b) => a - b));
+    expect(new Set(dates).size).toBe(400);
+  });
+
   test('cleanupDataAndSortPart combines both clean and sort', () => {
     const data: Tracklist = {
       items: [

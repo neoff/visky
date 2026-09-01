@@ -259,11 +259,15 @@ by suspecting the two new files rather than assuming an unrelated flake.
 ## Open, and what to do next
 
 1. **Deploy the API.** Nothing on the pairing path works until `/api/pair` is live. This is the
-   only blocker on trying it at all.
-2. **Build the app natively** — the camera permission is new, so an OTA update will not carry it.
-   This is the same rebuild milestone 05 needs for CarPlay and the watch; do them together.
+   only blocker on trying it at all. — *Attempted 2026-09-01 and rolled back; see milestone 07,
+   Part C. Production is on 1.5.40, so `/api/pair` still 404s and the desktop app says
+   `Could not reach the server to start pairing.`*
+2. ~~**Build the app natively**~~ — done 2026-09-01. The permission was missing because `prebuild`
+   had never been re-run after the plugin was added; milestone 07, Part A. The scanner opens on a
+   real device without crashing.
 3. **Then verify, in this order:** laptop shows → phone scans → laptop signed in; the same with
    the typed code; phone-to-phone; and finally the offline "Show my code" path, which should
-   still work with the API stopped.
+   still work with the API stopped. — *Still open: the camera streams, but nothing has been read
+   through it, and the first two need the API deployed.*
 4. **Chase the one failed test run.** See Verified.
 5. If replicas ever go above one, move the rendezvous onto the playback events topic — Part B.

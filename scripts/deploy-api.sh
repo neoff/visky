@@ -26,5 +26,8 @@ fi
 
 echo "==> deploy $IMAGE:$TAG  (ctx=$KCTX ns=$NS deploy=$DEPLOY)"
 kubectl --context "$KCTX" -n "$NS" set image "deployment/$DEPLOY" "$CONTAINER=$IMAGE:$TAG"
-kubectl --context "$KCTX" -n "$NS" rollout status "deployment/$DEPLOY" --timeout=120s
+# 120s was not enough: the vault-agent init container alone took 3m34s on
+# 2026-09-01, so the script reported a failure while Kubernetes was still
+# rolling out normally. Override with ROLLOUT_TIMEOUT if a deploy is slower.
+kubectl --context "$KCTX" -n "$NS" rollout status "deployment/$DEPLOY" --timeout="${ROLLOUT_TIMEOUT:-600s}"
 echo "==> deployed $IMAGE:$TAG"

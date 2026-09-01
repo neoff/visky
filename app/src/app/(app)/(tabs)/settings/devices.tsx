@@ -3,7 +3,7 @@ import {ScrollView, StyleSheet, Text, View} from 'react-native'
 import {MaterialCommunityIcons} from '@expo/vector-icons'
 import {AuthHandoff} from '@/components/AuthHandoff'
 import {iconFor, lastSeenLabel} from '@/components/DevicePicker'
-import {colors, fonts, screenPadding} from '@/constants'
+import {colors, fonts, layout, screenPadding} from '@/constants'
 import {usePlaybackStore} from '@/store/playback'
 
 /**
@@ -71,7 +71,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: screenPadding.horizontal,
-    paddingBottom: 48,
+    // Clear the tab bar AND the floating player that sits on top of it.
+    // A flat 48 put the "Add a device" buttons underneath the miniplayer,
+    // where a tap reaches the player instead. Same figure the song and
+    // favourites lists use.
+    paddingBottom: layout.tabBarContentHeight + 80,
     rowGap: 14,
   },
   heading: {
