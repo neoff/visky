@@ -102,6 +102,60 @@ describe('helpers', () => {
     ]);
   });
 
+  // Reported: a search for a recurring slot came back
+  //   Artist of the Week Part 1 (Selsi)
+  //   Artist of the Week Part 1 (Boraa)
+  //   Artist of the Week Part 2 (Selsi)
+  //   Artist of the Week Part 2 (Boraa)
+  // Two shows interleaved, because the group key was the base title alone.
+  test('sortLocalPartTracks keeps two artists in the same slot apart', () => {
+    const data: Tracklist = {
+      items: [
+        { title: 'Artist of the Week Part 1', artist: 'Selsi', date: 1756000000, type: 'hls' },
+        { title: 'Artist of the Week Part 1', artist: 'Boraa', date: 1755000000, type: 'hls' },
+        { title: 'Artist of the Week Part 2', artist: 'Selsi', date: 1756000060, type: 'hls' },
+        { title: 'Artist of the Week Part 2', artist: 'Boraa', date: 1755000060, type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = sortLocalPartTracks(data);
+    expect(result.items.map(i => `${i.artist} ${i.title}`)).toEqual([
+      'Selsi Artist of the Week Part 1',
+      'Selsi Artist of the Week Part 2',
+      'Boraa Artist of the Week Part 1',
+      'Boraa Artist of the Week Part 2'
+    ]);
+  });
+
+  // The catalogue-wide search route sorts years of episodes at once, so the
+  // same artist hosts the same slot again months later. That is a second show,
+  // not two more parts of the first.
+  test('sortLocalPartTracks keeps two editions by one artist apart', () => {
+    const march = 1741000000;
+    const august = 1756000000;
+    const data: Tracklist = {
+      items: [
+        { title: 'Artist of the Week Part 2', artist: 'Selsi', date: august + 60, type: 'hls' },
+        { title: 'Artist of the Week Part 1', artist: 'Selsi', date: august, type: 'hls' },
+        { title: 'Artist of the Week Part 2', artist: 'Selsi', date: march + 60, type: 'hls' },
+        { title: 'Artist of the Week Part 1', artist: 'Selsi', date: march, type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = sortLocalPartTracks(data);
+    expect(result.items.map(i => i.date)).toEqual([august, august + 60, march, march + 60]);
+  });
+
+  // Both halves of one episode are uploaded minutes apart; they must still meet.
+  test('sortLocalPartTracks groups parts uploaded minutes apart', () => {
+    const data: Tracklist = {
+      items: [
+        { title: 'Hurly Burly Part 2', artist: 'Blue', date: 1756000420, type: 'hls' },
+        { title: 'Hurly Burly Part 1', artist: 'Blue', date: 1756000000, type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = sortLocalPartTracks(data);
+    expect(result.items.map(i => i.title)).toEqual(['Hurly Burly Part 1', 'Hurly Burly Part 2']);
+  });
+
   test('cleanupDataAndSortPart combines both clean and sort', () => {
     const data: Tracklist = {
       items: [

@@ -3,29 +3,62 @@ import {ActivityIndicator, Modal, Pressable, StyleSheet, Text, View} from 'react
 import {useSafeAreaInsets} from 'react-native-safe-area-context'
 import {colors, fonts, screenPadding} from '@/constants'
 import {transferPlayback} from '@/helpers/network'
+import {useAudioRoute} from '@/hooks/useAudioRoute'
 import {playbackSync} from '@/services/playbackSync'
 import {usePlaybackStore} from '@/store/playback'
 import {PlaybackDeviceInfo} from '@/types/playback'
+import {AudioRoute, AudioRouteKind} from '../../modules/audio-route'
 
 /**
- * "Play on…" — the same idea as Spotify Connect's speaker list.
+ * Two questions, stacked in one sheet, and they are easy to confuse:
  *
- * A device is only a target while it is reachable: the app in the foreground,
- * or in the background WITH sound (both platforms keep the process alive then).
- * A device that has been swiped away is greyed out, because nothing can start
- * audio on it from the outside — a silent push can wake an app, but never make
- * it play. Its last position is not lost though: it restores the moment the
- * user opens the app there.
+ *   "Sound output"  — WHERE ON THIS DEVICE the sound leaves: its speaker, the
+ *                     headphones, a Bluetooth set. The OS owns it.
+ *   "Play on"       — WHICH DEVICE signed into the account is playing at all.
+ *                     We own it, over the socket.
+ *
+ * Output comes first because it is the one that changes daily.
+ *
+ * "Play on…" is the same idea as Spotify Connect's speaker list. A device is
+ * only a target while it is reachable: the app in the foreground, or in the
+ * background WITH sound (both platforms keep the process alive then). A device
+ * that has been swiped away is greyed out, because nothing can start audio on
+ * it from the outside — a silent push can wake an app, but never make it play.
+ * Its last position is not lost though: it restores the moment the user opens
+ * the app there.
  */
 
-const iconFor = (platform: string | null): keyof typeof MaterialCommunityIcons.glyphMap => {
+const OUTPUT_ICONS: Record<AudioRouteKind, keyof typeof MaterialCommunityIcons.glyphMap> = {
+  bluetooth: 'bluetooth-audio',
+  headphones: 'headphones',
+  speaker: 'volume-high',
+  usb: 'usb',
+  hdmi: 'video-input-hdmi',
+  car: 'car',
+  airplay: 'cast-audio',
+  unknown: 'volume-high',
+}
+
+const OUTPUT_LABELS: Record<AudioRouteKind, string> = {
+  bluetooth: 'Bluetooth',
+  headphones: 'Headphones',
+  speaker: 'Speaker',
+  usb: 'USB',
+  hdmi: 'HDMI',
+  car: 'Car',
+  airplay: 'AirPlay',
+  unknown: 'Audio output',
+}
+
+/** Shared with the Devices screen, which lists the same rows without the transfer. */
+export const iconFor = (platform: string | null): keyof typeof MaterialCommunityIcons.glyphMap => {
   if (platform === 'ios') return 'cellphone'
   if (platform === 'android') return 'cellphone-basic'
   if (platform === 'web') return 'laptop'
   return 'devices'
 }
 
-const lastSeenLabel = (device: PlaybackDeviceInfo): string => {
+export const lastSeenLabel = (device: PlaybackDeviceInfo): string => {
   if (device.online) return device.is_active ? 'Playing here' : 'Available'
   if (!device.last_seen_ms) return 'Offline'
   const minutes = Math.round((Date.now() - device.last_seen_ms) / 60_000)
@@ -40,6 +73,19 @@ export const DevicePicker = ({visible, onClose}: {visible: boolean; onClose: () 
   const devices = usePlaybackStore((store) => store.devices)
   const thisDevice = usePlaybackStore((store) => store.deviceId)
   const connected = usePlaybackStore((store) => store.connected)
+  const output = useAudioRoute()
+
+  const outputKind = output.current?.kind ?? 'unknown'
+  // Everything connected minus the one in use — "2 others connected" is the
+  // only honest way to hint at a choice we cannot make from here.
+  const otherOutputs = output.available.filter((route) => route.id !== output.current?.id).length
+
+  // The OS owns this one. Neither platform lets an app move media to a chosen
+  // output — see modules/audio-route — so the row opens the system picker
+  // instead of pretending to switch.
+  const handleOutput = () => {
+    void AudioRoute.presentOutputPicker()
+  }
 
   const handlePick = async (device: PlaybackDeviceInfo) => {
     if (device.is_active) {
@@ -65,6 +111,32 @@ export const DevicePicker = ({visible, onClose}: {visible: boolean; onClose: () 
       <Pressable style={styles.backdrop} onPress={onClose} />
       <View style={[styles.sheet, {paddingBottom: bottom + 16}]}>
         <View style={styles.handle} />
+
+        {output.canPresentPicker && (
+          <>
+            <Text style={styles.title}>Sound output</Text>
+            <Pressable
+              onPress={handleOutput}
+              style={({pressed}) => [styles.row, pressed && styles.rowPressed]}
+            >
+              <MaterialCommunityIcons name={OUTPUT_ICONS[outputKind]} size={24} color={colors.icon} />
+              <View style={styles.rowText}>
+                <Text style={styles.deviceName} numberOfLines={1}>
+                  {output.current?.name ?? 'This device'}
+                </Text>
+                <Text style={styles.deviceMeta} numberOfLines={1}>
+                  {OUTPUT_LABELS[outputKind]}
+                  {otherOutputs > 0
+                    ? ` · ${otherOutputs} other${otherOutputs > 1 ? 's' : ''} connected`
+                    : ''}
+                </Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={colors.textMuted} />
+            </Pressable>
+            <View style={styles.separator} />
+          </>
+        )}
+
         <Text style={styles.title}>Play on</Text>
 
         {devices.length === 0 ? (
@@ -145,6 +217,14 @@ const styles = StyleSheet.create({
     fontSize: fonts.base,
     fontWeight: '700',
     marginBottom: 12,
+  },
+  // Splits the OS-owned half of the sheet from the account-owned half. Same
+  // colour as the mini player's seam, so the two reads as one language.
+  separator: {
+    height: 1,
+    backgroundColor: colors.surfaceDivider,
+    marginTop: 10,
+    marginBottom: 16,
   },
   row: {
     flexDirection: 'row',

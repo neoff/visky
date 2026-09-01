@@ -1,15 +1,20 @@
 import { useSession } from "@/components/SessionProvider";
+import { useIncomingAuthLink } from "@/hooks/useIncomingAuthLink";
 import { getAuth } from "@/helpers/network";
 import { AuthFragments } from "@/types/auth";
 import { Redirect, Stack, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Button } from "react-native";
-import {apiUrls} from "@/constants";
+import {apiUrls, colors} from "@/constants";
 
 const AuthLayout = () => {
   const { signIn, signOut, getSession, auth_url, isLoading } = useSession();
   const [authorized, setAuthorized] = useState<AuthFragments|boolean>(false);
   const router = useRouter();
+  // A link opened with credentials in its fragment signs in before anything is
+  // drawn. Sits here rather than in the root layout because this group is the
+  // only one a signed-out session ever renders.
+  useIncomingAuthLink();
   const userSession: AuthFragments = getSession() as AuthFragments;
   if (isLoading) {
     console.log("--AuthLayout=Loading...");
@@ -47,6 +52,17 @@ const AuthLayout = () => {
   return (
     <Stack>
       <Stack.Screen name="welcome" options={{headerShown: false}}/>
+      <Stack.Screen
+        name="pair"
+        options={{
+          title: 'Pair a device',
+          // The stack's default header is light; every other screen in this app
+          // is black, and a white bar over the pairing screen looks like a
+          // different application.
+          headerStyle: {backgroundColor: colors.background},
+          headerTintColor: colors.text,
+        }}
+      />
       <Stack.Screen
         name="login"
         options={{

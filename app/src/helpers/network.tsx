@@ -40,10 +40,54 @@ export const setAuthHeaders = (session: AuthFragments | null): void => {
 /** The id every request identifies this installation with. */
 export const currentDeviceId = (): string | null => authHeaders["x-auth-device"] ?? null;
 
+/**
+ * Credential keys, and everything printed about a request goes through this.
+ *
+ * Metro's output is not ephemeral: it is scrollback, it gets redirected into
+ * build log files, and it is what people paste into a bug report. A token
+ * printed once is a token leaked — and `x-auth-secret` is worse than the token,
+ * because the audio URL signature is md5(url + secret) and it does not expire
+ * with the session.
+ *
+ * The match is on the key name, case-insensitively, so it catches `access_token`
+ * whether it arrives in a header, a request body or a response.
+ */
+const SECRET_KEYS = new Set([
+  "x-auth-token",
+  "x-auth-secret",
+  "access_token",
+  "refresh_token",
+  "secret",
+  "password",
+  "success_token",
+  "push_token",
+]);
+
+/** Length is kept: "the token is there but wrong" and "there is no token" are
+ *  different bugs, and masking to a constant makes them look identical. */
+const mask = (value: unknown): string =>
+  typeof value === "string" ? `«redacted ${value.length}»` : "«redacted»";
+
+/**
+ * A log-safe copy. Depth-capped because an axios config holds its adapter, its
+ * transport and — after a response — a socket, and walking into those turns one
+ * debug line into a page of noise.
+ */
+const redact = (value: unknown, depth = 0): unknown => {
+  if (depth > 4 || value == null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((item) => redact(item, depth + 1));
+
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = SECRET_KEYS.has(key.toLowerCase()) ? mask(entry) : redact(entry, depth + 1);
+  }
+  return out;
+};
+
 const registerInterceptors = () => {
   console.log("registerAuth");
   axios.interceptors.request.use((config) => {
-    console.log("axios.interceptors.request:", config);
+    console.log("axios.interceptors.request:", config.method, config.url);
     return config;
   }, (error) => {
     console.error("axios.interceptors.request error:", error);
@@ -51,7 +95,7 @@ const registerInterceptors = () => {
   });
 
   axios.interceptors.response.use((response) => {
-    console.log("axios.interceptors.response:", response);
+    console.log("axios.interceptors.response:", response.status, response.config?.url);
     return response;
   }, (error) => {
     console.error("axios.interceptors.response error:", error);
@@ -70,7 +114,7 @@ const apiRequest = async (url: string, method: Method | string, {data, next}:{da
     data: data,
     headers: {...headers, ...authHeaders},
   }
-  console.debug("==apiRequest config:", config);
+  console.debug("==apiRequest config:", redact(config));
 
   return await axios
     .request(config)
@@ -89,7 +133,7 @@ export const getAuth = ({onLoad, onError}: {onLoad?: (fragments: any) => void, o
   if (!url) return;
   apiRequest(apiUrls.tokenUrl, 'POST', {data:{"vkurl": url}})
     .then((data) => {
-      console.log("--->getAuth-response:", data);
+      console.log("--->getAuth-response:", redact(data));
       if(data.redirect){
         return getAuth({onLoad, onError}, data.redirect);
       }
@@ -132,11 +176,11 @@ export const directAuth = async (payload: {
 }
 
 export const refreshToken = ({onLoad, onError}: {onLoad?: (res: any) => void, onError?: (error: any) => void}, data: any) => {
-  console.debug("===refreshToken data:", data);
+  console.debug("===refreshToken data:", redact(data));
   if (!data) return;
   return apiRequest(apiUrls.refreshUrl, 'POST', {data:data})
     .then((data) => {
-      console.log("--->refreshToken-response:", data);
+      console.log("--->refreshToken-response:", redact(data));
       return onLoad?.(data);
     })
     .catch((error: AxiosError) => {
@@ -401,4 +445,98 @@ export const fetchTrackById = async (ownerId: number | string, id: number | stri
     album: item?.album?.title ?? 'Unknown Album',
     artwork: item?.artwork ?? item?.album?.thumb?.photo_300 ?? unknownTrackImageUri,
   };
+};
+
+// ---------------------------------------------------------------------------
+// Pairing: handing this session to a screen that cannot log in on its own.
+//
+// These four do not go through `apiRequest`. Two of them are called from a
+// SIGNED-OUT app — the browser waiting to be paired has no headers to send — and
+// all four care about the status code rather than the body: 204 means "not yet",
+// 410 means "that code is gone", and `apiRequest` collapses both into a thrown
+// axios error with a red line in the log. Polling every 1.5s for three minutes
+// would fill Metro's scrollback with them.
+// ---------------------------------------------------------------------------
+
+export interface PairTicket {
+  pair_id: string;
+  code: string;
+  expires_in: number;
+  name: string;
+  platform: string;
+}
+
+/** Ask the API to hold a slot open for this screen. */
+export const openPairing = async (name: string, platform: string): Promise<PairTicket> => {
+  const response = await axios.post(apiUrls.pairUrl, {name, platform}, {headers});
+  return response.data as PairTicket;
+};
+
+/** What the phone shows the user before it hands anything over. */
+export const peekPairing = async (
+  idOrCode: string,
+): Promise<{name: string; platform: string} | null> => {
+  const response = await axios.get(`${apiUrls.pairUrl}/${encodeURIComponent(idOrCode)}/peek`, {
+    headers,
+    validateStatus: (status) => status === 200 || status === 410 || status === 429,
+  });
+  return response.status === 200 ? response.data : null;
+};
+
+export type ClaimOutcome = 'ok' | 'expired' | 'taken' | 'refused';
+
+/**
+ * Fill that slot with this device's session.
+ *
+ * The credentials are not in the body: they ride in the `x-auth-*` headers every
+ * other call already sends, and the API checks them against VK before parking
+ * anything. `expiresIn` is the only thing worth stating explicitly — without it
+ * the receiving screen has to guess the token's remaining life.
+ */
+export const claimPairing = async (
+  idOrCode: string,
+  expiresIn?: number,
+): Promise<ClaimOutcome> => {
+  const response = await axios.post(
+    `${apiUrls.pairUrl}/${encodeURIComponent(idOrCode)}/claim`,
+    expiresIn ? {expires_in: expiresIn} : {},
+    {
+      headers: {...headers, ...authHeaders},
+      validateStatus: (status) => status < 500,
+    },
+  );
+
+  if (response.status === 200) return 'ok';
+  if (response.status === 409) return 'taken';
+  if (response.status === 410) return 'expired';
+  console.warn('==pair: claim refused', response.status, response.data);
+  return 'refused';
+};
+
+/**
+ * The waiting screen asking "yet?". `null` while nothing has arrived, the
+ * session once it has — and the API forgets the slot on the way out, so this
+ * answers exactly once.
+ */
+export const collectPairing = async (
+  pairId: string,
+): Promise<{state: 'pending'} | {state: 'gone'} | {state: 'session'; session: AuthFragments}> => {
+  const response = await axios.get(`${apiUrls.pairUrl}/${encodeURIComponent(pairId)}`, {
+    headers,
+    validateStatus: (status) => status === 200 || status === 204 || status === 410,
+  });
+
+  if (response.status === 204) return {state: 'pending'};
+  if (response.status === 410) return {state: 'gone'};
+
+  const {access_token, secret, user_id, expires_in} = response.data ?? {};
+  if (!access_token || !secret || !user_id) return {state: 'gone'};
+
+  const session: AuthFragments = {access_token, secret, user_id: String(user_id)};
+  if (Number.isFinite(expires_in) && expires_in > 0) {
+    session.created = new Date();
+    session.maxAge = expires_in * 1000;
+    session.expires = new Date(Date.now() + expires_in * 1000);
+  }
+  return {state: 'session', session};
 };

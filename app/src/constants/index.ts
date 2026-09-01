@@ -92,8 +92,18 @@ export const PlayerState: IPlayerState = {
 
 
 // Routing
+//
+// `Linking.createURL` builds a DEEP LINK — a full url with the app's scheme.
+// That is right on a phone and wrong in a browser, where it resolves against
+// window.location.origin and drops the base path entirely: the web player is
+// served from /player, so a redirect through it lands on /(auth)/welcome at the
+// root and 404s against nginx. expo-router's own paths go through
+// `appendBaseUrl`, which knows about the prefix, so web uses those.
 export const rootPage: Href = Linking.createURL('/(tabs)') as `${string}:${string}`;
-export const authPage: Href = Linking.createURL('/(auth)/welcome') as `${string}:${string}`;
+export const authPage: Href =
+  Platform.OS === 'web'
+    ? ('/welcome' as Href)
+    : (Linking.createURL('/(auth)/welcome') as `${string}:${string}`);
 export const appPage: Href = Linking.createURL('/(app)') as `${string}:${string}`;
 
 // Application headers
@@ -123,6 +133,15 @@ if (__DEV) {
 }
 const redirectUrl: string = '?redirect=' + baseHost;
 
+/**
+ * Where the WEB player lives. It is a different container behind the same host
+ * as the API (`/player`), so it cannot be derived from `baseHost` — and it is
+ * what a QR handover has to point at, generated on a PHONE that has no idea
+ * what the browser's address bar says.
+ */
+export const webPlayerUrl: string =
+  process.env.EXPO_PUBLIC_WEB_URL || 'https://frisky.envarg.com/player';
+
 export const baseUrl: string = `${baseHost}/api`
 // The playback socket rides the same host and the same TLS as the REST API, so
 // http -> ws and https -> wss; traefik upgrades it without any extra config.
@@ -130,11 +149,14 @@ const wsHost: string = baseHost.replace(/^http/, "ws")
 const authUrl: string = `${baseUrl}/auth`
 const playlistUrl: string = `${baseUrl}/playlist`
 const playerUrl: string = `${baseUrl}/player`
+// The rendezvous a screen with no session opens so a phone can fill it.
+const pairUrl: string = `${baseUrl}/pair`
 export const apiUrls = {
   baseUrl: baseUrl,
   authUrl: authUrl,
   playlistUrl: playlistUrl,
   playerUrl: playerUrl,
+  pairUrl: pairUrl,
   oAuthUrl: `${authUrl}/vk-oauth`,
   // Real VK login by default. `baseHost` already points at the local API in dev
   // (10.0.2.2:3000 on Android), so dev exercises the SAME VK login page, grant

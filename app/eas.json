@@ -34,6 +34,9 @@
 			"distribution": "store",
 			"android": {
 				"buildType": "app-bundle"
+			},
+			"ios": {
+				"simulator": false
 			}
 		}
 	},
@@ -41,6 +44,9 @@
 		"production": {
 			"android": {
 				"track": "internal"
+			},
+			"ios": {
+				"appleId": "en.varg@me.com"
 			}
 		}
 	}

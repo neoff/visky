@@ -59,6 +59,11 @@ const setupPlayer = async () => {
 
   await TrackPlayer.updateOptions({
     ratingType: RatingType.Heart,
+    // Turns Event.PlaybackProgressUpdated on — it does not fire at all without
+    // an interval. The playback service uses it to warm the next track before
+    // the current one ends (services/prefetch). Ten seconds is fine grained
+    // enough for a 90-second lead and cheap enough to run for a whole show.
+    progressUpdateEventInterval: 10,
     android: {
       // false = a short interruption ducks instead of pausing
       alwaysPauseOnInterruption: false,
