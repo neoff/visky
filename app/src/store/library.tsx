@@ -11,6 +11,31 @@ interface LibraryState {
   addToPlaylist: (track: Track, playlistName: string) => void
 }
 export const storage = new MMKVLoader().withInstanceID('playlist').initialize();
+
+/**
+ * The MMKV keys the tab windows mirror their first page to.
+ *
+ * They live here, beside the instance they are written to, because they have a
+ * SECOND reader: services/car.ts builds the CarPlay and Android Auto tree from
+ * exactly what the app's own screens are showing. That reader used to go
+ * through `useLibraryStore` below, whose `tracks` come from the `'tracks'` key
+ * — which nothing has written since the tabs moved to windowed loading. The
+ * result was a car with an empty Favorites tab and an empty Artists tab and no
+ * error anywhere: the same failure the note about `rating === 1` in
+ * store/favorites warns about, reading a field nobody maintains.
+ */
+export const SONGS_CACHE_KEY = 'songs-window'
+export const FAVORITES_CACHE_KEY = 'favorites-window'
+
+/** The cached page as plain data, for readers outside React. Empty, never throws. */
+export const cachedTracks = async (key: string): Promise<TrackWithPlaylist[]> => {
+  try {
+    return (await storage.getArrayAsync<TrackWithPlaylist>(key)) ?? []
+  } catch (error) {
+    console.warn('==library: could not read', key, error)
+    return []
+  }
+}
 const getTracks = async ():Promise<TrackWithPlaylist[]> => {
   //const [tracks, setTracks] = useMMKVStorage<TrackWithPlaylist[]>('tracks', storage, []);
   const tracks = await storage.getArrayAsync<TrackWithPlaylist>('tracks')

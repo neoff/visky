@@ -68,9 +68,17 @@ export function SessionProvider({children}: PropsWithChildren) {
 
   // Mirror the stored session into the network layer's auth headers (RN has no
   // cookie jar). Runs on login, on sign-out, and on cold-start once storage loads.
-  useEffect(() => {
-    setAuthHeaders(parsed);
-  }, [parsed]);
+  //
+  // DURING RENDER, not in an effect, and that is the whole point. React runs a
+  // child's effects BEFORE its parent's, so as an effect this landed after the
+  // songs screen had already fired its first request — which went out with no
+  // x-auth-* headers and came back 403 "No token or secret". The screen then sat
+  // empty until something refreshed it, on every single cold start.
+  //
+  // `setAuthHeaders` assigns a module-level record and touches no React state,
+  // so calling it while rendering is safe, and rendering is the only place early
+  // enough to beat the children.
+  useMemo(() => setAuthHeaders(parsed), [parsed]);
 
   return (
     <AuthContext.Provider

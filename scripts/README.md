@@ -31,6 +31,49 @@ scripts/build-app-local.sh --no-submit  # local build only, keeps app/build/*.aa
 Needs: local **Android SDK + JDK 17**, `eas` auth (for `eas submit`), clean git
 tree. Slower to set up than the cloud build; use it to keep the build off expo.dev.
 
+### `deploy-ios.sh` — cloud build (expo.dev) + App Store Connect / TestFlight
+EAS **cloud** build of the iOS app, auto-submitted to App Store Connect. The
+build shows up in TestFlight; promoting it to a public App Store release stays a
+manual step in App Store Connect.
+
+```bash
+scripts/deploy-ios.sh               # production build + submit
+scripts/deploy-ios.sh --no-submit   # build only (stays on expo.dev)
+scripts/deploy-ios.sh --submit-last # submit the latest EAS build, no rebuild
+PROFILE=preview scripts/deploy-ios.sh
+```
+
+Needs: paid **Apple Developer Program** membership, the app record created in
+App Store Connect for `com.envarg.visky`, `eas whoami` authenticated, clean git
+tree. Signing material lives on EAS — run `eas credentials -p ios` once.
+
+The watch target ships a second bundle id (`com.envarg.visky.watchkitapp`) that
+needs its own provisioning profile, so the **first** store build must run
+interactively (`npx eas-cli@latest build -p ios --profile production`) to let
+EAS create it. Later runs of the script work unattended.
+
+## Desktop (Electron, macOS)
+
+### `build-desktop.sh` — signed .dmg / .pkg
+Exports the Expo web bundle, wraps it in the Electron shell and packages a universal build,
+**signed** with the Developer ID certificates in the login keychain (pinned by SHA-1 in
+`desktop/package.json`).
+
+```bash
+scripts/build-desktop.sh              # dmg + pkg, signed
+scripts/build-desktop.sh --dmg        # dmg only
+scripts/build-desktop.sh --arch arm64
+scripts/build-desktop.sh --skip-bundle
+scripts/build-desktop.sh --unsigned   # skip signing
+scripts/build-desktop.sh --run        # launch locally, no packaging
+```
+
+Notarisation runs only when Apple credentials are in the environment — either
+`APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER` (App Store Connect API key)
+or `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD`. Without them the build is signed but
+not notarised, and the receiving Mac still needs, once:
+`xattr -dr com.apple.quarantine /Applications/visky.app`.
+
 ## API (Node/Express, image `varg/visky-api`)
 
 ### `build-api.sh` — build + push Docker image (+ optional deploy)

@@ -1,4 +1,7 @@
 import TrackPlayer, { Event, State } from "react-native-track-player";
+import { prefetchNextTrack } from "@/services/prefetch";
+import { startCarLink } from "@/services/car";
+import { startWatchLink } from "@/services/watch";
 
 /**
  * Was the show playing when something took the audio away?
@@ -54,9 +57,28 @@ const PlayerRegisterService = async () => {
       TrackPlayer.skipToPrevious()
     });
 
+    // Warm the NEXT track before this one runs out.
+    //
+    // This listener lives in the playback service rather than in a hook on
+    // purpose: the service survives the screen going off, and an hour-long mix
+    // is played with the phone in a pocket. A timer in the UI would be frozen
+    // by the OS exactly when the hand-over happens.
+    TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, (event) => {
+      void prefetchNextTrack(event.position, event.duration);
+    });
+
     TrackPlayer.addEventListener(Event.RemoteStop, () => {
       TrackPlayer.stop()
     });
+
+    // Mirror playback onto the Apple Watch and the car, and take their
+    // commands. Registered here for the same reason as the prefetch above: both
+    // are used while the phone is in a pocket or a cradle, which is exactly
+    // when a screen's listeners are gone. Each no-ops where its native module
+    // is absent — the watch on Android, the car on web, both on any binary
+    // built before they existed.
+    startWatchLink();
+    startCarLink();
   } catch (error) { }
 
 }

@@ -65,6 +65,10 @@ export const FloatingPlayer = ({style}: ViewProps) => {
               />
             </TouchableOpacity>
           </StopPropagation>
+          {/* Play/pause and forward only. A back button was tried here and
+              taken out again: the miniplayer is a glance and a thumb, and the
+              fourth control cost the track title the width it needs more. Going
+              back lives in the full player, which is one tap away. */}
           <PlayPauseButton iconSize={24} type={PlayerButtonType.SMALL}/>
           <SkipToNextButton iconSize={22} type={PlayerButtonType.SMALL}/>
         </View>

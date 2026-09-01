@@ -1,0 +1,64 @@
+# The WEB PLAYER — a separate release from the api, on purpose.
+#
+# It shares a host with the backend (frisky.envarg.com) and nothing else: its
+# own image, its own deployment, its own service, and an ingress that claims
+# exactly one path. Release it with a name that cannot be confused with the api:
+#
+#   helm upgrade --install visky-web web/.github/helm -n frisky
+#
+# Every object in this chart is named after the release, so `visky-web` and
+# `visky-api` never touch each other's deployment, service or ingress.
+replicaCount: 1
+name: web
+appVersion: ""
+version: 0.0.0
+
+image:
+  repository: "varg/visky-web"
+  tag: "latest"
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: regcred  # same private Docker Hub repo as the api
+
+# nginx serving ~4 MB of static files. Kept small deliberately: it shares nodes
+# with the api, and that node has under a gigabyte free.
+resources:
+  limits:
+    cpu: 200m
+    memory: 96Mi
+  requests:
+    cpu: 10m
+    memory: 24Mi
+
+# Unpinned. The api is nailed to mini-n because of its memory profile; this is
+# an nginx with static files and can land anywhere the image's architecture
+# fits — build-web.sh pushes linux/amd64, which is what the cluster runs.
+nodeSelector: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: traefik
+  # NOTE: no cert-manager.io/cluster-issuer here, and that is deliberate.
+  # `visky-api-tls` is issued and renewed by the api's ingress. Two ingresses
+  # asking cert-manager for the SAME secret is how you get two orders racing on
+  # one certificate; this one only READS the secret the api already owns.
+  annotations:
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+  hosts:
+    - host: frisky.envarg.com
+      paths:
+        # Traefik ranks routers by rule length, so this beats the api's "/"
+        # on the same host without any priority annotation. Everything the
+        # player needs lives under it, including /player/_expo/*.
+        - path: /player
+          pathType: Prefix
+  tls:
+    - secretName: visky-api-tls
+      hosts:
+        - frisky.envarg.com

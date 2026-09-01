@@ -17,8 +17,7 @@ import {useWindowedTracks} from "@/hooks/useWindowedTracks";
 
 const SUGGESTED: TrackListSection = {__section: 'Suggested for you'}
 
-/** MMKV key the Frisky favourites window seeds itself from on a cold start */
-const FAVORITES_CACHE_KEY = 'favorites-window'
+import {FAVORITES_CACHE_KEY} from "@/store/library";
 
 const FavoriteScreen = () => {
     const insets = useSafeAreaInsets()

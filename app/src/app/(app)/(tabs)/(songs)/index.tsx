@@ -14,8 +14,7 @@ import {useDebouncedValue} from "@/hooks/useDebouncedValue";
 import {useFocusEffect} from "expo-router";
 import {useWindowedTracks} from "@/hooks/useWindowedTracks";
 
-/** MMKV key the Songs window seeds itself from on a cold start */
-const SONGS_CACHE_KEY = 'songs-window'
+import {SONGS_CACHE_KEY} from "@/store/library";
 
 
 const SongsScreen = () => {

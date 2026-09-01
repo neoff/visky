@@ -13,6 +13,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.envarg.visky",
+      "entitlements": {
+        "com.apple.developer.carplay-audio": true
+      },
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "visky"
@@ -37,7 +40,8 @@
               "NSExceptionAllowsInsecureHTTPLoads": true
             }
           }
-        }
+        },
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -65,8 +69,18 @@
         }
       ],
       "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "visky uses the camera only to read a pairing code shown by another screen, so this phone can sign that screen in.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-notifications",
-      "./plugins/withVkTrustAnchor"
+      "./plugins/withVkTrustAnchor",
+      "./plugins/withWatchApp",
+      "./plugins/withCarPlay"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -41,6 +41,11 @@ envFrom:
 ingress:
   enabled: true
   className: traefik
+  # `/player` on frisky.envarg.com is NOT this chart's. It belongs to the
+  # `visky-web` release (web/.github/helm) — the static web player, a separate
+  # container. Traefik ranks routers by rule length, so that longer prefix wins
+  # over the "/" below without any priority annotation here. Do not add a
+  # /player path to this chart, and do not widen these paths to swallow it.
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/redirect-entry-point: https

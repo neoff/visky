@@ -384,6 +384,8 @@ at the local API, and the store build that points at prod is the one Google Play
    run this build has no name and shows as "Unknown device".
 5. **A revoked token keeps its socket for up to 10 minutes** — the verification cache TTL.
 6. **Devices are never pruned.** A phone that was signed in once stays in the list for ever.
+   Items 4-6 now have a UI surface: the Devices screen added in milestone 06 shows this list
+   read-only, so an unnamed row or a stale one is something the user sees rather than infers.
 7. **`api/package-lock.json` churned** (~3.9k lines) because the new deps went in with npm while
    `yarn.lock` also exists in the tree. Both lockfiles carry `kafkajs`/`ws`, but the repo should
    pick one.

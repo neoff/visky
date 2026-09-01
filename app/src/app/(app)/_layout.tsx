@@ -32,7 +32,12 @@ export default function AppLayout() {
     return <Redirect href={authPage} />;
   }
   SplashScreen.hideAsync()
-  console.log("--AppLayout=Stack session: ", userSession);
+  // Identity only. This used to print `userSession` whole, which put the VK
+  // access_token and the audio-signing secret into Metro's output on every
+  // render of the authenticated layout — the same leak network.tsx was fixed
+  // for, from a second place. The secret is the worse half: the audio URL
+  // signature is md5(url + secret) and it does not expire with the session.
+  console.log("--AppLayout=Stack session:", userSession.user_id, userSession.device_id);
   const handleDismiss = () => {
     router.dismiss()
   };

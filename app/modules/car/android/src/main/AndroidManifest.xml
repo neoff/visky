@@ -1,0 +1,58 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <!--
+          What makes the app visible on a head unit. Android Auto scans installed
+          apps for this meta-data; react-native-track-player's own service does
+          not declare it (and is not a browser service at all), which is why the
+          app cannot be seen in a car today.
+        -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!--
+          The SAME descriptor under a second name, and both are needed.
+
+          `com.google.android.gms.car.application` is Android Auto — projection
+          from a phone onto a head unit. `com.android.automotive` is Android
+          Automotive OS, where the car IS the Android device and there is no
+          phone at all. They are different platforms that happen to share a
+          browse API, and each scans for its own key.
+
+          Declaring only the first is why the app was missing from the media
+          source list on an Automotive emulator: the service was installed,
+          exported and answering, and the car simply never asked it anything.
+        -->
+        <meta-data
+            android:name="com.android.automotive"
+            android:resource="@xml/automotive_app_desc" />
+
+        <!--
+          Album art, as something the car can actually open. See
+          CarArtworkProvider for what being exported does and does not expose.
+        -->
+        <provider
+            android:name="expo.modules.car.CarArtworkProvider"
+            android:authorities="${applicationId}.carartwork"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
+        <!--
+          The browse tree. `exported` is required: the client is Android Auto,
+          a different process. onGetRoot is where callers are checked — an
+          exported browser service that answers everyone hands its library to
+          any app on the device.
+        -->
+        <service
+            android:name="expo.modules.car.CarBrowserService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.browse.MediaBrowserService" />
+            </intent-filter>
+        </service>
+
+    </application>
+
+</manifest>

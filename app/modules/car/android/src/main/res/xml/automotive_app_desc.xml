@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Declares to Android Auto what kind of app this is. Without it the app is not
+  offered on a head unit at all, however correct the browser service is.
+-->
+<automotiveApp>
+  <uses name="media" />
+</automotiveApp>

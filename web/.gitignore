@@ -1,0 +1,3 @@
+# Built by scripts/build-web.sh from app/, reproducible:
+#   web/   the Expo bundle exported for platform web, base path /player
+web/

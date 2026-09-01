@@ -1,0 +1,24 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.car'
+version = '1.0.0'
+
+android {
+  namespace "expo.modules.car"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  // MediaBrowserServiceCompat and MediaSessionCompat. Android Auto talks to the
+  // support-library types, not the framework ones, and react-native-track-player
+  // is on the same androidx.media stack (via ExoPlayer 2's MediaSessionConnector)
+  // — so the token we hand over below and the session it came from are the
+  // same class.
+  implementation 'androidx.media:media:1.7.0'
+}

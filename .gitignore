@@ -391,3 +391,10 @@ android/**
 tmp
 
 app.config.js
+
+# Apple signing material — private keys and API keys, never commit
+certs/
+*.p8
+*.p12
+*.mobileprovision
+*.certSigningRequest

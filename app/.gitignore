@@ -391,3 +391,8 @@ android/**
 tmp
 
 app.config.js
+# ...but THIS one has to be in the repo. It holds no secrets — it reads
+# EXPO_WEB_BASE_URL and sets experiments.baseUrl, which is what serves the web
+# player from /player. Without the file a clone builds a bundle that loads its
+# assets from the site root and shows a white page.
+!app.config.js

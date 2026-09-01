@@ -77,12 +77,29 @@ export const cleanupData = (data: VkPlaylistResponse): VkPlaylistResponse => {
 }
 
 /**
+ * Parts of one broadcast are uploaded together; a rerun of the same slot months
+ * later is a different show. A day is far wider than the minutes between two
+ * halves of one episode and far narrower than the gap between two editions.
+ */
+const PART_GROUP_WINDOW_S = 24 * 60 * 60
+
+type PartGroup = {anchor?: number; items: any[]}
+
+/**
  * Group tracks that belong to the same multipart show and order them Part 1,
  * Part 2, Part 3. The group keeps the position of its first member, so the
  * overall (date descending) order of the playlist is preserved.
+ *
+ * A group is identified by ARTIST + base title + when it aired, not by the base
+ * title alone. FRISKY titles are slot names, not show names: "Artist of the
+ * Week" comes back every week with somebody else behind the decks, and the
+ * search route sorts the whole catalogue at once, where a slot repeats for
+ * years. Keyed on the title alone, Selsi's two halves and Boraa's two halves
+ * fell into one group and came out interleaved — Part 1, Part 1, Part 2, Part 2.
  */
 export const  sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistResponse =>{
-    const groups = new Map<string, any[]>();
+    // artist + base title -> the groups opened for it so far, oldest first
+    const groups = new Map<string, PartGroup[]>();
     const sortedItems: any[] = [];
 
     for (const item of data.items) {
@@ -93,25 +110,37 @@ export const  sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistRespon
             continue;
         }
 
-        const baseTitle = match[1].toLowerCase();
-        const group = groups.get(baseTitle);
+        const key = `${item.artist?.trim().toLowerCase() ?? ""}\u0000${match[1].toLowerCase()}`;
+        const date = typeof item.date === "number" ? item.date : undefined;
+        const opened = groups.get(key);
+        // An item with no date joins whatever group its title names: that is the
+        // pre-existing behaviour, and VK always sends a date anyway.
+        const group = opened?.find((candidate) =>
+            candidate.anchor === undefined || date === undefined
+                ? true
+                : Math.abs(candidate.anchor - date) <= PART_GROUP_WINDOW_S,
+        );
 
         if (group) {
-            group.push(item);
-        } else {
-            const newGroup = [item];
-            groups.set(baseTitle, newGroup);
-            // placeholder: the whole group is spliced in at this position later
-            sortedItems.push(newGroup);
+            group.items.push(item);
+            continue;
         }
+
+        const fresh: PartGroup = {anchor: date, items: [item]};
+        if (opened) opened.push(fresh);
+        else groups.set(key, [fresh]);
+        // placeholder: the whole group is spliced in at this position later
+        sortedItems.push(fresh.items);
     }
 
-    for (const group of groups.values()) {
-        group.sort((a, b) => {
-            const aNum = Number(a.title?.match(partRegex)![2]);
-            const bNum = Number(b.title?.match(partRegex)![2]);
-            return aNum - bNum;
-        })
+    for (const opened of groups.values()) {
+        for (const group of opened) {
+            group.items.sort((a, b) => {
+                const aNum = Number(a.title?.match(partRegex)![2]);
+                const bNum = Number(b.title?.match(partRegex)![2]);
+                return aNum - bNum;
+            })
+        }
     }
 
     data.items = sortedItems.flatMap((entry) => Array.isArray(entry) ? entry : [entry]);
