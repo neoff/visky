@@ -51,6 +51,21 @@
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
+
+            <!--
+              Android Automotive's opt-in, and it lives on the SERVICE, not on
+              the application. Without it car-media-common logs
+
+                No opt-in info found for Component ComponentInfo{...}
+                Skipping MBS ... belonging to non media template app
+
+              and the app never reaches the car's media source list, however
+              correct the two application-level descriptors above are. AOSP's
+              own LocalMediaPlayer declares this and nothing else.
+            -->
+            <meta-data
+                android:name="androidx.car.app.launchable"
+                android:value="true" />
         </service>
 
     </application>

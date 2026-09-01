@@ -281,6 +281,85 @@ miniplayer.
 
 ---
 
+## Part F — Android Auto: the opt-in is on the service
+
+Milestone 05 left one item open: verify the car at runtime with the Desktop Head Unit. That
+route turned out to be shut, and the detour found a real bug.
+
+### The DHU is unreachable, for a reason that is not ours
+
+DHU talks to the **Android Auto app on the phone**, and Play refuses to install it:
+
+> Android Auto — Google LLC
+> ⚠ This item isn't available in your country.
+
+The device is plainly in Finland (`gsm.operator.iso-country = fi`, `Europe/Helsinki`), so this is
+the Google **account** country, which adb cannot read. Android Auto *is* offered in Finland, so
+the account is set to somewhere it is not. Changing a Play country needs a payment profile in the
+new country and is allowed once a year — not a step to spend on this.
+
+The `AA_Play_API30` AVD is no escape either: `PlayStore.enabled = no`, and the same account would
+hit the same block.
+
+### Android Automotive needs no such app, and is the better test anyway
+
+On AAOS the car **is** the Android device: our APK installs directly, no projection, no phone.
+Both AVDs are `arm64-v8a` and the APK ships that ABI, so it just installs.
+
+First result: the app appeared in the car's launcher and its service resolved as one of the five
+media browser services on the system —
+
+```
+expo.modules.car.CarBrowserService
+```
+
+— and yet it was **absent from the media source list**, with this in the log:
+
+```
+D MediaSource: No opt-in info found for Component
+               ComponentInfo{com.envarg.visky/expo.modules.car.CarBrowserService}
+D MediaSource: Skipping MBS for ComponentInfo{...}
+               belonging to non media template app com.envarg.visky
+```
+
+### What it was
+
+Ruled out in order: the descriptor (`<automotiveApp><uses name="media"/></automotiveApp>` is
+verbatim correct inside the APK); the resource id (`0x7f150000` really is `xml/automotive_app_desc`);
+both application-level metadata keys (`com.google.android.gms.car.application` and
+`com.android.automotive`, both present, both pointing at that resource); the AAOS multi-user model
+(the launcher logging this runs as `u10_a167`, the app is installed for users 0 and 10, current
+user is 10); the OEM allowlist (`custom_media_packages` holds only Radio and the projection
+receiver, so it is not how the built-in sources get in); and moving the descriptor metadata onto
+the service, which changed nothing.
+
+The answer came from AOSP's own `LocalMediaPlayer`, which the car accepts. Its manifest has **no**
+`com.android.automotive` at all. What it has, on the **service**, is:
+
+```xml
+<meta-data android:name="androidx.car.app.launchable" android:value="true" />
+```
+
+That is the opt-in the log means, and the message says so — it names a *Component*, not a package.
+Two application-level descriptors are what Android Auto reads; Android Automotive reads this, off
+the service.
+
+### Verified after the fix
+
+```
+D MediaSource: MBS for ComponentInfo{com.envarg.visky/expo.modules.car.CarBrowserService}
+               is opted in
+```
+
+Zero skip lines after a clean boot, visky is the fifth entry in the media source list beside
+Bluetooth Audio, Local Media, News and Radio, and selecting it renders the browse tree — Songs /
+Favorites / Artists with real tracks and artists.
+
+Not verified here: album art (the tiles fell back to placeholders), playback itself, and
+projection through the DHU, which stays blocked by the Play region.
+
+---
+
 ## Verified
 
 - **The crash is gone.** On the Note 8: the sheet opens, the permission dialog appears, the camera
