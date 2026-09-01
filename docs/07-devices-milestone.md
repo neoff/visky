@@ -492,6 +492,71 @@ head unit draws the real cover — and derives its ambient background from it.
 
 ---
 
+## Part I — Pairing, against the deployed API
+
+`/api/pair` is live: api **1.5.42** carries both the pairing routes and the quadratic fix from
+Part D. The rollout was clean, and the two repairs from Part C earned their place — the 600 s
+timeout did not lie about the outcome, and the explicit blue/green strategy held the endpoint up
+throughout.
+
+*(A thing worth knowing for the record: 1.5.41 — the image with the quadratic pass — was
+redeployed after Part C's rollback and served production for about two hours before 1.5.42
+replaced it.)*
+
+### The rendezvous, exercised against the real server
+
+Not supertest. Production, over the internet:
+
+| | |
+|---|---|
+| `POST /api/pair` | 200, ticket with `pair_id`, `code`, `expires_in: 180` |
+| `GET /api/pair/:id/peek` | 200 |
+| `GET /api/pair/:code/peek` | 200 |
+| `GET /api/pair/6QS0-127F/peek` | 200 — the dash is stripped, so Crockford parsing survives the wire |
+| `GET /api/pair/:id` while pending | 204 |
+| `GET /api/pair/<unknown>/peek` | 410 |
+| `POST /api/pair/:id/claim` with no auth | 403 |
+
+### The typed code, on the Note 8
+
+A slot was opened by curl under the name `MacBook Pro (Chrome)`, the code typed into the sheet by
+hand, and the phone came back with
+
+> **Sign in on MacBook Pro (Chrome)?**
+> That device gets this VK account — the library, the favourites and playback control… Only do
+> this for a screen you own.
+
+which closes the loop phone → API → phone: the name is the one the *other* side registered, fetched
+through `peek`, and the app shows whose screen it is before it hands anything over.
+
+**Not confirmed, deliberately.** The next tap sends a real VK session to a slot opened by curl for
+a device that does not exist — precisely what the sheet warns against. Cancelled instead, and
+`GET /api/pair/:id` answered **204** afterwards: nothing was parked, so cancel really cancels.
+
+### Three older repairs, verified on hardware by accident
+
+- **The scanner remount.** Cancelling the sheet returns to a *live* camera. That is the bug found
+  by review in milestone 06 — `key={problem ?? 'scanning'}` would not remount when cancelling
+  restored a value that was already there, leaving `delivered.current` true and the camera dead.
+  The attempt counter that replaced it works.
+- **`formatPairCode`.** The field shows `74F3-PXDS`.
+- **The Devices screen padding** from Part E: the three actions are reachable, which is how any of
+  this was reached at all.
+
+### One small thing found here
+
+The soft keyboard covers the *Use this code* button. Not a blocker — the keyboard's own Done key
+submits, which is how the confirmation above was reached — but the button is unreachable while
+typing, and it is the obvious thing to press.
+
+### Verified by the user, off this machine
+
+Scanning the QR shown by the **desktop app** works. That is the milestone's original direction —
+the screen that cannot log in displays, the phone reads — and it is the one hop no amount of adb
+could reach from here.
+
+---
+
 ## Verified
 
 - **The crash is gone.** On the Note 8: the sheet opens, the permission dialog appears, the camera
@@ -510,13 +575,11 @@ head unit draws the real cover — and derives its ambient background from it.
 
 ## Not verified
 
-- **Actual QR decoding.** The phone cannot be aimed at a screen remotely. The camera streams; that
-  a code is read from it is untested.
-- **Desktop → phone pairing.** Blocked: production is on 1.5.40, where `/api/pair` 404s. The
-  desktop app reports `Could not reach the server to start pairing.`, which is that 404 surfacing
-  correctly.
 - **Phone → phone pairing.** Should work today — that payload carries the credentials and needs no
   server — but it has not been tried.
+- **The last hop of the typed-code path.** See Part I: everything up to the confirmation sheet is
+  verified, and the sheet was cancelled rather than confirmed, because the "other screen" was a
+  slot opened by curl and the sheet's own warning is *only do this for a screen you own*.
 - **iOS Release.** The user ran a Release build to the iPhone successfully and added a script for
   it (`yarn iphone`). Whether `ViskyCarPlaySceneDelegate` survives Release dead-stripping is still
   the open question from milestone 05; a Release build now exists to test it on.
