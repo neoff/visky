@@ -360,6 +360,113 @@ projection through the DHU, which stays blocked by the Play region.
 
 ---
 
+## Part G — "Loading content…", and the four walls behind it
+
+Tapping a track in the car did nothing: the browse list was right, the now-playing
+screen said *Loading content…* for ever. Four separate causes, each hidden behind the
+one in front of it.
+
+### 1. The command was dropped
+
+```
+W ==car: command play dropped: no JS runtime to handle it
+```
+
+`CarLink.onCommand` is set in the module's `OnStartObserving`, which needs JS to have
+subscribed. On Automotive the car starts the browse service from a cold boot: the tree
+comes off disk (that is why real tracks appeared with nothing running) and there is no
+runtime to act on a tap. The diagnostic that made this a two-minute diagnosis was already
+in the code, written when the gap was predicted.
+
+Now the command is **held** in `CarLink` — one slot, because during a start the driver
+meant the last thing they touched — and delivered from the `onCommand` setter the moment
+the module attaches.
+
+### 2. Nothing started a runtime
+
+`CarBrowserService` now starts one: `ReactHost.start()`, the sanctioned headless boot, no
+Activity in front of a driver. Reached reflectively, for the same reason `rntpSessionToken`
+is reflective — the module compiles as a plain Android library with React off its classpath.
+
+### 3. The runtime booted and still nobody listened
+
+`startCarLink()` had two call sites: the root layout, which needs a mounted tree, and the
+playback service, which `useSetupTrackPlayer` only registers from a hook. In a headless
+runtime neither runs.
+
+Fixed with an `index.js` entry — the one call site that exists in *every* runtime. Safe
+rather than convenient: `startCarLink` is idempotent, no-ops without the native module, and
+its own comment already said whichever call lands first wins.
+
+### 4. The player refused to exist
+
+```
+Error: On Android the app must be in the foreground when setting up the player.
+code: 'android_cannot_setup_player_in_background'
+```
+
+Two things were wrong. `setupPlayer` was private to the hook, so the car had no way to ask
+for it — lifted into `services/trackPlayer.ts` as `ensureTrackPlayer()`, memoised per
+runtime, registering the playback service through a lazy `require` to break the
+car → trackPlayer → PlayerRegisterService → car import cycle.
+
+And RNTP's guard itself. Promoting `CarBrowserService` to a foreground service did not
+satisfy it, because `AppForegroundTracker` counts **activities** — it observes
+`ProcessLifecycleOwner`'s resume/pause and nothing else, so a process running a foreground
+service still reads as backgrounded. This is not an emulator artefact: in a real car the
+foreground belongs to `com.android.car.media` and our process never is.
+
+Patched (the repo already patches this package) to also accept a process whose importance
+is `IMPORTANCE_FOREGROUND_SERVICE` or better — which is exactly the condition under which
+starting a foreground service is legal, so the `ForegroundServiceDidNotStartInTimeException`
+the guard exists to prevent cannot occur. The car grants the window itself:
+
+```
+Background started FGS: Allowed ... code:TEMP_ALLOWED_WHILE_IN_USE
+tempAllowListReason:<MediaSessionRecord..., duration:10000>
+```
+
+`CarBrowserService` holds the foreground across the boot and releases it as soon as
+track-player's own service appears, with a 60 s timer so a failed start cannot strand a
+notification.
+
+*(Note for next time: `npx patch-package` swept `node_modules/.../android/build/` into the
+patch — 88k lines. Regenerate with `--exclude '(^|/)build/'`.)*
+
+### And one more, after the audio was already playing
+
+The car still showed *Loading content…* while ExoPlayer held audio focus, because our
+session had nothing to mirror. The token search is bounded on purpose — a driver who only
+browses must not be polled all trip — and `bindService` is called without a CREATE flag, so
+once it gives up nothing remains to fire `onServiceConnected` when track-player finally
+starts. A car command is the signal that playback is imminent, so it now re-arms the search.
+
+### Verified
+
+From a cold `am force-stop`, tapping a track in the AAOS media list:
+
+```
+W ==car: command play held: no JS runtime yet, starting one
+I ==car: holding the foreground so the player can be created
+I ==car: delivering the command held while the runtime was starting
+I ==car: automotive: mirroring track-player's state into our session
+I ==car: released the foreground
+
+state=PlaybackState {state=PLAYING(3), buffered position=3630, active item id=0}
+metadata: size=6, description=Feelin FRISKY August 2026
+```
+
+and the head unit shows the title, `0:00:22 / 1:07:41`, a moving progress bar and live
+transport controls.
+
+The phone was re-checked afterwards, because the entry point changed: launches clean, no
+crash buffer, `loading → buffering → ready`, playlist window at 49 tracks.
+
+Still open: album art in the car falls back to a placeholder, so the `content://` provider
+is not delivering.
+
+---
+
 ## Verified
 
 - **The crash is gone.** On the Note 8: the sheet opens, the permission dialog appears, the camera

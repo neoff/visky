@@ -1,7 +1,7 @@
 {
   "name": "visky",
   "version": "1.0.0",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",

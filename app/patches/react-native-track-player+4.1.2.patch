@@ -1,8 +1,16 @@
 diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
-index b2409a0..ad94b71 100644
+index b2409a0..ed1b1b3 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
 +++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
-@@ -19,12 +19,16 @@ import com.facebook.react.bridge.*
+@@ -1,6 +1,7 @@
+ package com.doublesymmetry.trackplayer.module
+ 
+ import android.content.*
++import android.app.ActivityManager
+ import android.os.Build
+ import android.os.Bundle
+ import android.os.IBinder
+@@ -19,12 +20,16 @@ import com.facebook.react.bridge.*
  import com.google.android.exoplayer2.DefaultLoadControl.*
  import com.google.android.exoplayer2.Player
  import kotlinx.coroutines.MainScope
@@ -19,7 +27,54 @@ index b2409a0..ad94b71 100644
  
  /**
   * @author Milen Pivchev @mpivchev
-@@ -251,8 +255,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -159,6 +164,19 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+         }
+     }
+ 
++    /**
++     * PATCHED (visky): is this process foreground by the platform's own reckoning?
++     *
++     * IMPORTANCE_FOREGROUND_SERVICE (125) or better is precisely the condition
++     * under which starting a foreground service is permitted, so it is the
++     * honest test for the crash the guard above exists to prevent.
++     */
++    private fun isProcessForeground(): Boolean {
++        val state = ActivityManager.RunningAppProcessInfo()
++        ActivityManager.getMyMemoryState(state)
++        return state.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE
++    }
++
+     @ReactMethod
+     fun setupPlayer(data: ReadableMap?, promise: Promise) {
+         if (isServiceBound) {
+@@ -170,7 +188,25 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+         }
+ 
+         // prevent crash Fatal Exception: android.app.RemoteServiceException$ForegroundServiceDidNotStartInTimeException
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && AppForegroundTracker.backgrounded) {
++        //
++        // PATCHED (visky): the original guard is `AppForegroundTracker.backgrounded`
++        // alone, and that tracker counts ACTIVITIES -- it observes
++        // ProcessLifecycleOwner's resume/pause and nothing else. A process that is
++        // already running a foreground service therefore still reads as
++        // backgrounded, and setupPlayer is refused.
++        //
++        // That case is real on Android Automotive: the car owns the foreground,
++        // our browse service is started from a cold boot to answer a tap, and no
++        // Activity of ours will ever exist. CarBrowserService puts itself in the
++        // foreground first (the car grants a short FGS allowlist when it
++        // dispatches the tap), so by the time this runs, starting another
++        // foreground service is legal and the exception this guard prevents
++        // cannot occur -- which is exactly what the importance check below
++        // establishes.
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
++            AppForegroundTracker.backgrounded &&
++            !isProcessForeground()
++        ) {
+             promise.reject(
+                 "android_cannot_setup_player_in_background",
+                 "On Android the app must be in the foreground when setting up the player."
+@@ -251,8 +287,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -30,7 +85,7 @@ index b2409a0..ad94b71 100644
  
          val options = Arguments.toBundle(data)
  
-@@ -264,14 +268,14 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -264,14 +300,14 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -48,7 +103,7 @@ index b2409a0..ad94b71 100644
              }
              val index = if (insertBeforeIndex == -1) musicService.tracks.size else insertBeforeIndex
              musicService.add(
-@@ -285,11 +289,11 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -285,11 +321,11 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -63,7 +118,7 @@ index b2409a0..ad94b71 100644
          }
          val bundle = Arguments.toBundle(data);
          if (bundle is Bundle) {
-@@ -301,15 +305,15 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -301,15 +337,15 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -83,7 +138,7 @@ index b2409a0..ad94b71 100644
          val inputIndexes = Arguments.toList(data)
          if (inputIndexes != null) {
              val size = musicService.tracks.size
-@@ -321,7 +325,7 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -321,7 +357,7 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                          "index_out_of_bounds",
                          "One or more indexes was out of bounds"
                      )
@@ -92,7 +147,7 @@ index b2409a0..ad94b71 100644
                  }
                  indexes.add(index)
              }
-@@ -332,8 +336,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -332,8 +368,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
  
      @ReactMethod
      fun updateMetadataForTrack(index: Int, map: ReadableMap?, callback: Promise) =
@@ -103,7 +158,7 @@ index b2409a0..ad94b71 100644
  
              if (index < 0 || index >= musicService.tracks.size) {
                  callback.reject("index_out_of_bounds", "The index is out of bounds")
-@@ -348,8 +352,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -348,8 +384,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
          }
  
      @ReactMethod
@@ -114,7 +169,7 @@ index b2409a0..ad94b71 100644
  
          if (musicService.tracks.isEmpty())
              callback.reject("no_current_item", "There is no current item in the player")
-@@ -364,8 +368,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -364,8 +400,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -125,7 +180,7 @@ index b2409a0..ad94b71 100644
  
          if (musicService.tracks.isEmpty())
              callback.reject("no_current_item", "There is no current item in the player")
-@@ -375,16 +379,16 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -375,16 +411,16 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -146,7 +201,7 @@ index b2409a0..ad94b71 100644
  
          musicService.skip(index)
  
-@@ -396,8 +400,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -396,8 +432,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -157,7 +212,7 @@ index b2409a0..ad94b71 100644
  
          musicService.skipToNext()
  
-@@ -409,8 +413,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -409,8 +445,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -168,7 +223,7 @@ index b2409a0..ad94b71 100644
  
          musicService.skipToPrevious()
  
-@@ -422,8 +426,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -422,8 +458,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -179,7 +234,7 @@ index b2409a0..ad94b71 100644
  
          musicService.stop()
          delay(300) // Allow playback to stop
-@@ -433,134 +437,134 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -433,134 +469,134 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -349,7 +404,7 @@ index b2409a0..ad94b71 100644
  
          try {
              musicService.clear()
-@@ -572,48 +576,48 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -572,48 +608,48 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod
@@ -413,7 +468,7 @@ index b2409a0..ad94b71 100644
          var bundle = Bundle()
          bundle.putDouble("duration", musicService.getDurationInSeconds());
          bundle.putDouble("position", musicService.getPositionInSeconds());
-@@ -622,8 +626,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
+@@ -622,8 +658,8 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
      }
  
      @ReactMethod

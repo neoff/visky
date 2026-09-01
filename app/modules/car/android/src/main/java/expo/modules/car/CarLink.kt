@@ -20,7 +20,31 @@ import org.json.JSONObject
 object CarLink {
   const val ROOT = "root"
 
+  /**
+   * The command a cold car sent before anything of ours was running.
+   *
+   * On Android Automotive the tree comes off disk, so a driver can tap a track
+   * seconds after the car boots — long before a JS runtime exists to play it.
+   * Dropping that tap is the difference between a car that works and one that
+   * shows a list and does nothing. It is held here and delivered the moment the
+   * module attaches.
+   *
+   * One slot, not a queue: while the runtime starts, the driver meant the last
+   * thing they touched, not everything they tried.
+   */
+  @Volatile
+  private var pending: Map<String, Any?>? = null
+
   var onCommand: ((Map<String, Any?>) -> Unit)? = null
+    set(value) {
+      field = value
+      val held = pending ?: return
+      val handler = value ?: return
+      pending = null
+      Log.i(TAG, "delivering the command held while the runtime was starting")
+      handler(held)
+    }
+
   var onStatus: ((Map<String, Any?>) -> Unit)? = null
 
   /** Set by the browser service while it is alive. */
@@ -141,7 +165,15 @@ object CarLink {
   fun send(command: String, nodeId: String? = null) {
     val payload = mutableMapOf<String, Any?>("command" to command)
     if (nodeId != null) payload["nodeId"] = nodeId
-    onCommand?.invoke(payload)
+
+    val handler = onCommand
+    if (handler == null) {
+      // Held rather than dropped; see `pending`. The caller is expected to start
+      // a runtime, and the setter above delivers this when one attaches.
+      pending = payload
+      return
+    }
+    handler(payload)
   }
 
   fun setConnected(value: Boolean) {

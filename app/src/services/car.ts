@@ -1,4 +1,5 @@
 import TrackPlayer, {Event, State, Track} from 'react-native-track-player'
+import {ensureTrackPlayer} from '@/services/trackPlayer'
 import {trackKey} from '@/helpers/miscellaneous'
 import {
   FAVORITES_CACHE_KEY,
@@ -273,6 +274,14 @@ const playNode = async (nodeId: string): Promise<void> => {
 const handleCommand = async (command: CarCommand): Promise<void> => {
   console.log('==car: command', command.command)
   try {
+    // Nothing below works on a player that was never set up, and in the car
+    // there may be no UI to have done it: on Android Automotive the browse
+    // service starts a headless runtime purely to answer this tap, so this is
+    // the first code in the process to touch TrackPlayer. `refresh` is exempt —
+    // it only republishes the tree and must keep working on a cold car even if
+    // the player cannot be created.
+    if (command.command !== 'refresh') await ensureTrackPlayer()
+
     switch (command.command) {
       case 'play':
         await playNode(command.nodeId)

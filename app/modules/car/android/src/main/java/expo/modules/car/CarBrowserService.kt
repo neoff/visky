@@ -1,5 +1,8 @@
 package expo.modules.car
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -18,6 +21,9 @@ import android.util.Log
 import android.support.v4.media.MediaBrowserCompat.MediaItem
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.session.MediaSessionCompat
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.media.MediaBrowserServiceCompat
 import java.lang.ref.WeakReference
 
@@ -304,15 +310,131 @@ class CarBrowserService : MediaBrowserServiceCompat() {
     }
 
     private fun command(name: String, nodeId: String? = null) {
-      if (CarLink.onCommand == null) {
-        // The tree came from the cache and nothing of ours is running to act on
-        // this. Saying so is the difference between a five-minute diagnosis and
-        // an afternoon; the browse list works and the buttons do not.
-        Log.w(TAG, "command $name dropped: no JS runtime to handle it")
+      // A command means playback is about to exist. The token search is bounded
+      // on purpose — a driver who only browses must not be polled for the whole
+      // trip — so by now it has usually given up, and `bindService` with no
+      // CREATE flag leaves nothing behind to fire onServiceConnected when
+      // track-player finally starts. Without re-arming here the car plays audio
+      // and shows "Loading content..." for ever, because our session is never
+      // given anything to mirror.
+      rearmTokenSearch()
+
+      val cold = CarLink.onCommand == null
+      // Held, not dropped: CarLink parks it and hands it over the moment the
+      // module attaches. Logged either way, because "the list works and the
+      // buttons do not" is otherwise an afternoon of guessing.
+      CarLink.send(name, nodeId)
+      if (cold) {
+        Log.w(TAG, "command $name held: no JS runtime yet, starting one")
+        startRuntime()
+      }
+    }
+  }
+
+  /**
+   * Bring up the JS runtime with no Activity in front of anyone.
+   *
+   * Android Automotive starts this service from a cold boot: there is no phone
+   * app that could have started it, and a media app has no business throwing an
+   * Activity at a driver. `ReactHost.start()` is the sanctioned headless boot —
+   * the same one a background task uses — and `PlayerRegisterService` calls
+   * `startCarLink()` as it comes up, which is what re-attaches the listener and
+   * releases the command held above.
+   *
+   * Safe to call when a runtime is already starting or started; ReactHost keeps
+   * one instance and returns the in-flight task.
+   */
+  /**
+   * Stand in the foreground while the runtime comes up.
+   *
+   * react-native-track-player refuses to create a player from the background:
+   *
+   *   Error: On Android the app must be in the foreground when setting up the
+   *   player.  (android_cannot_setup_player_in_background)
+   *
+   * On a phone that never bites, because a person opened the app. In a car the
+   * foreground belongs to `com.android.car.media` and our process never is —
+   * on real hardware exactly as much as on the emulator — so without this the
+   * tap reaches JS and dies one line later.
+   *
+   * Legitimate rather than a trick: the car grants the package a short FGS
+   * allowlist when it dispatches the tap ("MediaSessionRecord:playFromMediaId
+   * [WIU] [FGS]" in the log), which is the window this uses. Released as soon
+   * as track-player's own service appears, and on a timer if it never does, so
+   * a failed start cannot leave a notification sitting in the shade.
+   */
+  private var heldForeground = false
+
+  private fun holdForeground() {
+    if (heldForeground) return
+
+    runCatching {
+      val manager = getSystemService(NotificationManager::class.java)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager != null) {
+        manager.createNotificationChannel(
+          NotificationChannel(
+            FOREGROUND_CHANNEL,
+            "Starting playback",
+            NotificationManager.IMPORTANCE_LOW,
+          ).apply { setShowBadge(false) }
+        )
+      }
+
+      val notification: Notification = NotificationCompat.Builder(this, FOREGROUND_CHANNEL)
+        .setContentTitle("Starting playback")
+        .setSmallIcon(applicationInfo.icon)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .setOngoing(true)
+        .build()
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(
+          FOREGROUND_ID,
+          notification,
+          ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+        )
+      } else {
+        startForeground(FOREGROUND_ID, notification)
+      }
+
+      heldForeground = true
+      Log.i(TAG, "holding the foreground so the player can be created")
+      handler.postDelayed(releaseForeground, FOREGROUND_GRACE_MS)
+    }.onFailure { Log.w(TAG, "could not hold the foreground", it) }
+  }
+
+  // Explicit type: the body refers to the property, which defeats inference.
+  private val releaseForeground: Runnable = Runnable {
+    if (!heldForeground) return@Runnable
+    heldForeground = false
+    handler.removeCallbacks(releaseForeground)
+    runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+      .onFailure { Log.w(TAG, "could not release the foreground", it) }
+    Log.i(TAG, "released the foreground")
+  }
+
+  private fun startRuntime() {
+    holdForeground()
+
+    // Reflective for the same reason rntpSessionToken() below is: this module
+    // compiles as a plain Android library and React is not on its classpath.
+    // `ReactApplication.reactHost` is Kotlin, so the accessor is getReactHost().
+    runCatching {
+      val app = applicationContext
+      val host = app.javaClass.methods
+        .firstOrNull { it.name == "getReactHost" && it.parameterCount == 0 }
+        ?.invoke(app)
+
+      if (host == null) {
+        Log.w(TAG, "no ReactHost on this application; the runtime cannot be started")
         return
       }
-      CarLink.send(name, nodeId)
-    }
+
+      host.javaClass.methods
+        .firstOrNull { it.name == "start" && it.parameterCount == 0 }
+        ?.invoke(host)
+        ?: Log.w(TAG, "ReactHost has no start(); the runtime cannot be started")
+    }.onFailure { Log.w(TAG, "the JS runtime would not start", it) }
   }
 
   private fun startOwnSession() {
@@ -360,6 +482,8 @@ class CarBrowserService : MediaBrowserServiceCompat() {
       controller.metadata?.let { ownSession?.setMetadata(it) }
       controller.playbackState?.let { mirrorCallback.onPlaybackStateChanged(it) }
       Log.i(TAG, "automotive: mirroring track-player's state into our session")
+      // track-player has its own foreground service now; ours has done its job.
+      handler.post(releaseForeground)
     }.onFailure { Log.w(TAG, "could not mirror the player's session", it) }
   }
 
@@ -386,6 +510,14 @@ class CarBrowserService : MediaBrowserServiceCompat() {
    * would poll for the whole trip. Giving up after a bounded window and letting
    * [onServiceConnected] pick it up when playback does start costs nothing.
    */
+  /** Start the bounded token search over, from a point where it should succeed. */
+  private fun rearmTokenSearch() {
+    if (mirror != null) return
+    tokenAttempts = 0
+    handler.removeCallbacks(::retryToken)
+    handler.postDelayed(::retryToken, TOKEN_RETRY_MS)
+  }
+
   private fun retryToken() {
     if (tokenSet && !automotive) return
     if (automotive && mirror != null) return
@@ -498,6 +630,10 @@ class CarBrowserService : MediaBrowserServiceCompat() {
         PlaybackStateCompat.ACTION_STOP
 
     private const val TAG = "==car"
+    private const val FOREGROUND_CHANNEL = "car-runtime"
+    private const val FOREGROUND_ID = 0x0CA5
+    /** Long enough for a cold JS start, short enough not to strand a notification. */
+    private const val FOREGROUND_GRACE_MS = 60_000L
 
     private const val TOKEN_RETRY_MS = 2_000L
 
