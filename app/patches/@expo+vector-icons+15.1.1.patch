@@ -1,0 +1,56 @@
+diff --git a/node_modules/@expo/vector-icons/build/createIconSet.js b/node_modules/@expo/vector-icons/build/createIconSet.js
+index 48982ea..1ed25e6 100644
+--- a/node_modules/@expo/vector-icons/build/createIconSet.js
++++ b/node_modules/@expo/vector-icons/build/createIconSet.js
+@@ -1,6 +1,6 @@
+ import * as Font from 'expo-font';
+ import React from 'react';
+-import { Text, PixelRatio, } from 'react-native';
++import { Text, PixelRatio, Platform, } from 'react-native';
+ import createIconSet from './vendor/react-native-vector-icons/lib/create-icon-set';
+ import createIconButtonComponent from './vendor/react-native-vector-icons/lib/icon-button';
+ export { DEFAULT_ICON_COLOR, DEFAULT_ICON_SIZE, } from './vendor/react-native-vector-icons/lib/create-icon-set';
+@@ -57,8 +57,41 @@ export default function (glyphMap, fontName, expoAssetId, fontStyle) {
+         };
+         async componentDidMount() {
+             this._mounted = true;
+-            if (!this.state.fontIsLoaded) {
+-                await Font.loadAsync(font);
++            if (this.state.fontIsLoaded) {
++                return;
++            }
++            const loading = Font.loadAsync(font);
++            if (Platform.OS === 'web') {
++                // PATCHED. `loadAsync` injects the @font-face rule into the
++                // document itself; the promise it returns reports only the
++                // VERIFICATION, which expo-font performs with fontfaceobserver.
++                // That observer measures the width of the string "BESbswy" —
++                // seven letters an ICON font does not contain — so for these
++                // fonts the measurement never changes and the promise rejects
++                // on its 12 second timeout. The `await` then threw, the
++                // setState below never ran, and this instance rendered an
++                // empty <Text/> for ever.
++                //
++                // Only the FIRST instance of each family is hit, because every
++                // later one starts with `fontIsLoaded` already true: the rule
++                // is in the stylesheet by then. That is why it looked random —
++                // one blank glyph per family, whichever mounted first. In the
++                // desktop build it cost the search magnifier, the player's
++                // close chevron and the edit button, and the rows they sat in
++                // lost their spacing along with them.
++                //
++                // The font is perfectly usable either way, so render it and let
++                // the browser repaint when the file lands, exactly as it does
++                // for every other webfont on the page.
++                this.setState({ fontIsLoaded: true });
++                loading.catch(() => undefined);
++                return;
++            }
++            try {
++                await loading;
++            }
++            finally {
++                // Even a failed load beats a permanently invisible icon.
+                 /* eslint-disable react/no-did-mount-set-state */
+                 this._mounted && this.setState({ fontIsLoaded: true });
+             }
