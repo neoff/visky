@@ -81,3 +81,20 @@ export const ensureDeviceId = (): Promise<string> => {
 export const __resetDeviceIdCache = (): void => {
   pending = null;
 };
+
+/**
+ * What this installation calls itself in the device picker.
+ *
+ * `Constants.deviceName` is a native-only value: on web it is undefined, which
+ * left the desktop player listed as the unhelpful "web device". The Electron
+ * shell exposes `window.viskyDesktop`, so a real desktop can name itself; a
+ * plain browser tab stays generic.
+ */
+export const deviceLabel = (): string => {
+  if (Platform.OS !== "web") return `${Platform.OS} device`;
+  const desktop =
+    typeof window !== "undefined" &&
+    (window as unknown as {viskyDesktop?: {platform?: string}}).viskyDesktop;
+  if (desktop) return desktop.platform === "macos" ? "Mac" : "Desktop";
+  return "Browser";
+};

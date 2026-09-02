@@ -3,6 +3,7 @@ import {Platform} from 'react-native'
 import Constants from 'expo-constants'
 import TrackPlayer, {Event, Track, useTrackPlayerEvents} from 'react-native-track-player'
 import {useSession} from '@/components/SessionProvider'
+import {deviceLabel} from '@/helpers/device'
 import {trackKey} from '@/helpers/miscellaneous'
 import {registerPlaybackDevice} from '@/helpers/network'
 import {isApplyingRemote, reconcile, restoreCached} from '@/services/playbackReconciler'
@@ -78,7 +79,7 @@ export const usePlaybackSync = () => {
       const pushToken = await registerForWakePush()
       if (cancelled) return
 
-      const name = Constants.deviceName ?? `${Platform.OS} device`
+      const name = Constants.deviceName ?? deviceLabel()
       const appVersion = Constants.expoConfig?.version
 
       playbackSync.start(

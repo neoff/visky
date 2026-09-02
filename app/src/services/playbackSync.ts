@@ -43,6 +43,29 @@ type RNWebSocket = new (
 ) => WebSocket
 const RNWebSocket = WebSocket as unknown as RNWebSocket
 
+/**
+ * Where to point the socket at.
+ *
+ * Native gets the bare url and sends its credentials as headers. The web build
+ * — which is what the Electron desktop player runs — cannot: `new WebSocket()`
+ * in a browser takes only (url, protocols), and the options object React
+ * Native accepts is dropped on the floor. Without this the desktop socket was
+ * refused at the upgrade (api/src/ws/hub.ts destroys an unauthenticated one),
+ * so the desktop never joined the playback session and never appeared in the
+ * device picker. The backend already reads the same four values off the query
+ * string — `credentialsFrom` in that file — so this is the supported path and
+ * not a workaround.
+ */
+const socketUrl = (session: SyncSession): string => {
+  if (Platform.OS !== 'web') return apiUrls.playerSocketUrl
+  const url = new URL(apiUrls.playerSocketUrl)
+  url.searchParams.set('token', session.token)
+  url.searchParams.set('user', session.userId)
+  url.searchParams.set('device', session.deviceId)
+  if (session.secret) url.searchParams.set('secret', session.secret)
+  return url.toString()
+}
+
 const RECONNECT_MIN_MS = 1_000
 const RECONNECT_MAX_MS = 30_000
 const PING_INTERVAL_MS = 20_000
@@ -123,17 +146,23 @@ class PlaybackSync {
       return
     }
 
+    const url = socketUrl(session)
     console.log('==playback: connecting', apiUrls.playerSocketUrl)
     // RN's WebSocket takes headers as a third argument — the same `x-auth-*`
-    // the REST calls use, so the socket needs no separate credential.
-    const socket = new RNWebSocket(apiUrls.playerSocketUrl, undefined, {
-      headers: {
-        'x-auth-token': session.token,
-        'x-auth-user': session.userId,
-        'x-auth-device': session.deviceId,
-        ...(session.secret ? {'x-auth-secret': session.secret} : {}),
-      },
-    })
+    // the REST calls use, so the socket needs no separate credential. The
+    // browser's constructor has no such argument, so the desktop build carries
+    // the very same credentials in the query string instead (see socketUrl).
+    const socket =
+      Platform.OS === 'web'
+        ? new WebSocket(url)
+        : new RNWebSocket(url, undefined, {
+            headers: {
+              'x-auth-token': session.token,
+              'x-auth-user': session.userId,
+              'x-auth-device': session.deviceId,
+              ...(session.secret ? {'x-auth-secret': session.secret} : {}),
+            },
+          })
     this.socket = socket
 
     socket.onopen = () => {
