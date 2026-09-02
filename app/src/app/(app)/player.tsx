@@ -19,6 +19,7 @@ import React from "react";
 import {router} from "expo-router";
 import PlayerEditInfoBar from "@/components/PlayerEditInfoBar";
 import {useIsFavorite, useToggleFavorite} from "@/store/favorites";
+import {SwipeToDismiss} from "@/components/SwipeToDismiss";
 
 const PlayerScreen = () => {
   const activeTrack = useActiveTrack()
@@ -48,6 +49,10 @@ const PlayerScreen = () => {
     router.dismiss()
   }
   return (
+    // Pull-down-to-close. On native the stack owns the gesture and this is a
+    // passthrough; the desktop build has no such stack gesture, so there it is
+    // a real handler (SwipeToDismiss.web.tsx).
+    <SwipeToDismiss onDismiss={handleClosePlayer}>
     <LinearGradient
       style={{flex: 1}}
       colors={[background, primary]}
@@ -141,6 +146,7 @@ const PlayerScreen = () => {
         </View>
       </View>
     </LinearGradient>
+    </SwipeToDismiss>
   )
 }
 
