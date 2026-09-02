@@ -181,15 +181,40 @@ const becomeActive = async (state: PlaybackState): Promise<void> => {
 
 /** Another device owns the sound: go quiet, keep the track visible. */
 const becomePassive = async (state: PlaybackState): Promise<void> => {
+  const playWhenReady = await TrackPlayer.getPlayWhenReady()
+  const active = trackKey((await TrackPlayer.getActiveTrack()) as never)
+  // Following the session's track is not a cold-start job. It used to sit
+  // behind `if (!restored)`, and once that had run a passive device stopped
+  // following the session altogether: picking a track on the phone stopped the
+  // sound here, which looked right, and then left this device showing and
+  // highlighting the PREVIOUS one for ever, because `useActiveTrack` is the
+  // local player's and the local player had never been told.
+  const inSync = restored && active === state.track?.track_id
+
+  // Nothing to do — and, crucially, do NOT arm `applying` for it.
+  //
+  // The other device sends progress every few seconds, and every one of those
+  // frames used to go through `withApplying`, which deafens this device to its
+  // own player for 1.2s afterwards. A passive device was therefore ignoring the
+  // user's own play button for roughly a quarter of the time it sat there, and
+  // the press did nothing at all: no sound here, no takeover from the other
+  // device. Silence is not something to apply.
+  if (!playWhenReady && inSync) return
+
   await withApplying(async () => {
-    if (await TrackPlayer.getPlayWhenReady()) await TrackPlayer.pause()
-    // Keep showing what the account is playing, so the mini player can label it
-    // with the other device's name instead of going blank.
-    if (!restored) {
-      restored = true
-      await ensureTrackLoaded(state)
-      await seekIfDrifted(projectPosition(state))
-    }
+    if (playWhenReady) await TrackPlayer.pause()
+    if (inSync) return
+    restored = true
+
+    // Loading a track is not free (it can cost a round trip to VK for a fresh
+    // signed url), so it happens only when the session is actually on a
+    // different one — `ensureTrackLoaded` returns early when the track is
+    // already active, and prefers a `skip` inside the queue we already hold.
+    if (!(await ensureTrackLoaded(state))) return
+    // Only after a change: a paused player does not advance, so re-seeking on
+    // every progress tick from the other device would be a seek every couple
+    // of seconds for nothing.
+    await seekIfDrifted(projectPosition(state))
   })
 }
 
@@ -224,6 +249,23 @@ export const restoreCached = async (state: PlaybackState): Promise<void> => {
     if (!(await ensureTrackLoaded(state))) return
     await TrackPlayer.seekTo(state.position_ms / 1000)
   }))
+}
+
+/**
+ * Where the SESSION is on this track right now, in milliseconds.
+ *
+ * `null` when the session is on something else, or on nothing — then the local
+ * position is the only one there is.
+ *
+ * A passive device's own position stops moving the moment another device takes
+ * the sound, so it is stale by however long the other device has been playing.
+ * Announcing it on a takeover is what made the desktop resume from 16:41 after
+ * the phone had already reached 19:25.
+ */
+export const sessionPositionFor = (trackId: string | undefined): number | null => {
+  const state = usePlaybackStore.getState().state
+  if (!state?.track || !trackId || state.track.track_id !== trackId) return null
+  return Math.round(projectPosition(state))
 }
 
 export const reconcile = async (state: PlaybackState): Promise<void> => {

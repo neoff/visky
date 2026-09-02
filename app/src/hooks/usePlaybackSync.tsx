@@ -6,7 +6,7 @@ import {useSession} from '@/components/SessionProvider'
 import {deviceLabel} from '@/helpers/device'
 import {trackKey} from '@/helpers/miscellaneous'
 import {registerPlaybackDevice} from '@/helpers/network'
-import {isApplyingRemote, reconcile, restoreCached} from '@/services/playbackReconciler'
+import {isApplyingRemote, reconcile, restoreCached, sessionPositionFor} from '@/services/playbackReconciler'
 import {playbackSync} from '@/services/playbackSync'
 import {listenForWakePush, registerForWakePush} from '@/services/pushWake'
 import {usePlaybackStore} from '@/store/playback'
@@ -147,11 +147,27 @@ export const usePlaybackSync = () => {
     const playing = await TrackPlayer.getPlayWhenReady()
     if (!isActive && !playing) return
 
-    const {position} = await TrackPlayer.getProgress()
     const track = toTrackRef(await TrackPlayer.getActiveTrack())
+    const {position} = await TrackPlayer.getProgress()
+    let positionMs = Math.round(position * 1000)
+
+    if (!isActive) {
+      // Taking the sound over. This device's own position stopped moving when
+      // the other one took it, so it is stale by however long that device has
+      // been playing — pressing play here would rewind the whole account to
+      // wherever this device happened to be left. The session knows where the
+      // track actually is; start from there, and move the local player to it
+      // before it makes a sound at the wrong second.
+      const session = sessionPositionFor(track?.track_id)
+      if (session !== null) {
+        positionMs = session
+        await TrackPlayer.seekTo(session / 1000)
+      }
+    }
+
     playbackSync.sendUpdate({
       ...(isActive ? {} : {track, context: toContext(queueIdRef.current)}),
-      position_ms: Math.round(position * 1000),
+      position_ms: positionMs,
       playing,
     })
   })
