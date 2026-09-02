@@ -9,6 +9,10 @@ import {utilsStyles} from "@/styles";
 
 /** How much one press of a speaker icon moves the volume. */
 const VOLUME_STEP = 0.1
+/** How long a press has to be held before it starts repeating. */
+const HOLD_DELAY_MS = 350
+/** ...and how fast it repeats then — the full range in about a second. */
+const HOLD_REPEAT_MS = 120
 
 export const PlayerVolumeBar = ({ style }: ViewProps) => {
   // The real thing now. This used to be `const volume = 1.0` with an
@@ -32,31 +36,81 @@ export const PlayerVolumeBar = ({ style }: ViewProps) => {
     progress.value = volume
   }, [progress, volume])
 
+  // The level a step is measured FROM. A ref rather than the state value
+  // because the repeat below runs on a timer: a callback that closed over
+  // `volume` would keep stepping away from the level the finger first landed
+  // on and the second tick would compute the same result as the first.
+  const level = useRef(1)
+  useEffect(() => {
+    if (volume !== undefined) level.current = volume
+  }, [volume])
+
   /**
    * The two speaker icons are buttons: one notch quieter, one notch louder.
    *
    * A tenth at a time, which is ten presses end to end — fine enough to land on
-   * a level you meant and coarse enough that setting it is not a chore. The
-   * volume the step is measured from is the player's, not the bar's, so holding
-   * the slider and pressing an icon cannot make the two disagree.
+   * a level you meant and coarse enough that setting it is not a chore.
+   *
+   * Returns false at the rails, which is what stops a held press from
+   * repeating into nothing.
    */
   const step = useCallback(
-    (delta: number) => {
-      const current = volume ?? 1
+    (delta: number): boolean => {
+      const current = level.current
       // Rounded, or repeated steps drift into 0.7000000000000001 and the
       // bar never lands cleanly on a tenth again.
       const next = Math.min(1, Math.max(0, Math.round((current + delta) * 100) / 100))
-      if (next === current) return
+      if (next === current) return false
+      level.current = next
       sliding.current = false
       void updateVolume(next)
+      return true
     },
-    [updateVolume, volume],
+    [updateVolume],
   )
+
+  // Press-and-hold. One notch on the way down, then — if the finger stays —
+  // a run of them, which is the difference between ten deliberate taps and
+  // holding the button until it sounds right.
+  const holdStart = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const holdRepeat = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const stopHolding = useCallback(() => {
+    if (holdStart.current) {
+      clearTimeout(holdStart.current)
+      holdStart.current = null
+    }
+    if (holdRepeat.current) {
+      clearInterval(holdRepeat.current)
+      holdRepeat.current = null
+    }
+  }, [])
+
+  const startHolding = useCallback(
+    (delta: number) => {
+      stopHolding()
+      step(delta)
+      holdStart.current = setTimeout(() => {
+        holdRepeat.current = setInterval(() => {
+          if (!step(delta)) stopHolding()
+        }, HOLD_REPEAT_MS)
+      }, HOLD_DELAY_MS)
+    },
+    [step, stopHolding],
+  )
+
+  // A press that ends with the component unmounting — closing the player mid
+  // hold — must not leave a timer nudging the volume from nowhere.
+  useEffect(() => stopHolding, [stopHolding])
 
   return (
     <View style={style}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <TouchableOpacity onPress={() => step(-VOLUME_STEP)} hitSlop={12}>
+        <TouchableOpacity
+          onPressIn={() => startHolding(-VOLUME_STEP)}
+          onPressOut={stopHolding}
+          hitSlop={12}
+        >
           <Ionicons name="volume-low" size={20} color={colors.icon} style={{ opacity: 0.8 }} />
         </TouchableOpacity>
 
@@ -100,7 +154,11 @@ export const PlayerVolumeBar = ({ style }: ViewProps) => {
           />
         </View>
 
-        <TouchableOpacity onPress={() => step(VOLUME_STEP)} hitSlop={12}>
+        <TouchableOpacity
+          onPressIn={() => startHolding(VOLUME_STEP)}
+          onPressOut={stopHolding}
+          hitSlop={12}
+        >
           <Ionicons name="volume-high" size={20} color={colors.icon} style={{ opacity: 0.8 }} />
         </TouchableOpacity>
       </View>
