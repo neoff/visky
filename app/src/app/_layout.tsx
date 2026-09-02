@@ -1,9 +1,11 @@
+import {View} from 'react-native';
 import {Slot, SplashScreen} from 'expo-router';
 import React, {useCallback, useEffect, useState} from "react";
 import {SafeAreaProvider} from "react-native-safe-area-context";
 import {GestureHandlerRootView} from "react-native-gesture-handler";
 import {StatusBar} from "expo-status-bar";
 import {SessionProvider, useSession} from "@/components/SessionProvider";
+import {DESKTOP_TITLEBAR_HEIGHT, DesktopTitleBar} from "@/components/DesktopChrome";
 import {useLogTrackPlayerState} from "@/hooks/useLogTrackPlayerState";
 import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 import {startCarLink} from "@/services/car";
@@ -37,8 +39,14 @@ export default function Root() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{flex: 1}}>
+        {/* The desktop window has no system title bar (see DesktopChrome):
+            this draws the strip it is dragged by and indents the app out from
+            under the traffic lights. Zero-height everywhere else. */}
+        <DesktopTitleBar />
         <SessionProvider>
-          <Slot />
+          <View style={{flex: 1, paddingTop: DESKTOP_TITLEBAR_HEIGHT}}>
+            <Slot />
+          </View>
         </SessionProvider>
 
         <StatusBar style="auto"/>

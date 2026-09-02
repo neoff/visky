@@ -12,7 +12,7 @@
 //
 'use strict'
 
-const {app, BrowserWindow, Menu, ipcMain, protocol, session, shell} = require('electron')
+const {app, BrowserWindow, Menu, ipcMain, protocol, screen, session, shell} = require('electron')
 const fs = require('fs/promises')
 const path = require('path')
 const {pathToFileURL} = require('url')
@@ -138,15 +138,60 @@ const allowCorsForMediaHosts = () => {
   })
 }
 
+/**
+ * The window is a tall portrait slab, the shape of the app on an iPad. It
+ * resizes in HEIGHT ONLY.
+ *
+ * The layout is the phone's: one column, a mini player pinned to the bottom, a
+ * tab bar under it. Stretched across 1180px — the old default — every row was a
+ * short label alone on a very long line. There is no wide layout to grow into,
+ * so the width is pinned. Height is a different question: the taller the
+ * window, the more of the track list is on screen at once, and the user should
+ * be able to run it the full height of the display.
+ */
+const WINDOW_WIDTH = 480
+const WINDOW_HEIGHT = 900
+/** Below this the controls start colliding with the list. */
+const WINDOW_MIN_HEIGHT = 560
+/** Where the traffic lights sit; DESKTOP_TITLEBAR_HEIGHT in the app matches. */
+const TITLEBAR_HEIGHT = 36
+
 const createWindow = () => {
+  // The work area, not the display: the menu bar and the Dock are not ours to
+  // draw over, and a window that opens taller than the space available is one
+  // whose bottom controls cannot be reached.
+  const workArea = screen.getPrimaryDisplay().workAreaSize
+  const height = Math.min(WINDOW_HEIGHT, workArea.height)
+
   const window = new BrowserWindow({
-    width: 1180,
-    height: 800,
-    minWidth: 380,
-    minHeight: 560,
+    width: WINDOW_WIDTH,
+    height,
+    // Equal min and max width is what makes the resize vertical-only: macOS
+    // then offers no horizontal handle at all, rather than one that fights
+    // back. `resizable: false` would have taken the height with it.
+    minWidth: WINDOW_WIDTH,
+    maxWidth: WINDOW_WIDTH,
+    minHeight: WINDOW_MIN_HEIGHT,
+    // Uncapped on purpose. A maxHeight is baked in at launch and does not
+    // follow the window to a taller display or survive the Dock being hidden;
+    // the window manager already stops the drag at the screen edge.
+    resizable: true,
+    // The zoom button (and a double-click on the drag strip) grows the window
+    // to the full height of the work area — width is pinned, so there is
+    // nothing else for it to do.
+    maximizable: true,
+    // Fullscreen ignores the width constraint and stretches the phone layout
+    // across the whole display, which is the state this milestone set out to
+    // avoid.
+    fullscreenable: false,
     backgroundColor: '#000000',
     title: 'visky',
+    // No system title bar, so the artwork reaches the top edge. The strip the
+    // window is dragged by is drawn by the app itself — app/src/components/
+    // DesktopChrome.web.tsx — which is also what gives the traffic lights an
+    // opaque plate to sit on instead of floating over the screen's own text.
     titleBarStyle: 'hiddenInset',
+    trafficLightPosition: {x: 13, y: (TITLEBAR_HEIGHT - 14) / 2},
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -208,8 +253,6 @@ const buildMenu = () => {
         {role: 'resetZoom'},
         {role: 'zoomIn'},
         {role: 'zoomOut'},
-        {type: 'separator'},
-        {role: 'togglefullscreen'},
       ],
     },
     {label: 'Window', submenu: [{role: 'minimize'}, {role: 'close'}]},
