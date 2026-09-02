@@ -50,6 +50,7 @@ export const __resetReconciler = (): void => {
   restored = false
   lastAppliedVersion = -1
   lastAppliedPlaying = null
+  claim = null
 }
 
 /**
@@ -65,6 +66,48 @@ let chain: Promise<void> = Promise.resolve()
 const serialize = (work: () => Promise<void>): Promise<void> => {
   chain = chain.then(work, work)
   return chain
+}
+
+/**
+ * A takeover this device started and the session has not confirmed yet.
+ *
+ * `null` when there is none. The deadline is a backstop: if our update never
+ * makes it to the server (a socket that died between the tap and the send),
+ * the claim has to expire or this device would ignore the session forever.
+ */
+let claim: {until: number} | null = null
+
+/** Longest a claim is honoured without the server answering. */
+const CLAIM_TIMEOUT_MS = 5_000
+
+/**
+ * Run a queue change the USER asked for.
+ *
+ * Two things happen here, and both are about the same collision.
+ *
+ * The lock: a local selection and `reconcile` call reset/add/skip on the same
+ * player. Unserialised they interleave — the user's `reset()` lands between the
+ * reconciler's `reset()` and its `add()` — and the player ends up holding the
+ * OTHER device's track. That is the "I picked one track and a different one
+ * played, I tapped again and then it loaded" bug: the second tap won the race
+ * the first one lost.
+ *
+ * The claim: the frames already in flight when the tap happened still say
+ * another device owns the sound, because they were written before it. Applying
+ * one pauses the track the user just started. So until a frame comes back
+ * carrying THIS device's own update, frames that name somebody else are
+ * history and are skipped.
+ */
+export const runLocalAction = async <T>(work: () => Promise<T>): Promise<T> => {
+  claim = {until: Date.now() + CLAIM_TIMEOUT_MS}
+  let result: T
+  await serialize(async () => {
+    result = await work()
+    // Measured from the END of the work: `reset` + `add` + `play` over a slow
+    // network can outlast the deadline all by itself.
+    claim = {until: Date.now() + CLAIM_TIMEOUT_MS}
+  })
+  return result!
 }
 
 const withApplying = async (work: () => Promise<void>): Promise<void> => {
@@ -195,6 +238,15 @@ export const reconcile = async (state: PlaybackState): Promise<void> => {
   ) {
     return
   }
+  if (claim) {
+    // Our own takeover came back: the session agrees, the claim is spent.
+    if (state.origin_device_id === deviceId || Date.now() > claim.until) {
+      claim = null
+    } else if (state.active_device_id !== deviceId) {
+      return
+    }
+  }
+
   lastAppliedVersion = state.version
   lastAppliedPlaying = state.playing
 

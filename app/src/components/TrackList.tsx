@@ -7,6 +7,7 @@ import FastImage from "react-native-fast-image";
 import TrackPlayer, {Track, TrackType} from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
+import {runLocalAction} from "@/services/playbackReconciler";
 import {FlashList, FlashListProps} from "@shopify/flash-list";
 import unknownTrackImage from '@/assets/unknown_track.png'
 
@@ -49,37 +50,44 @@ export const TrackList = ({
     }
 
     try {
-      // Skip inside the queue the PLAYER actually holds, looked up by track id.
-      // The old code kept its own `queueOffset` ref and did index arithmetic
-      // against the on-screen list: the ref is re-created whenever TrackList
-      // remounts while `activeQueueId` survives in the zustand store, and a
-      // refresh can reorder the list without changing the queue id — both make
-      // the arithmetic point at a DIFFERENT track. Asking the player is exact.
-      const currentQueue = await TrackPlayer.getQueue()
-      const indexInQueue = currentQueue.findIndex((queueTrack) =>
-        isSameTrack(queueTrack, selectedTrack),
-      )
+      // Inside the session's own lock. The reconciler rebuilds the queue from
+      // the account's playback state, and on a device that has just connected
+      // it does so at an unpredictable moment — right on top of this, which is
+      // how tapping one track started a different one.
+      await runLocalAction(async () => {
+        // Skip inside the queue the PLAYER actually holds, looked up by track
+        // id. The old code kept its own `queueOffset` ref and did index
+        // arithmetic against the on-screen list: the ref is re-created whenever
+        // TrackList remounts while `activeQueueId` survives in the zustand
+        // store, and a refresh can reorder the list without changing the queue
+        // id — both make the arithmetic point at a DIFFERENT track. Asking the
+        // player is exact.
+        const currentQueue = await TrackPlayer.getQueue()
+        const indexInQueue = currentQueue.findIndex((queueTrack) =>
+          isSameTrack(queueTrack, selectedTrack),
+        )
 
-      if (id === activeQueueId && indexInQueue !== -1) {
-        await TrackPlayer.skip(indexInQueue)
+        if (id === activeQueueId && indexInQueue !== -1) {
+          await TrackPlayer.skip(indexInQueue)
+          await TrackPlayer.play()
+          return
+        }
+
+        // different list (or the track is not queued): rebuild the queue
+        // starting at the selected track
+        const beforeTracks = playableTracks.slice(0, trackIndex)
+        const afterTracks = playableTracks.slice(trackIndex + 1)
+        const queue = [selectedTrack, ...afterTracks, ...beforeTracks].map((track) => ({
+          ...track,
+          type: TrackType.HLS,
+        }))
+
+        await TrackPlayer.reset()
+        await TrackPlayer.add(queue)
         await TrackPlayer.play()
-        return
-      }
 
-      // different list (or the track is not queued): rebuild the queue starting
-      // at the selected track
-      const beforeTracks = playableTracks.slice(0, trackIndex)
-      const afterTracks = playableTracks.slice(trackIndex + 1)
-      const queue = [selectedTrack, ...afterTracks, ...beforeTracks].map((track) => ({
-        ...track,
-        type: TrackType.HLS,
-      }))
-
-      await TrackPlayer.reset()
-      await TrackPlayer.add(queue)
-      await TrackPlayer.play()
-
-      setActiveQueueId(id)
+        setActiveQueueId(id)
+      })
     } catch (error) {
       console.warn('Unable to start selected track', error)
     }
