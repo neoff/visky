@@ -1,4 +1,4 @@
-// desktop/preload.js
+// desktop-electron/preload.js
 //
 // Runs in the renderer that hosts the Expo bundle, with context isolation on
 // AND the default sandbox on. Everything the bundle is allowed to ask of the

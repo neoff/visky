@@ -1,4 +1,4 @@
-// desktop/main.js
+// desktop-electron/main.js
 //
 // The Electron shell around the Expo web bundle.
 //

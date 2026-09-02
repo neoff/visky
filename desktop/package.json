@@ -2,79 +2,12 @@
   "name": "visky-desktop",
   "version": "1.0.0",
   "private": true,
-  "description": "visky desktop player \u2014 the Expo web bundle in an Electron shell",
-  "main": "main.js",
+  "description": "visky desktop player — the Expo web bundle in a Tauri shell",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --mac"
+    "start": "tauri dev --no-watch --config shell/tauri.conf.json",
+    "dist": "../scripts/build-desktop.sh"
   },
   "devDependencies": {
-    "electron": "44.0.0",
-    "electron-builder": "26.15.3"
-  },
-  "build": {
-    "appId": "com.envarg.visky.desktop",
-    "productName": "visky",
-    "copyright": "Copyright \u00a9 visky",
-    "directories": {
-      "output": "dist",
-      "buildResources": "build"
-    },
-    "files": [
-      "main.js",
-      "preload.js",
-      "webview-preload.js",
-      "web/**/*",
-      "package.json"
-    ],
-    "mac": {
-      "category": "public.app-category.music",
-      "icon": "build/icon.icns",
-      "darkModeSupport": true,
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "universal"
-          ]
-        },
-        {
-          "target": "pkg",
-          "arch": [
-            "universal"
-          ]
-        }
-      ],
-      "hardenedRuntime": true,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "identity": "E1D0E87A8D058E11042CB5927783A68C3947A199",
-      "notarize": {
-        "teamId": "N853W9Q344"
-      },
-      "gatekeeperAssess": false
-    },
-    "dmg": {
-      "title": "visky ${version}",
-      "contents": [
-        {
-          "x": 140,
-          "y": 200
-        },
-        {
-          "x": 400,
-          "y": 200,
-          "type": "link",
-          "path": "/Applications"
-        }
-      ]
-    },
-    "pkg": {
-      "installLocation": "/Applications",
-      "allowAnywhere": true,
-      "allowCurrentUserHome": true,
-      "isRelocatable": false,
-      "identity": "A61D7C57F92E962E1270D7BB8186942CA16BC23F"
-    }
+    "@tauri-apps/cli": "^2.11.4"
   }
 }

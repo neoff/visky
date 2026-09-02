@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The webview runs the Expo bundle and asks the shell for almost nothing: no plugins, no commands, no filesystem. `core:default` covers what any window needs; the one addition is the call the title strip makes to drag the window, which is NOT in the default set — without it `data-tauri-drag-region` is silently refused by the ACL and the window cannot be moved at all.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
+}

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the generated Info.plist by the macOS bundler.
+
+  Only what the app cannot ask for at runtime without it. macOS kills a process
+  outright — no dialog, no error the JS can catch — the moment it touches the
+  camera with no usage string in its Info.plist, so the "read a code from a
+  signed-in device" path on the pairing screen would take the app down with it.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>visky reads the pairing code shown by a signed-in phone.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,26 @@
+[package]
+name = "visky"
+version = "1.0.0"
+edition = "2021"
+description = "visky desktop player"
+
+# The crate is one file and it lives beside this manifest. Without this cargo
+# insists on src/main.rs, which is how the shell ended up as shell/src/main.rs.
+[[bin]]
+name = "visky"
+path = "main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# The shell is the whole binary — there is no reason to ship it unoptimised.
+# This is most of the difference between a ~12MB app and a ~4MB one.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

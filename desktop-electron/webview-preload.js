@@ -1,4 +1,4 @@
-// desktop/webview-preload.js
+// desktop-electron/webview-preload.js
 //
 // Runs inside the VK login <webview>, before any script belonging to the page.
 // It recreates the two things react-native-webview gives the login screen.
