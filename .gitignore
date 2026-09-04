@@ -398,3 +398,11 @@ certs/
 *.p12
 *.mobileprovision
 *.certSigningRequest
+
+# EAS credential exports. credentials.json carries the .p12 and keystore
+# PASSWORDS in plaintext, not just paths, so the whole directory goes rather
+# than the key files alone.
+credentials.json
+credentials/
+*.jks
+*.keystore
