@@ -150,6 +150,8 @@ const FavoriteScreen = () => {
             onSearchChange={setQuery}
             scrollY={scrollY}
             action={<PlaylistFilter selection={selection} onChange={pickSelection}/>}
+            onRefresh={reset}
+            refreshing={refreshing}
           />
           <TrackList
             id={generateTracksListId(

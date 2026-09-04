@@ -37,6 +37,12 @@
 #   APPLE_ID=en.varg@me.com APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx \
 #     APPLE_TEAM_ID=N853W9Q344
 #
+# Every artifact is submitted and stapled SEPARATELY — the .app, the .dmg and
+# the .pkg each carry their own ticket. Tauri would notarise the bundles it
+# produces on its own, but it has no .pkg bundler, so the installer would have
+# gone out signed and unnotarised: Gatekeeper blocks that just as hard as an
+# unsigned one. Doing all three here keeps one code path instead of two.
+#
 # Requires: macOS with the Xcode command line tools, node, rustup with both
 # darwin targets (`rustup target add x86_64-apple-darwin aarch64-apple-darwin`),
 # and app/node_modules already installed.
@@ -90,6 +96,8 @@ TARGETS=()
 SKIP_BUNDLE=0
 RUN_ONLY=0
 UNSIGNED=0
+NOTARISE=0
+NOTARY_ARGS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -177,15 +185,19 @@ if [ "$UNSIGNED" -eq 0 ]; then
   done
   export APPLE_SIGNING_IDENTITY="$APP_ID"
 
-  # Tauri's notarisation reads its own variable names. Translate rather than
-  # ask anybody to remember a second set.
   if [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_KEY_ID:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ]; then
-    export APPLE_API_KEY_PATH="$APPLE_API_KEY"
-    export APPLE_API_KEY="$APPLE_API_KEY_ID"
+    [ -f "$APPLE_API_KEY" ] || {
+      echo "!! APPLE_API_KEY should be the path to the .p8, and there is no file at:" >&2
+      echo "   $APPLE_API_KEY" >&2
+      exit 1
+    }
+    NOTARY_ARGS=(--key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER")
+    NOTARISE=1
     MODE="signed + notarised (App Store Connect API key)"
   elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]; then
-    export APPLE_PASSWORD="$APPLE_APP_SPECIFIC_PASSWORD"
-    export APPLE_TEAM_ID="${APPLE_TEAM_ID:-N853W9Q344}"
+    NOTARY_ARGS=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
+                 --team-id "${APPLE_TEAM_ID:-N853W9Q344}")
+    NOTARISE=1
     MODE="signed + notarised (Apple ID)"
   else
     MODE="signed, NOT notarised (no Apple credentials in the environment)"
@@ -194,17 +206,69 @@ else
   MODE="unsigned"
 fi
 
+# Send one artifact to Apple and staple the ticket into it.
+#
+# notarytool takes .zip, .dmg and .pkg only, so a .app has to be zipped for the
+# trip — but the ticket is stapled into the ORIGINAL bundle, never into the zip,
+# which is a throwaway. `ditto --keepParent` is what preserves the bundle's
+# symlinks and extended attributes; a plain `zip -r` corrupts the signature.
+notarise() {
+  local artifact="$1" upload="$1" tmp="" out="" id=""
+  [ "$NOTARISE" -eq 1 ] || return 0
+
+  if [[ "$artifact" == *.app ]]; then
+    tmp="$(mktemp -d)"
+    upload="$tmp/$(basename "$artifact").zip"
+    ditto -c -k --keepParent "$artifact" "$upload"
+  fi
+
+  echo "==> notarising $(basename "$artifact") — Apple's queue, usually 2-15 min"
+  if ! out="$(xcrun notarytool submit "$upload" "${NOTARY_ARGS[@]}" --wait 2>&1)"; then
+    echo "$out" >&2
+    # The rejection itself never says WHY. The log behind the submission id does.
+    id="$(printf '%s' "$out" | awk '/^ *id: /{print $2; exit}')"
+    if [ -n "$id" ]; then
+      echo "!! notarisation failed. Apple's log:" >&2
+      xcrun notarytool log "$id" "${NOTARY_ARGS[@]}" >&2 || true
+    fi
+    [ -n "$tmp" ] && rm -rf "$tmp"
+    exit 1
+  fi
+  printf '%s\n' "$out" | tail -2
+
+  xcrun stapler staple "$artifact"
+  # Not `[ -n "$tmp" ] && rm`: a false test as the last command would return 1
+  # from the function, and `set -e` would read that as notarisation failing.
+  if [ -n "$tmp" ]; then rm -rf "$tmp"; fi
+}
+
 cd "$SHELL_DIR"
 echo "==> building the shell ($ARCH), $MODE"
+
+# Tauri notarises by itself whenever it finds Apple credentials in the
+# environment, which would mean two mechanisms racing over the same bundles and
+# still no ticket on the .pkg. Strip the variables it looks at from the child
+# environment — APPLE_SIGNING_IDENTITY stays, signing IS Tauri's job — and let
+# notarise() below be the only thing that talks to Apple.
+TAURI=(env -u APPLE_API_KEY -u APPLE_API_KEY_PATH -u APPLE_API_ISSUER
+           -u APPLE_ID -u APPLE_PASSWORD
+       npx --prefix "$DESKTOP_DIR" tauri)
+
 # The web bundle is compiled INTO the binary by tauri-codegen, so a fresh export
 # means a rebuild of the shell even when no Rust changed.
-npx --prefix "$DESKTOP_DIR" tauri build --bundles app --target "$RUST_TARGET"
+"${TAURI[@]}" build --bundles app --target "$RUST_TARGET"
 
 rm -rf "$DIST"
 mkdir -p "$DIST"
 # Copied out FIRST, and not only for tidiness: the dmg bundler deletes
 # bundle/macos/visky.app once it has been folded into the image.
 cp -R "$BUNDLE_DIR/macos/visky.app" "$DIST/visky.app"
+
+# Stapled here, before the .pkg is built around it, so the installer ships a
+# bundle that also validates offline. The copy inside the .dmg does not get this
+# treatment — Tauri rebuilds the .app as part of the dmg bundling, so anything
+# stapled beforehand is thrown away — but the .dmg carries its own ticket.
+notarise "$DIST/visky.app"
 
 # ---------------------------------------------------------------------------
 # 4. The installers
@@ -221,9 +285,10 @@ for target in "${TARGETS[@]}"; do
       # `bundle.macOS.dmg` in shell/tauri.conf.json and match what
       # electron-builder was producing. It will HANG if stale disk images are
       # still attached; `hdiutil info` is where to look if it ever does.
-      npx --prefix "$DESKTOP_DIR" tauri build --bundles dmg --target "$RUST_TARGET"
+      "${TAURI[@]}" build --bundles dmg --target "$RUST_TARGET"
       DMG="$DIST/visky-${VERSION}-${ARCH}.dmg"
       mv "$BUNDLE_DIR/dmg/visky_${VERSION}"*.dmg "$DMG"
+      notarise "$DMG"
       ;;
     pkg)
       # Tauri has no .pkg bundler, so this is pkgbuild directly. --component,
@@ -241,6 +306,7 @@ for target in "${TARGETS[@]}"; do
         productbuild --package "$COMPONENT" "$PKG" >/dev/null
       fi
       rm -rf "$(dirname "$COMPONENT")"
+      notarise "$PKG"
       ;;
   esac
 done
@@ -251,10 +317,12 @@ done
 echo
 echo "==> done. $MODE"
 printf '    %s  (%s)\n' "$DIST/visky.app" "$(du -sh "$DIST/visky.app" | cut -f1)"
-[ -n "$DMG" ] && printf '    %s  (%s)\n' "$DMG" "$(du -h "$DMG" | cut -f1)"
-[ -n "$PKG" ] && printf '    %s  (%s)\n' "$PKG" "$(du -h "$PKG" | cut -f1)"
+# Same trap: on a --pkg-only build $DMG is empty, the `&&` returns 1, and the
+# script used to die right here — after a successful build, before the report.
+if [ -n "$DMG" ]; then printf '    %s  (%s)\n' "$DMG" "$(du -h "$DMG" | cut -f1)"; fi
+if [ -n "$PKG" ]; then printf '    %s  (%s)\n' "$PKG" "$(du -h "$PKG" | cut -f1)"; fi
 
-if [ "$UNSIGNED" -eq 1 ] || [ -z "${APPLE_API_KEY_PATH:-}${APPLE_ID:-}" ]; then
+if [ "$NOTARISE" -eq 0 ]; then
   cat <<'NOTE'
 
 Not notarised, so macOS quarantines the build after any transfer (AirDrop,

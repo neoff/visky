@@ -501,3 +501,150 @@ index afa6b0f..c417e7b 100644
              ?.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
              ?.emit(event, payload)
      }
+diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
+index 5953276..821a57c 100644
+--- a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
++++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
+@@ -7,6 +7,8 @@ export class Player {
+     _current = undefined;
+     _playWhenReady = false;
+     _state = { state: State.None };
++    /** PATCHED. The shaka PreloadManager parked for the next track, if any. */
++    preloaded;
+     // current getter/setter
+     get current() {
+         return this._current;
+@@ -75,6 +77,12 @@ export class Player {
+         // Attach player to the window to make it easy to access in the JS console.
+         // @ts-ignore
+         window.rntp = this.player;
++        // PATCHED. The wrapper this package exports has a fixed set of
++        // functions and no way to reach a method it does not know about, so the
++        // gapless hand-over below is reached through here. Web only, and only
++        // ever called by services/prefetch.
++        // @ts-ignore
++        window.rntpPlayer = this;
+         this.hasInitialized = true;
+     }
+     /**
+@@ -99,9 +107,70 @@ export class Player {
+     /**
+      * player control
+      */
++    /**
++     * PATCHED. Prepare the NEXT track without disturbing the one playing.
++     *
++     * shaka's PreloadManager fetches the manifest and the head of the stream
++     * into a parked object that `load` can then adopt, which is the difference
++     * between a hand-over that stalls for a manifest fetch, a TLS handshake and
++     * the first segments, and one that does not. Without it every track change
++     * on the web build is an audible gap — the native players buffer the next
++     * queue entry themselves, this one had nothing.
++     *
++     * Idempotent per url, and deliberately quiet: a warm-up that fails costs
++     * nothing but the gap it was meant to close.
++     */
++    async preload(url) {
++        if (!this.player || !url || typeof this.player.preload !== 'function')
++            return;
++        if (this.preloaded?.url === url)
++            return;
++        this.destroyPreload();
++        try {
++            const manager = await this.player.preload(url);
++            if (!manager)
++                return;
++            // `load` may have run while we were on the network; it clears this,
++            // and adopting a manager after that would fight the track playing.
++            if (this.preloaded === undefined)
++                this.preloaded = { url, manager };
++            else
++                manager.destroy?.().catch(() => undefined);
++        }
++        catch (error) {
++            console.debug('==rntp-web: could not preload', error);
++        }
++    }
++    /** PATCHED. Drop a parked preload; it holds buffers. */
++    destroyPreload() {
++        const held = this.preloaded;
++        this.preloaded = undefined;
++        held?.manager?.destroy?.().catch(() => undefined);
++    }
+     async load(track) {
+         if (!this.player)
+             throw new SetupNotCalledError();
++        // PATCHED. Adopt the parked preload when it is this track, so the
++        // hand-over is a swap rather than a fetch. Anything else is stale by
++        // definition — the queue moved somewhere we did not predict — and is
++        // destroyed rather than kept, because a PreloadManager holds buffers.
++        const held = this.preloaded;
++        this.preloaded = undefined;
++        if (held && held.url === track.url) {
++            try {
++                await this.player.load(held.manager);
++                this.current = track;
++                return;
++            }
++            catch (error) {
++                // A consumed or expired manager is not a reason to give up on
++                // the track: fall through and load it the ordinary way.
++                console.debug('==rntp-web: preloaded hand-over failed', error);
++            }
++        }
++        else {
++            held?.manager?.destroy?.().catch(() => undefined);
++        }
+         await this.player.load(track.url);
+         this.current = track;
+     }
+@@ -113,6 +182,7 @@ export class Player {
+     async stop() {
+         if (!this.player)
+             throw new SetupNotCalledError();
++        this.destroyPreload();
+         this.current = undefined;
+         await this.player.unload();
+     }
+diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
+index 67b34a4..f56635d 100644
+--- a/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
++++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
+@@ -34,7 +34,13 @@ export class PlaylistPlayer extends Player {
+                 }
+                 catch (err) {
+                     if (err.message !== 'playlist_exhausted') {
+-                        throw err;
++                        // PATCHED. This used to rethrow, out of a media element
++                        // event handler, where nothing awaits it: the track
++                        // ended, the next one failed to load and the only trace
++                        // was an unhandled rejection. Reported instead, so the
++                        // failure is attached to the track it belongs to.
++                        console.warn('==rntp-web: could not start the next track', err);
++                        break;
+                     }
+                     this.onPlaylistEnded();
+                 }
+@@ -56,8 +62,21 @@ export class PlaylistPlayer extends Player {
+             throw new Error('playlist_exhausted');
+         }
+         if (this.currentIndex !== index) {
++            // PATCHED. The index is claimed BEFORE the load, and a load can
++            // fail — a VK link signed an hour ago at the end of a long show is
++            // exactly the case. Unwound, the player reported an active index
++            // whose track it had never loaded, and everything that asks it
++            // where it is got a different answer from everything that asks it
++            // what is playing.
++            const previous = this._currentIndex;
+             this.currentIndex = index;
+-            await this.load(track);
++            try {
++                await this.load(track);
++            }
++            catch (error) {
++                this._currentIndex = previous;
++                throw error;
++            }
+         }
+         if (initialPosition) {
+             this.seekTo(initialPosition);

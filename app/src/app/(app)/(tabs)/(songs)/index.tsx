@@ -101,6 +101,9 @@ const SongsScreen = () => {
         placeholder="Find in songs"
         onSearchChange={setQuery}
         scrollY={scrollY}
+        // The desktop has no pull-to-refresh — see AnimatedSearchHeader.
+        onRefresh={reset}
+        refreshing={refreshing}
       />
       <TrackList
         id={generateTracksListId(isSearching ? 'songs-search' : 'songs', visibleTracks.length, debouncedQuery)}

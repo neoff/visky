@@ -1,3 +1,4 @@
+import {Platform} from 'react-native'
 import TrackPlayer, {Track, TrackType} from 'react-native-track-player'
 import {fetchTrackById} from '@/helpers/network'
 import {trackKey} from '@/helpers/miscellaneous'
@@ -20,8 +21,11 @@ import {trackKey} from '@/helpers/miscellaneous'
  *    first segments ahead of time warms the CDN edge, so the player's own
  *    request is served from a hot path.
  *
- * What this does NOT do is fill the player's own buffer — ExoPlayer's cache is
- * not reachable from JS. The gap gets much shorter, not provably zero.
+ * What this does NOT do is fill the player's own buffer on the native builds —
+ * ExoPlayer's cache is not reachable from JS. The gap gets much shorter, not
+ * provably zero. On the web build it CAN, through shaka's PreloadManager; see
+ * `parkWithThePlayer` below for the one case where that is not available
+ * either.
  */
 
 /** How close to the end of the current track the warm-up starts. */
@@ -139,6 +143,30 @@ const refreshQueueTrack = async (index: number, track: Track): Promise<string | 
   }
 }
 
+/**
+ * Hand the next track's manifest to the player itself, where it can.
+ *
+ * On the web build the player is shaka, and shaka can park a whole
+ * PreloadManager — manifest parsed, first segments fetched — for `load` to
+ * adopt at the hand-over. That is the difference between a swap and a fetch,
+ * and it is the only mechanism here that closes the gap rather than shortening
+ * it. (The player is reached through a global the patch to
+ * react-native-track-player sets; the wrapper this package exports has no way
+ * to call a method it does not know about.)
+ *
+ * Returns without doing anything on native, and — quietly — in the Tauri
+ * shell: WKWebView plays HLS itself, shaka hands it the url and never touches
+ * the bytes, and `preload` answers null for exactly that case. There is no way
+ * to pre-fill a media element the player has not created yet, so the desktop
+ * keeps the warm route below and the short gap that comes with it.
+ */
+const parkWithThePlayer = (url: string): void => {
+  if (Platform.OS !== 'web') return
+  const player = (globalThis as {rntpPlayer?: {preload?: (url: string) => Promise<void>}})
+    .rntpPlayer
+  void player?.preload?.(url)?.catch?.(() => undefined)
+}
+
 const warm = async (index: number, track: Track): Promise<void> => {
   if (typeof track.url !== 'string' || !track.url) return
 
@@ -155,7 +183,18 @@ const warm = async (index: number, track: Track): Promise<void> => {
     response = await fetchWithTimeout(url, {method: 'GET'})
   }
 
-  if (!response?.ok) return
+  parkWithThePlayer(url)
+
+  if (!response?.ok) {
+    // In a desktop shell this is where every attempt lands, and not because
+    // anything is wrong: the page's origin is the shell's own, VK's CDN sends
+    // no CORS headers, and the browser refuses to show us the response. The
+    // request still goes out on the wire when it is made opaque, which is all
+    // the warm-up ever wanted — DNS, the TLS handshake and the CDN edge. The
+    // body cannot be read, so the segment walk below is skipped.
+    await fetchWithTimeout(url, {method: 'GET', mode: 'no-cors'})
+    return
+  }
 
   let manifest = await response.text()
   let manifestUrl = url

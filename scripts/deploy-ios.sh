@@ -12,13 +12,20 @@
 #
 # Requires:
 #   * eas-cli auth (`eas whoami`) — checked below
-#   * a paid Apple Developer Program membership on the Apple ID in eas.json
-#   * the app record already created in App Store Connect for com.envarg.visky
+#   * a paid Apple Developer Program membership
+#   * the app record in App Store Connect (ascAppId 6808513521 in eas.json)
 #   * a clean git tree: EAS builds the last commit, not the working copy
+#   * the App Store Connect API key at $ASC_KEY_PATH
 #
-# Credentials are NOT part of this script. EAS holds the distribution
-# certificate and the provisioning profiles; the first run of
-# `eas credentials -p ios` creates them. See scripts/README.md.
+# NO INTERACTIVE APPLE LOGIN. Everything authenticates with the App Store
+# Connect API key below, so this runs unattended — no 2FA prompt, no Apple ID
+# password, no cookie session that expires after a few days. The one thing the
+# key cannot do is create itself: see scripts/README.md.
+#
+# Credentials themselves are NOT created here. EAS holds the distribution
+# certificate and BOTH provisioning profiles (the watch app has its own bundle
+# id and so needs its own profile); `eas credentials:configure-build -p ios`
+# made them and only has to run again when they expire.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,16 +34,51 @@ PROFILE="${PROFILE:-production}"
 SUBMIT=1
 BUILD=1
 
+# --- App Store Connect API key -------------------------------------------
+# Key id and issuer id are identifiers, not secrets, so they live here. The
+# .p8 is the secret and stays outside the repo; `certs/` and `*.p8` are
+# gitignored precisely so a stray copy cannot be committed.
+ASC_KEY_PATH="${ASC_KEY_PATH:-$HOME/apple-signing/AuthKey_PNX776L4UV.p8}"
+export EXPO_ASC_API_KEY_PATH="$ASC_KEY_PATH"
+export EXPO_ASC_KEY_ID="${EXPO_ASC_KEY_ID:-PNX776L4UV}"
+export EXPO_ASC_ISSUER_ID="${EXPO_ASC_ISSUER_ID:-b0b6e5ca-3cd8-43b6-992e-5c53e65b03ae}"
+export EXPO_APPLE_TEAM_ID="${EXPO_APPLE_TEAM_ID:-N853W9Q344}"
+# Without the team TYPE eas-cli silently never reaches authentication and
+# reports the app as missing from App Store Connect instead.
+export EXPO_APPLE_TEAM_TYPE="${EXPO_APPLE_TEAM_TYPE:-INDIVIDUAL}"
+
+# eas-cli mirrors app.json entitlements onto the Apple App IDs before every
+# build. On com.envarg.visky.watchkitapp that request is rejected outright:
+#
+#   Apple API error: The request entity is not a valid request document object
+#   - Unexpected or invalid value at
+#     'data.relationships.bundleIdCapabilities.data.[0].attributes'
+#
+# The watch App ID carries CARPLAY_PLAYABLE_CONTENT, a deprecated capability
+# that needs attributes eas-cli does not send — and one a watch app cannot use
+# anyway. Syncing off makes the Apple developer portal the source of truth for
+# capabilities: change them THERE, not in app.json, or the build silently
+# lacks them.
+export EXPO_NO_CAPABILITY_SYNC="${EXPO_NO_CAPABILITY_SYNC:-1}"
+
 for arg in "$@"; do
   case "$arg" in
     --no-submit) SUBMIT=0 ;;
     --submit-last) BUILD=0 ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; exit 1 ;;
   esac
 done
 
 cd "$APP_DIR"
+
+[ -f "$ASC_KEY_PATH" ] || {
+  echo "!! App Store Connect API key not found at:" >&2
+  echo "   $ASC_KEY_PATH" >&2
+  echo "   Apple hands the .p8 over exactly once, at creation. If it is lost," >&2
+  echo "   the key cannot be re-downloaded — revoke it and generate another." >&2
+  exit 1
+}
 
 echo "==> eas whoami"
 npx eas-cli@latest whoami
@@ -47,10 +89,11 @@ if [ "$BUILD" -eq 1 ]; then
     exit 1
   fi
 
-  # The watch target adds a SECOND bundle id (com.envarg.visky.watchkitapp) that
-  # needs its own provisioning profile. --non-interactive cannot create one, so
-  # the very first store build has to run interactively once; after that the
-  # profile is on EAS and this stays unattended.
+  # The watch target is a SECOND bundle id (com.envarg.visky.watchkitapp) with
+  # its own provisioning profile. eas-cli does not discover it from the Xcode
+  # project — for a CNG project it reads the target list ONLY from
+  # extra.eas.build.experimental.ios.appExtensions in app.json. Drop that entry
+  # and the watch silently goes unsigned.
   echo "==> EAS build (ios, profile=$PROFILE)${SUBMIT:+ with auto-submit}"
   npx eas-cli@latest build \
     --platform ios \

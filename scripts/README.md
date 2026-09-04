@@ -43,21 +43,53 @@ scripts/deploy-ios.sh --submit-last # submit the latest EAS build, no rebuild
 PROFILE=preview scripts/deploy-ios.sh
 ```
 
-Needs: paid **Apple Developer Program** membership, the app record created in
-App Store Connect for `com.envarg.visky`, `eas whoami` authenticated, clean git
-tree. Signing material lives on EAS — run `eas credentials -p ios` once.
+Needs: paid **Apple Developer Program** membership, `eas whoami` authenticated,
+a clean git tree, and the App Store Connect API key at
+`~/apple-signing/AuthKey_PNX776L4UV.p8` (override with `ASC_KEY_PATH`). The app
+record already exists — `ascAppId` `6808513521` in `eas.json`.
 
-The watch target ships a second bundle id (`com.envarg.visky.watchkitapp`) that
-needs its own provisioning profile, so the **first** store build must run
-interactively (`npx eas-cli@latest build -p ios --profile production`) to let
-EAS create it. Later runs of the script work unattended.
+**No interactive Apple login.** The script authenticates with the App Store
+Connect API key, so it runs unattended: no 2FA prompt, no Apple ID password, no
+cookie session that expires after a few days. Two things about that key are
+worth knowing before it goes missing:
 
-## Desktop (Electron, macOS)
+* Apple hands the `.p8` over **once**, at creation. Lost means revoke and
+  regenerate, not re-download.
+* It is a **Team** key with the **App Manager** role. Developer would have been
+  enough to notarise the desktop build but not to upload to App Store Connect,
+  and a key's role cannot be widened after it is created.
+
+`EXPO_APPLE_TEAM_TYPE` is not optional. Without it eas-cli never reaches
+authentication and reports the app as missing from App Store Connect — an error
+that points nowhere near the cause.
+
+Signing material lives on EAS: one distribution certificate and **two**
+provisioning profiles, because the watch app is a separate bundle id
+(`com.envarg.visky.watchkitapp`). `eas credentials:configure-build -p ios`
+created them; it only has to run again when they expire (2027-09-04).
+
+eas-cli does not find the watch target by reading the Xcode project. For a CNG
+project it takes the target list **only** from
+`extra.eas.build.experimental.ios.appExtensions` in `app.json`. Remove that
+entry and the watch target silently goes unsigned.
+
+The script sets `EXPO_NO_CAPABILITY_SYNC=1`. Without it eas-cli tries to mirror
+`app.json` entitlements onto the Apple App IDs before each build, and Apple
+rejects the request for the watch App ID, which carries the deprecated
+`CARPLAY_PLAYABLE_CONTENT` capability. The trade: the Apple developer portal
+becomes the source of truth for capabilities — change them there, not in
+`app.json`.
+
+## Desktop (Tauri, macOS)
 
 ### `build-desktop.sh` — signed .dmg / .pkg
-Exports the Expo web bundle, wraps it in the Electron shell and packages a universal build,
-**signed** with the Developer ID certificates in the login keychain (pinned by SHA-1 in
-`desktop/package.json`).
+Exports the Expo web bundle, compiles it into the Tauri shell and packages a universal
+build, **signed** with the Developer ID certificates in the login keychain (pinned by
+SHA-1 at the top of the script — two of each certificate live there, so the name alone
+is ambiguous).
+
+The Electron shell it replaced still builds — `scripts/build-desktop-electron.sh`,
+sources in `desktop-electron/` — but Tauri is what ships: ~16 MB against ~296 MB.
 
 ```bash
 scripts/build-desktop.sh              # dmg + pkg, signed
@@ -69,10 +101,16 @@ scripts/build-desktop.sh --run        # launch locally, no packaging
 ```
 
 Notarisation runs only when Apple credentials are in the environment — either
-`APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER` (App Store Connect API key)
-or `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD`. Without them the build is signed but
-not notarised, and the receiving Mac still needs, once:
+`APPLE_API_KEY` (path to the .p8) + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER` for an
+App Store Connect API key, or `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD`. Without them
+the build is signed but not notarised, and the receiving Mac still needs, once:
 `xattr -dr com.apple.quarantine /Applications/visky.app`.
+
+The `.app`, the `.dmg` and the `.pkg` are each submitted and stapled separately, and
+the script does this itself rather than letting Tauri do it. Tauri notarises only the
+bundles it produces, and it has no `.pkg` bundler — the installer would have shipped
+signed but unnotarised, which Gatekeeper blocks exactly as hard as unsigned. Expect
+three round trips to Apple, a few minutes each.
 
 ## API (Node/Express, image `varg/visky-api`)
 

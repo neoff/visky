@@ -27,26 +27,56 @@ export const storage = new MMKVLoader().withInstanceID('playlist').initialize();
 export const SONGS_CACHE_KEY = 'songs-window'
 export const FAVORITES_CACHE_KEY = 'favorites-window'
 
+/**
+ * The same page again, in memory.
+ *
+ * MMKV is a native module. On the web and desktop builds there is no
+ * `NativeModules.MMKVStorage` to bind to, so every read above comes back empty
+ * — which did not matter while the only readers were the car and the watch,
+ * neither of which runs there. The playback reconciler is a third reader and
+ * does run there, and a device that cannot read the list rebuilds a queue of
+ * ONE track: the show then stops at the end of it with nothing to move to.
+ *
+ * Written beside the MMKV mirror, from the same call, and read when MMKV has
+ * nothing. It does not survive a reload, which is the honest limit: on the web
+ * the list has to have been on screen once this session.
+ */
+const windows = new Map<string, TrackWithPlaylist[]>()
+
+export const rememberWindow = (key: string, items: TrackWithPlaylist[]): void => {
+  windows.set(key, items)
+}
+
 /** The cached page as plain data, for readers outside React. Empty, never throws. */
 export const cachedTracks = async (key: string): Promise<TrackWithPlaylist[]> => {
   try {
-    return (await storage.getArrayAsync<TrackWithPlaylist>(key)) ?? []
+    const stored = await storage.getArrayAsync<TrackWithPlaylist>(key)
+    if (stored?.length) return stored
   } catch (error) {
     console.warn('==library: could not read', key, error)
-    return []
   }
+  return windows.get(key) ?? []
 }
 const getTracks = async ():Promise<TrackWithPlaylist[]> => {
   //const [tracks, setTracks] = useMMKVStorage<TrackWithPlaylist[]>('tracks', storage, []);
-  const tracks = await storage.getArrayAsync<TrackWithPlaylist>('tracks')
-  return tracks ?? []
+  try {
+    const tracks = await storage.getArrayAsync<TrackWithPlaylist>('tracks')
+    return tracks ?? []
+  } catch (error) {
+    // MMKV is a native module and there is none on the web or desktop build.
+    // The promise this returns is created while the store is still being
+    // constructed, with nobody to catch it: unguarded, importing this module
+    // raised an unhandled rejection before any screen had rendered.
+    console.warn('==library: could not read the legacy track cache', error)
+    return []
+  }
 }
 export const useLibraryStore = create<LibraryState>()((set) => ({
   tracks: getTracks().then((tracks) => tracks.map((item:TrackWithPlaylist ) => ({
     ...item,
     date: item?.date?.toString(),
     album: item?.album?.title ?? 'Unknown Album',
-    artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+    artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300,
   }))),
   toggleTrackFavorite: (track) =>
     set((state) => ({

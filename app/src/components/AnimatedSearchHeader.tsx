@@ -1,5 +1,5 @@
 // AnimatedSearchHeader.tsx
-import {TextInput, View, Text, Platform, Pressable, StyleSheet, TouchableOpacity} from 'react-native';
+import {ActivityIndicator, TextInput, View, Text, Platform, Pressable, StyleSheet, TouchableOpacity} from 'react-native';
 import Animated, {
   Extrapolation,
   SharedValue,
@@ -20,6 +20,17 @@ interface AnimatedSearchHeaderProps {
   scrollY?: SharedValue<number>;
   /** optional control shown to the RIGHT of the search box (e.g. a filter) */
   action?: React.ReactNode;
+  /**
+   * Reload the list.
+   *
+   * Given one, the header draws a refresh button — but only where there is no
+   * pull-to-refresh, which means the web and desktop builds.
+   * react-native-web's `RefreshControl` is a stub: it renders a plain View and
+   * DROPS `onRefresh` entirely, so the gesture the app teaches everywhere else
+   * has no equivalent there and the list could not be reloaded at all.
+   */
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
@@ -28,6 +39,8 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
                                                                             onSearchChange,
                                                                             scrollY: externalScrollY,
                                                                             action,
+                                                                            onRefresh,
+                                                                            refreshing = false,
                                                                           }) => {
   const localScrollY = useSharedValue(0);
   const scrollY = externalScrollY ?? localScrollY;
@@ -60,6 +73,10 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
     [onSearchChange]
   );
 
+  // Only where the gesture is missing. On a phone the pull IS the control, and
+  // a second one beside the title would be clutter.
+  const showRefresh = Platform.OS === 'web' && Boolean(onRefresh);
+
   const clearInput = () => {
     setSearchText('');
     onSearchChange?.('');
@@ -69,9 +86,31 @@ export const AnimatedSearchHeader: React.FC<AnimatedSearchHeaderProps> = ({
     // translucent rgba plate instead of BlurView: expo-blur is translucent to a
     // different degree on Android, which made the two headers look unequal
     <View style={[styles.header, {paddingTop: insets.top + 8}]}>
-      <Animated.View style={[{alignItems: 'flex-start'}, headerAnimatedStyle]}>
-        <Text style={styles.title}>{title}</Text>
-      </Animated.View>
+      <View style={styles.titleRow}>
+        <Animated.View style={[{alignItems: 'flex-start'}, headerAnimatedStyle]}>
+          <Text style={styles.title}>{title}</Text>
+        </Animated.View>
+
+        {/* Beside the title rather than in the search row: that row collapses
+            to nothing as the list scrolls, and reloading is exactly what you
+            reach for after scrolling. */}
+        {showRefresh && (
+          <TouchableOpacity
+            onPress={onRefresh}
+            disabled={refreshing}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh"
+            style={styles.refresh}
+          >
+            {refreshing ? (
+              <ActivityIndicator color={colors.text} size="small"/>
+            ) : (
+              <Ionicons name="refresh" size={22} color={colors.text}/>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
 
       <Animated.View style={[searchAnimatedStyle, styles.searchRow]}>
         <View style={[styles.searchBox, {flex: 1}]} >
@@ -108,6 +147,22 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     backgroundColor: colors.surfaceHeader,
     zIndex: 10,
+  },
+  // The title keeps its own scroll animation; the refresh button must not
+  // shrink with it, so it is a sibling in this row rather than a child.
+  titleRow: {
+    flexDirection: 'row',
+    // TOP aligned, not centred: the title carries a 12pt bottom margin and
+    // shrinks as the list scrolls, so centring on that box drifts the button
+    // downwards exactly when the header is at its shortest.
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  refresh: {
+    // (title line height 38 - the button's own 30) / 2, so the glyph sits on
+    // the title's centre line while the list is at the top
+    marginTop: 4,
+    padding: 4,
   },
   title: {
     fontSize: 32,

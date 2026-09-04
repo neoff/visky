@@ -1,6 +1,5 @@
 import {apiUrls, headers} from "@/constants";
 import {ensureDeviceId} from "@/helpers/device";
-import {unknownTrackImageUri} from "@/constants/images";
 import {TrackWithPlaylist} from "@/helpers/types";
 import axios, {AxiosError, AxiosRequestConfig, Method} from "axios";
 import {TrackType} from "react-native-track-player";
@@ -199,7 +198,7 @@ export const loadFriskyListData = async (owner: string | null, onLoad?: (res: an
       date: item?.date?.toString(),
       type: TrackType.HLS,
       album: item?.album?.title ?? 'Unknown Album',
-      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300,
     }))
     return onLoad?.(items);
     //return data;
@@ -223,7 +222,7 @@ export const loadPlayListData = async (owner: string | null, onLoad?: (fragments
       date: item?.date?.toString(),
       type: TrackType.HLS,
       album: item?.album?.title ?? 'Unknown Album',
-      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300,
     }))
     return onLoad?.(items);
     //return data;
@@ -259,7 +258,7 @@ export const loadFavoritesListData = async (
       date: item?.date?.toString(),
       type: TrackType.HLS,
       album: item?.album?.title ?? 'Unknown Album',
-      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+      artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300,
       // `favorite` comes from the API: in "all" and in other playlists a track
       // is only a favourite when it also sits in Frisky-favorites
       favorite: item.favorite ?? true,
@@ -321,7 +320,7 @@ const mapApiTracks = (items: any[] | undefined) =>
     date: item?.date?.toString(),
     type: TrackType.HLS,
     album: item?.album?.title ?? 'Unknown Album',
-    artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+    artwork: (item as { artwork?: string }).artwork ?? item.album?.thumb?.photo_300,
   }));
 
 /**
@@ -443,7 +442,7 @@ export const fetchTrackById = async (ownerId: number | string, id: number | stri
     date: item?.date?.toString(),
     type: TrackType.HLS,
     album: item?.album?.title ?? 'Unknown Album',
-    artwork: item?.artwork ?? item?.album?.thumb?.photo_300 ?? unknownTrackImageUri,
+    artwork: item?.artwork ?? item?.album?.thumb?.photo_300,
   };
 };
 

@@ -1,6 +1,7 @@
-import TrackPlayer, {Track} from 'react-native-track-player'
-import {fetchTrackById} from '@/helpers/network'
+import TrackPlayer, {Track, TrackType} from 'react-native-track-player'
+import {fetchFavoritesPage, fetchFriskyPage, fetchTrackById} from '@/helpers/network'
 import {trackKey} from '@/helpers/miscellaneous'
+import {FAVORITES_CACHE_KEY, SONGS_CACHE_KEY, cachedTracks} from '@/store/library'
 import {projectPosition, usePlaybackStore} from '@/store/playback'
 import {PlaybackState} from '@/types/playback'
 
@@ -124,6 +125,51 @@ const withApplying = async (work: () => Promise<void>): Promise<void> => {
   }
 }
 
+/** One page, the size the tabs' own windows use. */
+const QUEUE_PAGE_SIZE = 50
+
+/**
+ * The rest of the list the session's context names, in play order.
+ *
+ * Read from the window each tab keeps — the same page services/car.ts builds
+ * its browse tree from — and from the API when there is no window yet, which
+ * is the normal state of a cold start. A page rather than the whole archive is
+ * enough: what this has to prevent is a queue that ends at the track it
+ * restored.
+ *
+ * Ordered the way TrackList orders a tap — everything after the track, then
+ * everything before it — so continuing from a restore and continuing from a
+ * tap play the same show in the same order.
+ */
+const contextQueue = async (state: PlaybackState, trackId: string): Promise<Track[]> => {
+  const favorites = state.context?.kind === 'favorites'
+  let list = (await cachedTracks(
+    favorites ? FAVORITES_CACHE_KEY : SONGS_CACHE_KEY,
+  )) as unknown as Track[]
+
+  // A cold start reaches here before any screen has loaded a page, so there is
+  // nothing cached to read — and that is the case this whole function exists
+  // for, because a cold start is how a device ends up holding one track and no
+  // list. One page is worth the request.
+  if (!list.length) {
+    try {
+      list = (favorites
+        ? await fetchFavoritesPage(undefined, 0, QUEUE_PAGE_SIZE)
+        : await fetchFriskyPage(0, QUEUE_PAGE_SIZE)) as Track[]
+    } catch (error) {
+      console.warn('==playback: no list to queue behind the restored track', error)
+      return []
+    }
+  }
+
+  const playable = list.filter(
+    (item) => typeof item.url === 'string' && item.url.trim().length > 0,
+  )
+  const at = playable.findIndex((item) => trackKey(item as never) === trackId)
+  if (at === -1) return playable
+  return [...playable.slice(at + 1), ...playable.slice(0, at)]
+}
+
 /** Put the session's track in the player, however that has to happen. */
 const ensureTrackLoaded = async (state: PlaybackState): Promise<boolean> => {
   const wanted = state.track
@@ -146,8 +192,17 @@ const ensureTrackLoaded = async (state: PlaybackState): Promise<boolean> => {
       console.warn('==playback: VK returned no stream for', wanted.track_id)
       return false
     }
+    // A QUEUE, not a single track. This used to be `add([track])`, and a queue
+    // of one is a dead end: when it finishes there is nothing to move to, so
+    // the show simply stopped at the end of the restored track — which is the
+    // most common way to arrive here, because a cold start restores the last
+    // track into an empty player. The tap in the list has always built the
+    // whole list around the track it starts; so does this now.
+    const rest = await contextQueue(state, wanted.track_id)
+    const queue = [track, ...rest].map((item) => ({...item, type: TrackType.HLS}))
     await TrackPlayer.reset()
-    await TrackPlayer.add([track])
+    await TrackPlayer.add(queue)
+    console.info(`==playback: queued ${queue.length} behind ${wanted.track_id}`)
     return true
   } catch (error) {
     console.warn('==playback: could not resolve the track', wanted.track_id, error)

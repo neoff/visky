@@ -1,0 +1,39 @@
+name: Validate OpenAPI Contract
+
+on:
+  push:
+    paths:
+      - 'api/openapi.yaml'
+      - '.github/workflows/validate-contract.yml'
+  pull_request:
+    paths:
+      - 'api/openapi.yaml'
+      - '.github/workflows/validate-contract.yml'
+
+jobs:
+  validate:
+    name: Validate Brain OpenAPI Contract
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install swagger-cli
+        run: npm install -g @apidevtools/swagger-cli
+
+      - name: Validate OpenAPI contract
+        run: swagger-cli validate api/openapi.yaml
+
+      - name: Print contract summary
+        if: success()
+        run: |
+          echo "✅ Brain OpenAPI contract is valid"
+          echo "Contract version: $(grep 'version:' api/openapi.yaml | head -1 | awk '{print $2}')"
+          echo "Endpoints:"
+          grep 'paths:' -A 50 api/openapi.yaml | grep '^\s*/' | sed 's/://g'

@@ -46,7 +46,8 @@
 				"track": "internal"
 			},
 			"ios": {
-				"appleId": "en.varg@me.com"
+				"appleId": "en.varg@me.com",
+				"ascAppId": "6808513521"
 			}
 		}
 	}

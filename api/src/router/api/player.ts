@@ -3,6 +3,7 @@ import {Request, Response} from "@/types";
 import {checkAuthAndroid} from "@/helper/vk";
 import {vkMethod} from "@/helper/vk";
 import {cleanupDataAndSortPart, formatPlaylist} from "@/helper";
+import {enrich, kick, remember} from "@/services/friskyCache";
 import {listDevices, touchDevice} from "@/services/devices";
 import {
   applyUpdate,
@@ -301,8 +302,18 @@ player.get("/track/:owner_id/:id", checkAuthAndroid, async (req: Request, res: R
       res.status(404).send({errMessage: "Track not found"});
       return;
     }
+    // raw, before the cleanup — the same handoff to the metadata cache that
+    // /playlist does
+    remember(items);
     const list = formatPlaylist(cleanupDataAndSortPart({count: items.length, items}), 0);
-    res.status(200).send(list.items[0]);
+    // The same frisky merge every list gets. Without it this endpoint answered
+    // with VK's bare row, and VK has no cover for a Frisky upload: the app fell
+    // back to its bundled placeholder and pushed THAT into the player. A track
+    // re-resolved here is the one a cold start and every transfer plays, so the
+    // lock screen and CarPlay showed a track with no artwork at all.
+    const [enriched] = await enrich(list.items);
+    kick();
+    res.status(200).send(enriched ?? list.items[0]);
   } catch (error: Error | any) {
     res.status(500).send({errMessage: error.message});
   }

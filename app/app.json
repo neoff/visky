@@ -92,7 +92,20 @@
         "origin": false
       },
       "eas": {
-        "projectId": "db8e9c8f-c68f-45fd-b4a1-bff0ca4f7c4d"
+        "projectId": "db8e9c8f-c68f-45fd-b4a1-bff0ca4f7c4d",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "viskyWatch",
+                  "bundleIdentifier": "com.envarg.visky.watchkitapp",
+                  "parentBundleIdentifier": "com.envarg.visky"
+                }
+              ]
+            }
+          }
+        }
       }
     }
   }

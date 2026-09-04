@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {Track} from 'react-native-track-player'
-import {storage} from '@/store/library'
+import {rememberWindow, storage} from '@/store/library'
 import {trackKey} from '@/helpers/miscellaneous'
 import {usePlaybackStore} from '@/store/playback'
 
@@ -25,6 +25,9 @@ const readCache = (key: string | undefined): Track[] => {
 
 const writeCache = (key: string | undefined, items: Track[]) => {
   if (!key) return
+  // In memory first, and outside the try: MMKV is a native module and throws on
+  // web, where this copy is the only one there is. See store/library.
+  rememberWindow(key, items as never)
   try {
     storage.setArray(key, items)
   } catch (error) {

@@ -19,7 +19,18 @@ jest.mock('@/helper/vk', () => ({
   }),
 }));
 
+/**
+ * The metadata cache needs Postgres, and the point here is only that the track
+ * endpoint runs the merge at all -- the merge itself is friskyCache's own test.
+ */
+jest.mock('@/services/friskyCache', () => ({
+  enrich: jest.fn(async (items: any[]) => items),
+  kick: jest.fn(),
+  remember: jest.fn(),
+}));
+
 const {vkMethod} = require('@/helper/vk');
+const {enrich, remember} = require('@/services/friskyCache');
 import app from '@/router/index';
 import {__resetPlayback} from '@/services/playback';
 import {__resetDeviceRegistry} from '@/services/devices';
@@ -109,6 +120,34 @@ describe('/api/player', () => {
     expect(res.body.title).toBe('Test Title');
     expect(res.body.artist).toBe('Test Artist');
     expect(res.body.url).toBe('https://example.com/stream.m3u8');
+  });
+
+  it('serves a re-resolved track through the frisky merge', async () => {
+    // VK has no cover for a Frisky upload, and this is the endpoint a cold
+    // start and every transfer play from: unmerged, the app fell back to its
+    // bundled placeholder and pushed a file:// path from its own bundle into
+    // the player, so the lock screen and CarPlay showed no artwork at all.
+    vkMethod.mockResolvedValue({
+      response: [
+        {
+          id: 1,
+          owner_id: -42311167,
+          artist: 'FRISKY | Test Artist',
+          title: 'Month 1234 - Test Title [vk.com/feelin_frisky]',
+          duration: 3600,
+          url: 'https://example.com/stream.m3u8',
+        },
+      ],
+    });
+    enrich.mockImplementationOnce(async (items: any[]) =>
+      items.map((item) => ({...item, artwork: 'https://s3.example.com/show.jpg'})),
+    );
+
+    const res = await asPhone(request(app).get('/api/player/track/-42311167/1'));
+    expect(res.status).toBe(200);
+    expect(res.body.artwork).toBe('https://s3.example.com/show.jpg');
+    // the raw VK row is handed to the cache too, the same way /playlist does it
+    expect(remember).toHaveBeenCalled();
   });
 
   it('404s a track VK does not know', async () => {

@@ -1,0 +1,226 @@
+---
+name: Manual Deploy
+
+# Single workflow for full deployment cycle:
+# 1. Wait for Sync to GitLab (which bumps version)
+# 2. Generate client & Run Tests
+# 3. Build and push Docker image
+# 4. Deploy to Kubernetes cluster
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch to deploy (default: main)"
+        required: false
+        type: string
+        default: main
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+jobs:
+  validate:
+    uses: ./.github/workflows/check.yml
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_EMAIL: ${{ secrets.DOCKERHUB_EMAIL }}
+      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+    with:
+      DOMAIN: ${{ vars.DOMAIN }}
+
+  wait-for-unlock:
+    uses: ./.github/workflows/wait-for-unlock.yml
+
+  wait-for-sync:
+    name: Wait for Sync
+    runs-on: ubuntu-latest
+    needs:
+      - wait-for-unlock
+      - validate
+    steps:
+      - name: Wait for Sync to GitLab workflow
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const maxRetries = 60; // 10 minutes (with 10s interval)
+            const interval = 10000;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const sha = context.sha;
+
+            console.log(`Waiting for 'Sync to GitLab' workflow for commit ${sha}...`);
+
+            for (let i = 0; i < maxRetries; i++) {
+              const runs = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                head_sha: sha,
+                event: 'push', // Sync usually runs on push
+                status: 'completed'
+              });
+
+              // Filter for the specific workflow name
+              const syncRun = runs.data.workflow_runs.find(r => r.name === 'Sync to GitLab' && r.conclusion === 'success');
+
+              if (syncRun) {
+                console.log(`✅ Sync workflow completed successfully: ${syncRun.html_url}`);
+                return;
+              }
+              
+              const failedRun = runs.data.workflow_runs.find(r => r.name === 'Sync to GitLab' && (r.conclusion === 'failure' || r.conclusion === 'cancelled'));
+              if (failedRun) {
+                 throw new Error(`❌ Sync workflow failed or cancelled: ${failedRun.html_url}`);
+              }
+
+              console.log(`Attempt ${i + 1}/${maxRetries}: Sync not ready yet. Retrying in ${interval/1000}s...`);
+              await new Promise(r => setTimeout(r, interval));
+            }
+            throw new Error('Timeout waiting for Sync workflow to complete');
+
+  get-version:
+    name: Get Version
+    runs-on: ubuntu-latest
+    needs: wait-for-sync
+    outputs:
+      version: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: version
+        run: |
+          git fetch --tags
+          # Get the tag that points to the current commit
+          TAG=$(git describe --tags --exact-match 2>/dev/null || git describe --tags --abbrev=0)
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Using version: $TAG"
+
+  build-and-push:
+    name: Build & Push Docker Image
+    needs: get-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.get-version.outputs.version }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Install oapi-codegen
+        run: |
+          go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@latest
+
+      - name: Generate client from producer contract
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          # Make sure modules are downloaded
+          go mod download
+          make generate-client
+
+      - name: Validate generated code
+        run: |
+          make validate-generated
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/crypto-bits-brain:${{ needs.get-version.outputs.version }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/crypto-bits-brain:latest
+          build-args: |
+            VERSION=${{ needs.get-version.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crypto-bits-brain:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/crypto-bits-brain:buildcache,mode=max
+
+  deploy:
+    name: Deploy to Kubernetes
+    needs: [get-version, build-and-push]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "latest"
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Deploy with Helm
+        run: |
+          NEW_VERSION="${{ needs.get-version.outputs.version }}"
+          echo "🚀 Deploying crypto-bits-brain $NEW_VERSION to Kubernetes"
+
+          helm upgrade --install crypto-bits-brain .github/helm \
+            --namespace binance \
+            --create-namespace \
+            --set image.repository=${{ secrets.DOCKERHUB_USERNAME }}/crypto-bits-brain \
+            --set image.tag=$NEW_VERSION \
+            --wait \
+            --timeout 5m
+
+      - name: Verify deployment
+        run: |
+          echo "✅ Verifying deployment..."
+          kubectl get pods -n binance -l app=crypto-bits-brain
+          kubectl get svc -n binance crypto-bits-brain
+
+          POD_NAME=$(kubectl get pods -n binance -l app=crypto-bits-brain -o jsonpath='{.items[0].metadata.name}')
+          echo "📦 Pod: $POD_NAME"
+          kubectl logs $POD_NAME -n binance --tail=20 || true
+
+      - name: Deployment summary
+        run: |
+          echo "========================================="
+          echo "✅ Deployment completed successfully!"
+          echo "========================================="
+          echo "📦 Version: ${{ needs.get-version.outputs.version }}"
+          echo "🐳 Image: ${{ secrets.DOCKERHUB_USERNAME }}/crypto-bits-brain:${{ needs.get-version.outputs.version }}"
+          echo "🌍 Namespace: binance"
+          echo "🏥 Health: http://crypto-bits-brain:8777/health"
+          echo "📊 Model Info: http://crypto-bits-brain:8777/model/info"
+          echo "========================================="
