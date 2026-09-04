@@ -47,7 +47,10 @@
 			},
 			"ios": {
 				"appleId": "en.varg@me.com",
-				"ascAppId": "6808513521"
+				"ascAppId": "6808513521",
+				"ascApiKeyPath": ".asc-key.p8",
+				"ascApiKeyId": "PNX776L4UV",
+				"ascApiKeyIssuerId": "b0b6e5ca-3cd8-43b6-992e-5c53e65b03ae"
 			}
 		}
 	}

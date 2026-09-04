@@ -80,6 +80,15 @@ cd "$APP_DIR"
   exit 1
 }
 
+# eas submit reads the key ONLY from the submit profile in eas.json — never from
+# the environment, and it needs all three of ascApiKeyPath/ascApiKeyId/
+# ascApiKeyIssuerId or it silently falls back to the EAS credentials service.
+# The path there is relative (`.asc-key.p8`, resolved against this directory) so
+# that eas.json stays portable and carries nobody's home directory. This is the
+# link that makes it point at the real key, and it is a SYMLINK on purpose:
+# a copy would mean two private keys to keep track of instead of one.
+ln -sfn "$ASC_KEY_PATH" "$APP_DIR/.asc-key.p8"
+
 echo "==> eas whoami"
 npx eas-cli@latest whoami
 
