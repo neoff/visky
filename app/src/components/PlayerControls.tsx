@@ -1,9 +1,10 @@
 import {useRef} from "react";
-import {TouchableOpacity, View, ViewStyle} from "react-native";
+import {ActivityIndicator, TouchableOpacity, View, ViewStyle} from "react-native";
 import TrackPlayer, {useIsPlaying} from "react-native-track-player";
 import {FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {colors} from "@/constants";
 import {useHoldToSeek} from "@/hooks/useSeekGestures";
+import {beginTrackSwitch, endTrackSwitch, useIsSwitchingTrack} from "@/store/trackSwitch";
 import {playerControlStyle} from "@/styles";
 
 // How long the finger has to stay down before it counts as scrubbing rather
@@ -52,6 +53,9 @@ const BigPlayPauseButton = ({ playing, iconSize = 48 }: PlayerButtonProps) => {
 
 export const PlayPauseButton = ({ style, type, iconSize = 78 }: PlayerButtonProps) => {
   const { playing } = useIsPlaying()
+  // Only the BIG button: the mini player draws its own spinner over the
+  // artwork, and two of them on one plate is noise.
+  const switching = useIsSwitchingTrack() && type !== PlayerButtonType.SMALL
   const handlePlayPause = async () => {
     try {
       if (playing) {
@@ -70,9 +74,17 @@ export const PlayPauseButton = ({ style, type, iconSize = 78 }: PlayerButtonProp
         activeOpacity={0.85}
         onPress={handlePlayPause}
       >
-        {type === PlayerButtonType.SMALL
-          ? <SmallPlayPauseButton playing={playing} iconSize={iconSize} />
-          : <BigPlayPauseButton playing={playing} iconSize={iconSize} />
+        {switching
+          ? (
+            // Sized to the glyph it replaces, so the row does not jump while
+            // the track is being fetched.
+            <View style={{width: iconSize, height: iconSize, alignItems: 'center', justifyContent: 'center'}}>
+              <ActivityIndicator color={colors.text} size="large"/>
+            </View>
+          )
+          : type === PlayerButtonType.SMALL
+            ? <SmallPlayPauseButton playing={playing} iconSize={iconSize} />
+            : <BigPlayPauseButton playing={playing} iconSize={iconSize} />
         }
       </TouchableOpacity>
     </View>
@@ -84,9 +96,14 @@ export const SkipToNextButton = ({ type, iconSize = 40 }: PlayerButtonProps) => 
   const hold = useHoldToSeek(1)
 
   const handleSkipToNext = async () => {
+    // The tap is answered on screen before the network is: a VK link an hour
+    // old has to be re-signed, and until this existed the app looked frozen for
+    // as long as that took.
+    beginTrackSwitch()
     try {
       await TrackPlayer.skipToNext()
     } catch (error) {
+      endTrackSwitch()
       console.warn('Unable to skip to the next track', error)
     }
   }
@@ -132,7 +149,15 @@ export const SkipToPreviousButton = ({ type, iconSize = 40 }: PlayerButtonProps)
     try {
       const position = await TrackPlayer.getProgress().then((progress) => progress.position)
       if (tappedAgain || position <= AT_START_SECONDS) {
-        await TrackPlayer.skipToPrevious()
+        // only the SKIP is a load; a seek back to 0 is instant and needs no
+        // spinner
+        beginTrackSwitch()
+        try {
+          await TrackPlayer.skipToPrevious()
+        } catch (error) {
+          endTrackSwitch()
+          throw error
+        }
         return
       }
       await TrackPlayer.seekTo(0)

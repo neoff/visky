@@ -94,6 +94,19 @@ describe('a next track that will not load', () => {
     expect(player.index).toBe(0)
   })
 
+  it('tells the app about it, so the link can be re-signed', async () => {
+    const player = new Harness([track(1), track(2)], 0)
+    player.rejectFor.add(track(2).url)
+    const reported = jest.fn()
+    ;(player as any).onNextTrackFailed = reported
+
+    await player.end()
+
+    // Silence here is what left the show stopped between two halves of one
+    // set: the app can fetch a fresh url, but only if it is told to.
+    expect(reported).toHaveBeenCalled()
+  })
+
   it('still reports the end of the playlist as the end of the playlist', async () => {
     const player = new Harness([track(1)], 0)
     const ended = jest.fn()

@@ -1,5 +1,6 @@
 import TrackPlayer, { Event, State } from "react-native-track-player";
 import { prefetchNextTrack } from "@/services/prefetch";
+import { recoverFromPlaybackError } from "@/services/recovery";
 import { startCarLink } from "@/services/car";
 import { startWatchLink } from "@/services/watch";
 
@@ -69,6 +70,22 @@ const PlayerRegisterService = async () => {
 
     TrackPlayer.addEventListener(Event.RemoteStop, () => {
       TrackPlayer.stop()
+    });
+
+    // A track that will not load is nearly always a VK link that aged out, and
+    // the answer is to re-sign it and carry on — see services/recovery. Here
+    // rather than in a screen for the same reason as the prefetch above: the
+    // hand-over that fails most is the one an hour into a show, with the phone
+    // in a pocket and no UI mounted.
+    //
+    // `next_track_load_failed` is ours: the web player reports the hand-over it
+    // could not make (patches/react-native-track-player), and there the broken
+    // entry is the one AFTER the track that just ended, not the active one.
+    TrackPlayer.addEventListener(Event.PlaybackError, (event) => {
+      const failedAt = (event as {code?: string}).code === 'next_track_load_failed'
+        ? 'next'
+        : 'current'
+      void recoverFromPlaybackError(failedAt)
     });
 
     // Mirror playback onto the Apple Watch and the car, and take their

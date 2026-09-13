@@ -8,6 +8,7 @@ import TrackPlayer, {Track, TrackType} from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
 import {runLocalAction} from "@/services/playbackReconciler";
+import {beginTrackSwitch, endTrackSwitch} from "@/store/trackSwitch";
 import {FlashList, FlashListProps} from "@shopify/flash-list";
 import unknownTrackImage from '@/assets/unknown_track.png'
 
@@ -49,6 +50,9 @@ export const TrackList = ({
       return
     }
 
+    // A tap on a row is the same promise as a tap on ⏭ — the sound starts now
+    // — and the same wait can sit behind it, so it gets the same spinner.
+    beginTrackSwitch()
     try {
       // Inside the session's own lock. The reconciler rebuilds the queue from
       // the account's playback state, and on a device that has just connected
@@ -89,6 +93,7 @@ export const TrackList = ({
         setActiveQueueId(id)
       })
     } catch (error) {
+      endTrackSwitch()
       console.warn('Unable to start selected track', error)
     }
   }

@@ -13,6 +13,7 @@ import {useFavoritesStore} from "@/store/favorites";
 import {useDebouncedValue} from "@/hooks/useDebouncedValue";
 import {useFocusEffect} from "expo-router";
 import {useWindowedTracks} from "@/hooks/useWindowedTracks";
+import {PullToRefresh} from "@/components/PullToRefresh";
 
 import {SONGS_CACHE_KEY} from "@/store/library";
 
@@ -101,43 +102,50 @@ const SongsScreen = () => {
         placeholder="Find in songs"
         onSearchChange={setQuery}
         scrollY={scrollY}
-        // The desktop has no pull-to-refresh — see AnimatedSearchHeader.
+        // The button is the desktop's SECOND way in; the gesture below is the
+        // first — see PullToRefresh.
         onRefresh={reset}
         refreshing={refreshing}
       />
-      <TrackList
-        id={generateTracksListId(isSearching ? 'songs-search' : 'songs', visibleTracks.length, debouncedQuery)}
-        tracks={visibleTracks}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        // we pad the list manually by HEADER_HEIGHT; letting iOS add its own
-        // content inset on top of that is what shifted the two platforms apart
-        contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={{
-          paddingTop: HEADER_HEIGHT,
-          paddingBottom: layout.tabBarContentHeight + 80,
-          paddingHorizontal: screenPadding.horizontal,
-        }}
-        // paging is off while a search is on screen: those results are a whole
-        // answer, not a window into the archive
-        onEndReached={isSearching ? undefined : loadMore}
-        onEndReachedThreshold={0.6}
-        onStartReached={isSearching ? undefined : loadPrevious}
-        onStartReachedThreshold={0.4}
-        ListFooterComponent={
-          (searching || loadingMore)
-            ? <ActivityIndicator color="white" style={{marginVertical: 16}}/>
-            : undefined
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={reset}
-            tintColor="white"
-            progressViewOffset={HEADER_HEIGHT}
-            colors={['white']}/>
-        }
-      />
+      {/* The desktop has no pull-to-refresh of its own: react-native-web's
+          RefreshControl drops `onRefresh` on the floor. The overscroll is
+          caught here instead, so the trackpad gesture works the way the phone's
+          does. On iOS and Android this is a pass-through. */}
+      <PullToRefresh scrollY={scrollY} onRefresh={reset} refreshing={refreshing} topOffset={HEADER_HEIGHT}>
+        <TrackList
+          id={generateTracksListId(isSearching ? 'songs-search' : 'songs', visibleTracks.length, debouncedQuery)}
+          tracks={visibleTracks}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          // we pad the list manually by HEADER_HEIGHT; letting iOS add its own
+          // content inset on top of that is what shifted the two platforms apart
+          contentInsetAdjustmentBehavior="never"
+          contentContainerStyle={{
+            paddingTop: HEADER_HEIGHT,
+            paddingBottom: layout.tabBarContentHeight + 80,
+            paddingHorizontal: screenPadding.horizontal,
+          }}
+          // paging is off while a search is on screen: those results are a whole
+          // answer, not a window into the archive
+          onEndReached={isSearching ? undefined : loadMore}
+          onEndReachedThreshold={0.6}
+          onStartReached={isSearching ? undefined : loadPrevious}
+          onStartReachedThreshold={0.4}
+          ListFooterComponent={
+            (searching || loadingMore)
+              ? <ActivityIndicator color="white" style={{marginVertical: 16}}/>
+              : undefined
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={reset}
+              tintColor="white"
+              progressViewOffset={HEADER_HEIGHT}
+              colors={['white']}/>
+          }
+        />
+      </PullToRefresh>
     </View>
   )
 }

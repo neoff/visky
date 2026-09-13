@@ -135,6 +135,19 @@ const TrackPlayer = {
     state.position = 0
   }),
 
+  // Replaces what the player holds WITHOUT touching the queue, and starts the
+  // track from the beginning — which is why anything that cares about the
+  // position has to seek afterwards.
+  load: jest.fn(async (track: Track) => {
+    if (state.index === undefined) {
+      state.queue = [track]
+      state.index = 0
+    } else {
+      state.queue[state.index] = track
+    }
+    state.position = 0
+  }),
+
   skip: jest.fn(async (index: number) => {
     if (!state.queue[index]) throw new Error('index out of bounds')
     state.index = index

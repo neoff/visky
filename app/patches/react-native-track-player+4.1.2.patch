@@ -607,10 +607,19 @@ index 5953276..821a57c 100644
          await this.player.unload();
      }
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
-index 67b34a4..f56635d 100644
+index 67b34a4..d8426c2 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
 +++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
-@@ -34,7 +34,13 @@ export class PlaylistPlayer extends Player {
+@@ -4,6 +4,8 @@ import { State } from '../../src';
+ export class PlaylistPlayer extends Player {
+     // TODO: use immer to make the `playlist` immutable
+     playlist = [];
++    /** PATCHED. Set by TrackPlayerModule; reports a hand-over that failed. */
++    onNextTrackFailed;
+     lastIndex;
+     _currentIndex;
+     repeatMode = RepeatMode.Off;
+@@ -34,7 +36,18 @@ export class PlaylistPlayer extends Player {
                  }
                  catch (err) {
                      if (err.message !== 'playlist_exhausted') {
@@ -619,13 +628,18 @@ index 67b34a4..f56635d 100644
 +                        // event handler, where nothing awaits it: the track
 +                        // ended, the next one failed to load and the only trace
 +                        // was an unhandled rejection. Reported instead, so the
-+                        // failure is attached to the track it belongs to.
++                        // failure is attached to the track it belongs to — and
++                        // handed to the app, which can re-sign the url and pick
++                        // the show back up (services/recovery). Swallowing it
++                        // here is what made the player stop dead between two
++                        // halves of the same set.
 +                        console.warn('==rntp-web: could not start the next track', err);
++                        this.onNextTrackFailed?.(err);
 +                        break;
                      }
                      this.onPlaylistEnded();
                  }
-@@ -56,8 +62,21 @@ export class PlaylistPlayer extends Player {
+@@ -56,8 +69,21 @@ export class PlaylistPlayer extends Player {
              throw new Error('playlist_exhausted');
          }
          if (this.currentIndex !== index) {
@@ -648,3 +662,28 @@ index 67b34a4..f56635d 100644
          }
          if (initialPosition) {
              this.seekTo(initialPosition);
+diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js b/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js
+index 08c7d3c..54f8833 100644
+--- a/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js
++++ b/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js
+@@ -76,6 +76,20 @@ export class TrackPlayerModule extends PlaylistPlayer {
+             clearInterval(this.progressUpdateEventInterval);
+         }
+     }
++    /**
++     * PATCHED. The next track would not load, so the show has stopped.
++     *
++     * Emitted as an ordinary PlaybackError with a code of our own, because
++     * that is the event the app already listens to for a link that aged out —
++     * the only difference is WHICH queue entry is broken: the one after the
++     * track that just ended, not the active one.
++     */
++    onNextTrackFailed = (error) => {
++        this.emitter.emit(Event.PlaybackError, {
++            code: 'next_track_load_failed',
++            message: error?.message ?? 'the next track could not be loaded',
++        });
++    };
+     async onTrackEnded() {
+         const position = this.element.currentTime;
+         await super.onTrackEnded();

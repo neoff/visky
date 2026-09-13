@@ -11,6 +11,7 @@ import {useFocusEffect, useNavigation} from "expo-router";
 import {useFavoritesStore} from "@/store/favorites";
 import {useSharedValue} from "react-native-reanimated";
 import {AnimatedSearchHeader} from "@/components/AnimatedSearchHeader";
+import {PullToRefresh} from "@/components/PullToRefresh";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 import {FRISKY_SELECTION, PlaylistFilter, PlaylistSelection, selectionQuery} from "@/components/PlaylistFilter";
 import {useWindowedTracks} from "@/hooks/useWindowedTracks";
@@ -153,45 +154,49 @@ const FavoriteScreen = () => {
             onRefresh={reset}
             refreshing={refreshing}
           />
-          <TrackList
-            id={generateTracksListId(
-              `favorites-${selection.kind === 'playlist' ? selection.id : selection.kind}`,
-              listData.length,
-              debouncedQuery,
-            )}
-            tracks={listData}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            contentInsetAdjustmentBehavior="never"
-            contentContainerStyle={{
-                paddingTop: HEADER_HEIGHT,
-                paddingBottom: layout.tabBarContentHeight + 80,
-                paddingHorizontal: screenPadding.horizontal,
-            }}
-            // a search answer is complete; only the plain list is a window
-            onEndReached={isSearching ? undefined : loadMore}
-            onEndReachedThreshold={0.6}
-            onStartReached={isSearching ? undefined : loadPrevious}
-            onStartReachedThreshold={0.4}
-            ListEmptyComponent={
-                searching
-                  ? <ActivityIndicator color="white" style={{marginTop: 24}}/>
-                  : <Text style={favoritesStyles.emptyLine}>Nothing in this list</Text>
-            }
-            ListFooterComponent={
-                (searching || loadingMore)
-                  ? <ActivityIndicator color="white" style={{marginVertical: 16}}/>
-                  : undefined
-            }
-            refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={reset}
-                  tintColor="white"
-                  progressViewOffset={HEADER_HEIGHT}
-                  colors={['white']}/>
-            }
-          />
+          {/* the desktop's swipe-down; a pass-through on the phones, which
+              have the gesture already — see PullToRefresh */}
+          <PullToRefresh scrollY={scrollY} onRefresh={reset} refreshing={refreshing} topOffset={HEADER_HEIGHT}>
+            <TrackList
+              id={generateTracksListId(
+                `favorites-${selection.kind === 'playlist' ? selection.id : selection.kind}`,
+                listData.length,
+                debouncedQuery,
+              )}
+              tracks={listData}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              contentInsetAdjustmentBehavior="never"
+              contentContainerStyle={{
+                  paddingTop: HEADER_HEIGHT,
+                  paddingBottom: layout.tabBarContentHeight + 80,
+                  paddingHorizontal: screenPadding.horizontal,
+              }}
+              // a search answer is complete; only the plain list is a window
+              onEndReached={isSearching ? undefined : loadMore}
+              onEndReachedThreshold={0.6}
+              onStartReached={isSearching ? undefined : loadPrevious}
+              onStartReachedThreshold={0.4}
+              ListEmptyComponent={
+                  searching
+                    ? <ActivityIndicator color="white" style={{marginTop: 24}}/>
+                    : <Text style={favoritesStyles.emptyLine}>Nothing in this list</Text>
+              }
+              ListFooterComponent={
+                  (searching || loadingMore)
+                    ? <ActivityIndicator color="white" style={{marginVertical: 16}}/>
+                    : undefined
+              }
+              refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={reset}
+                    tintColor="white"
+                    progressViewOffset={HEADER_HEIGHT}
+                    colors={['white']}/>
+              }
+            />
+          </PullToRefresh>
       </View>
     )
 }
