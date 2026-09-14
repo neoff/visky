@@ -53,7 +53,14 @@ const rewriteVkForm = (html: string, action: string, error?: string): string => 
   html = html.replace(/&&location\.reload\(\)/gi, "")
   html = html.replace(/<form[^>]*>/gi, `<form method="post" action="${action}">`)
   if (error) {
-    const banner = `<div style="background:#fc3c44;color:#fff;padding:12px 16px;text-align:center;font:14px -apple-system,sans-serif">${error}</div>`
+    // Pin the banner over VK's own sticky header — injected plain into <body> it
+    // scrolls up under the VK logo bar and the error text is clipped (unreadable).
+    // fixed + max z-index + a body top-pad keeps the full message on screen.
+    const banner =
+      `<div style="position:fixed;top:0;left:0;right:0;z-index:2147483647;` +
+      `background:#fc3c44;color:#fff;padding:12px 16px;text-align:center;` +
+      `font:14px/1.4 -apple-system,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.25)">${error}</div>` +
+      `<div style="height:56px"></div>`
     html = html.replace(/<body[^>]*>/i, (m) => `${m}${banner}`)
   }
   return html
@@ -110,6 +117,10 @@ const PAGE = (inner: string) => `<!doctype html>
   .err { background:#fdecec; color:#e64646; font-size:14px; border-radius:8px; padding:10px 12px; margin:0 0 14px; }
   .ok { background:#eaf4ff; color:#3f8ae0; font-size:14px; border-radius:8px; padding:10px 12px; margin:0 0 14px; }
   .captcha { width:100%; border-radius:8px; margin-bottom:14px; }
+  .otp { display:flex; gap:8px; justify-content:center; margin:0 0 16px; }
+  .otp .cell { width:44px; height:52px; padding:0; margin:0; text-align:center; font-size:22px;
+               font-weight:500; background:#f2f3f5; color:#000; border:1px solid transparent; border-radius:10px; }
+  .otp .cell:focus { outline:none; border-color:#3f8ae0; background:#fff; }
   a { color:#3f8ae0; font-size:14px; display:block; text-align:center; margin-top:14px; text-decoration:none; }
 </style></head><body><div class="card"><div class="logo">VK</div>${inner}</div></body></html>`
 
@@ -125,32 +136,44 @@ const loginForm = (error?: string, action: string = "/auth/vk") => PAGE(`
     <button type="submit">Войти</button>
   </form>`)
 
-// Wording for every 2FA channel VK can pick. This matters: for `2fa_callreset`
-// VK places a FLASH CALL and the code is the last 4 digits of the CALLING
-// number — no SMS is ever sent, so a "введите код из SMS" prompt leaves the user
-// waiting for a message that will never arrive.
-const validationCopy = (type?: string): {title: string; hint: string; len: number} => {
+// Russian declension for "цифра" after a number: 1→цифру, 2-4→цифры, else цифр.
+const pluralDigits = (n: number): string => {
+  const d = n % 10
+  const dd = n % 100
+  if (d === 1 && dd !== 11) return "цифру"
+  if (d >= 2 && d <= 4 && !(dd >= 12 && dd <= 14)) return "цифры"
+  return "цифр"
+}
+
+// Wording for every 2FA channel VK can pick. `len` is how many digits VK wants.
+// For `2fa_callreset` VK places a FLASH CALL and the code is the last 6 digits of
+// the CALLING number (no SMS at all). NOTE: VK's own `error_description` says "use
+// last 4 digits", but that text LIES — submitting 4 returns
+// `otp_format_is_incorrect`; VK actually wants 6 (matches VK ID web). So we do NOT
+// parse the description for length; callreset is fixed at 6.
+const validationCopy = (type?: string, len = 6): {title: string; hint: string; len: number} => {
   switch (type) {
     case "2fa_callreset":
     case "callreset":
       return {
         title: "Подтверждение входа",
-        hint: "Сейчас поступит звонок. Введите последние 6 цифры номера, с которого звонят — отвечать не нужно.",
-        len: 6,
+        hint: `Сейчас поступит звонок. Введите последние ${len} ${pluralDigits(len)} номера, с которого звонят — отвечать не нужно.`,
+        len,
       }
     case "2fa_app":
-      return {title: "Код из приложения", hint: "Введите код из приложения-аутентификатора.", len: 6}
+      return {title: "Код из приложения", hint: "Введите код из приложения-аутентификатора.", len}
     case "2fa_sms":
-      return {title: "Код из SMS", hint: "Введите код из SMS.", len: 6}
+      return {title: "Код из SMS", hint: "Введите код из SMS.", len}
     default:
-      return {title: "Подтверждение входа", hint: "Введите код подтверждения.", len: 6}
+      return {title: "Подтверждение входа", hint: "Введите код подтверждения.", len}
   }
 }
 
-type ValState = {sid?: string; type?: string; mask?: string; resend?: string}
+// len: digit count VK asked for (parsed from its description); undefined -> 6.
+type ValState = {sid?: string; type?: string; mask?: string; resend?: string; len?: number}
 
 const smsForm = (v: ValState, notice?: string, delay?: number) => {
-  const c = validationCopy(v.type)
+  const c = validationCopy(v.type, v.len ?? 6)
   // VK returns `delay` seconds before it will actually re-deliver; asking sooner
   // just returns the same countdown, so keep the button disabled until then.
   const wait = typeof delay === "number" && delay > 0 ? delay : 0
@@ -159,12 +182,46 @@ const smsForm = (v: ValState, notice?: string, delay?: number) => {
   <h1>${c.title}</h1>
   <p class="hint">${c.hint}${v.mask ? `<br>${v.mask}` : ""}</p>
   ${notice ? `<p class="ok">${notice}</p>` : ""}
-  <form method="post" action="/auth/vk">
+  <form method="post" action="/auth/vk" id="cf">
+    <input type="hidden" name="code" id="code">
     <label>Код</label>
-    <input name="code" type="text" inputmode="numeric" autocomplete="one-time-code"
-           maxlength="${c.len}" placeholder="${"•".repeat(c.len)}" autofocus>
+    <div class="otp" id="otp">${Array.from({length: c.len}, (_, i) =>
+      `<input class="cell" type="text" inputmode="numeric" maxlength="1"${i === 0 ? ' autocomplete=\"one-time-code\" autofocus' : ""}>`,
+    ).join("")}</div>
     <button type="submit">Подтвердить</button>
   </form>
+  <script>
+    (function(){
+      var n = ${c.len};
+      var cells = document.getElementById('otp').querySelectorAll('.cell');
+      var hidden = document.getElementById('code');
+      var form = document.getElementById('cf');
+      function sync(){ var s=''; for (var i=0;i<cells.length;i++){ s+=cells[i].value; } hidden.value=s; return s; }
+      function trySubmit(){ if (sync().length === n) form.submit(); }
+      form.addEventListener('submit', sync);
+      for (var i=0;i<cells.length;i++){ (function(i){
+        var el = cells[i];
+        el.addEventListener('input', function(){
+          el.value = el.value.replace(/[^0-9]/g,'').slice(-1);
+          if (el.value && i < n-1) cells[i+1].focus();
+          trySubmit();
+        });
+        el.addEventListener('keydown', function(e){
+          if (e.key === 'Backspace' && !el.value && i > 0){ cells[i-1].focus(); cells[i-1].value=''; sync(); e.preventDefault(); }
+          else if (e.key === 'ArrowLeft' && i > 0){ cells[i-1].focus(); e.preventDefault(); }
+          else if (e.key === 'ArrowRight' && i < n-1){ cells[i+1].focus(); e.preventDefault(); }
+        });
+        el.addEventListener('paste', function(e){
+          e.preventDefault();
+          var src = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g,'').slice(0,n);
+          for (var j=0;j<src.length && i+j<n;j++){ cells[i+j].value = src[j]; }
+          cells[Math.min(i+src.length, n-1)].focus();
+          trySubmit();
+        });
+      })(i); }
+      if (cells[0]) cells[0].focus();
+    })();
+  </script>
   ${canResend ? `<a id="rs" href="/auth/vk/validate-resend">Запросить код повторно${v.resend === "sms" ? " по SMS" : ""}</a>
   <script>
     (function(){
@@ -251,6 +308,15 @@ const delegateGrant = (res: Response, input: Parameters<typeof buildGrantUrl>[0]
   res.redirect(`https://oauth.vk.com/blank.html#g=${encodeURIComponent(query)}`)
 }
 
+// Ask VK (auth.validatePhone) to (re)deliver the 2FA code, run on the DEVICE — the
+// cluster IP gets "Captcha needed" here just like the grant. The app reads the
+// JSONP result and posts it back to /vk/validate-next. Used both by the manual
+// resend link and by the automatic call-trigger on the first callreset screen.
+const delegateResend = (res: Response, sid: string): void => {
+  console.log("=====> delegating 2FA resend to the device:", {sid})
+  res.redirect(`https://oauth.vk.com/blank.html#r=${encodeURIComponent(buildValidateResendQuery(sid))}`)
+}
+
 // Turn a grant result into the right WebView response, shared by the initial
 // POST and the post-captcha /resume. On success -> blank.html#... (app catches
 // the hash). On need_captcha -> redirect the WebView to VK's REAL interactive
@@ -289,6 +355,9 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
     })
     // Keep the challenge details around so /validate-resend can ask VK to send
     // the code again (and so the form keeps showing the right instructions).
+    // NB: do NOT parse a digit count from result.description — VK's callreset text
+    // claims "use last 4 digits" but actually wants 6 (4 -> otp_format_is_incorrect).
+    // smsForm defaults callreset to 6 via validationCopy.
     const val: ValState = {
       sid: result.validation_sid,
       type: result.validation_type,
@@ -296,6 +365,17 @@ const finalizeGrant = (req: Request, res: Response, result: any): void => {
       resend: result.validation_resend,
     }
     ;(req.session as any).val = val
+    // callreset places the flash call ONLY when auth.validatePhone runs — the bare
+    // need_validation never rings the phone (verified: the call arrived only after
+    // a manual "resend" tap). Auto-trigger the resend once per login so the call
+    // comes immediately; the device performs it and lands on /vk/validate-next,
+    // which renders this same 2FA form with the real countdown.
+    const isCallreset = /callreset/.test(result.validation_type || "")
+    if (isCallreset && result.validation_sid && !grantOnServer && !(req.session as any).callTriggered) {
+      ;(req.session as any).callTriggered = true
+      delegateResend(res, result.validation_sid)
+      return
+    }
     html(res, smsForm(val))
     return
   }
@@ -389,6 +469,9 @@ const serveLoginError = (req: Request, res: Response, message: string) => {
 authForm.post(["/vk", "/vk/fallback"], async (req: Request, res: Response) => {
   const prev = (req.session as any).fb as FbState | undefined
 
+  // A fresh login (email present) starts a new challenge chain — clear the
+  // one-shot auto-call guard so the next callreset screen rings the phone again.
+  if (req.body.email) delete (req.session as any).callTriggered
   // Initial submit carries email/pass; challenge submits reuse stored creds.
   const login = req.body.email || prev?.login
   const password = req.body.pass || prev?.password
@@ -542,8 +625,7 @@ authForm.get("/vk/validate-resend", async (req: Request, res: Response) => {
   // Hand it to the device the same way — api.vk.com has no CORS but does support
   // JSONP, so the app loads it as a script and posts the JSON back.
   if (!grantOnServer) {
-    console.log("=====> delegating 2FA resend to the device:", {sid: val.sid, type: val.type})
-    res.redirect(`https://oauth.vk.com/blank.html#r=${encodeURIComponent(buildValidateResendQuery(val.sid))}`)
+    delegateResend(res, val.sid)
     return
   }
   renderResend(req, res, val, await requestValidationResend(val.sid))

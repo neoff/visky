@@ -136,11 +136,20 @@ function grantParams(input: GrantInput, device_id: string): URLSearchParams {
     device_id,
     lang: "en",
   });
-  // NOTE: do NOT send force_sms=1 on the first attempt. It forces VK into the
-  // SMS-2FA flow and repeated forced sends trip the bruteforce/flood protection
-  // (password_bruteforce_attempt). Without it a password-only account returns
-  // the token immediately; VK still replies need_validation on its own when the
-  // account genuinely requires 2FA, and we resend with `code` then.
+  // force_sms=1 on EVERY grant (initial + code retry + post-captcha resume),
+  // gated by VK_DIRECT_FORCE_SMS (default on). WHY on the FIRST grant, not just
+  // the retry: the live log on 2026-09-13 proved the loop — the initial grant
+  // returns `2fa_callreset`, and even after `auth.validatePhone` switches the
+  // channel to `sms`, the NEXT grant reverts to `2fa_callreset` (validation_type
+  // is not sticky across a fresh grant). So a code entered against the sms state
+  // never matches the callreset state VK re-issues -> endless need_validation.
+  // The callreset flash-call's trailing digits are also just wrong (last-6 ->
+  // wrong_otp, twice, cleanly). The account's real 2FA is VK ID SMS. Sending
+  // force_sms from the FIRST grant makes VK pick `2fa_sms` up front and keep it,
+  // so the readable 6-digit SMS code (read off the phone via root) validates.
+  // The old flood worry was about REPEATED forced sends; one force_sms per login
+  // grant is fine. Disable with VK_DIRECT_FORCE_SMS=0.
+  if (process.env.VK_DIRECT_FORCE_SMS !== "0") qp.set("force_sms", "1");
   if (input.code) qp.set("code", String(input.code));
   if (input.captcha_sid) qp.set("captcha_sid", String(input.captcha_sid));
   // not_robot: captcha_sid + success_token (the winning combo). Legacy image
