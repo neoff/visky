@@ -21,6 +21,8 @@
  * off for C6, where the point is that a link which keeps failing is given up on.
  */
 import {createServer} from 'node:http'
+import {connect} from 'node:net'
+import {connect as connectTls} from 'node:tls'
 
 const TARGET = process.env.QA_TARGET ?? 'https://visky.envarg.com'
 const PORT = Number(process.env.QA_PORT ?? 8787)
@@ -94,7 +96,35 @@ createServer(async (request, response) => {
     // not the JSON we thought; pass it through rather than corrupt it
   }
   response.writeHead(upstream.status, Object.fromEntries(out)).end(body)
-}).listen(PORT, () => {
+})
+  // The app keeps a WebSocket open to the playback socket, and `fetch` cannot
+  // carry an upgrade — the first one killed an earlier version of this proxy
+  // outright. Piped at the TCP level instead: nothing here needs to read those
+  // frames, only to stay out of their way.
+  .on('upgrade', (request, clientSocket, head) => {
+    const target = new URL(TARGET)
+    const secure = target.protocol === 'https:'
+    const port = target.port || (secure ? 443 : 80)
+    const options = {host: target.hostname, port, servername: target.hostname}
+    const upstream = (secure ? connectTls : connect)(options, () => {
+      const headers = Object.entries(request.headers)
+        .filter(([key]) => key.toLowerCase() !== 'host')
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\r\n')
+      upstream.write(
+        `${request.method} ${request.url} HTTP/1.1\r\nHost: ${target.host}\r\n${headers}\r\n\r\n`,
+      )
+      if (head?.length) upstream.write(head)
+      upstream.pipe(clientSocket)
+      clientSocket.pipe(upstream)
+    })
+    // A dead socket on either side is ordinary here, and must never take the
+    // proxy down with it.
+    upstream.on('error', () => clientSocket.destroy())
+    clientSocket.on('error', () => upstream.destroy())
+  })
+  .on('clientError', (_error, socket) => socket.destroy())
+  .listen(PORT, () => {
   console.log(`poison proxy on :${PORT} -> ${TARGET}`)
   console.log(`poisoning track ${POISON_ID}${ONCE ? ' once' : ' every time'} with ${DEAD_URL}`)
 })
