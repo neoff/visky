@@ -61,13 +61,34 @@ between a test and a wish.
    steps, collect the proof, then write the row. Do not batch the driving and
    reconstruct results afterwards — that is how invented results get in.
 
-4. **Keep every artefact.** Screenshots and pulled files go under
-   `qa/artifacts/<run-id>/`, named after the case. The report links them by
-   path. An artefact nobody can open is not evidence.
+4. **Keep every artefact, and keep the RAW one.** Screenshots and pulled files
+   go under `qa/artifacts/<run-id>/`, named after the case. The report links
+   them by path.
 
-5. **Re-run a failure once before reporting it.** Emulators drop taps. A defect
+   Raw means raw. A log claim is backed by the log file the line came out of —
+   `adb logcat -d -s ReactNativeJS:V > logs/<case>.log` before you clear the
+   buffer, not after — never by a digest you typed up yourself. A review of one
+   run found eight passes resting on a hand-written summary beside a zero-byte
+   log, and could neither confirm nor refute a single one of them. That is the
+   same as having tested nothing.
+
+   Device log buffers wrap. Dump the buffer to a file at the END of each case
+   rather than once at the end of the run, and say in the report if a buffer
+   wrapped before you got to it.
+
+5. **A number in the report must be reproducible by a tool in `qa/lib`.** If you
+   measured something by eye or with a one-off command you did not keep, either
+   add the tool or report the case as unproven. "632 px" that nobody can
+   recompute is a claim, not a measurement.
+
+6. **Re-run a failure once before reporting it.** Emulators drop taps. A defect
    that reproduces twice is a defect; one that does not is noted as flaky, with
    both outcomes recorded.
+
+7. **Check your own pass against its screenshots before writing it.** If the
+   frames you captured for a case contradict the outcome you are about to
+   record — a splash screen where the report claims a list, a black frame where
+   it claims rows — the screenshots win.
 </method>
 
 <output>
