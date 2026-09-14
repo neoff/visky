@@ -163,6 +163,56 @@ print(f'{round(win_x + pad_x + scale * $pointX)},{round(win_y + $QA_IOS_TITLEBAR
   cliclick "c:${screen}"
 }
 
+# Drag, for the gestures a tap cannot stand in for: dismissing a modal that
+# only closes by swipe, and pull-to-refresh. cliclick does press, move and
+# release as separate verbs, and the intermediate moves are what make the
+# simulator read it as a drag rather than a teleport.
+qa_ios_swipe() { # <x1> <y1> <x2> <y2> [steps]
+  local fromX="$1" fromY="$2" toX="$3" toY="$4" steps="${5:-12}"
+  osascript -e 'tell application "Simulator" to activate' >/dev/null
+  qa_ios_stage
+  sleep 0.4
+
+  local geometry winX winY winW winH points logicalW logicalH
+  geometry="$(osascript -e "
+    tell application \"System Events\" to tell process \"Simulator\"
+      set target to first window whose name starts with \"$SIM\"
+      get {position, size} of target
+    end tell
+  ")"
+  winX="$(echo "$geometry" | cut -d, -f1 | tr -d ' ')"
+  winY="$(echo "$geometry" | cut -d, -f2 | tr -d ' ')"
+  winW="$(echo "$geometry" | cut -d, -f3 | tr -d ' ')"
+  winH="$(echo "$geometry" | cut -d, -f4 | tr -d ' ')"
+  points="$(qa_ios_screen_points)"
+  logicalW="$(echo "$points" | cut -d' ' -f1)"
+  logicalH="$(echo "$points" | cut -d' ' -f2)"
+
+  local plan
+  plan="$(python3 -c "
+win_x, win_y, win_w, win_h = $winX, $winY, $winW, $winH
+logical_w, logical_h = $logicalW, $logicalH
+scale = (win_h - $QA_IOS_TITLEBAR) / logical_h
+pad_x = (win_w - logical_w * scale) / 2
+def screen(px, py):
+    return round(win_x + pad_x + scale * px), round(win_y + $QA_IOS_TITLEBAR + scale * py)
+steps = $steps
+moves = []
+for i in range(steps + 1):
+    t = i / steps
+    moves.append('m:%d,%d' % screen($fromX + ($toX - $fromX) * t, $fromY + ($toY - $fromY) * t))
+print('dd:%d,%d' % screen($fromX, $fromY))
+print(' '.join(moves))
+print('du:%d,%d' % screen($toX, $toY))
+")"
+
+  local down moves up
+  down="$(echo "$plan" | sed -n 1p)"
+  moves="$(echo "$plan" | sed -n 2p)"
+  up="$(echo "$plan" | sed -n 3p)"
+  cliclick -w 20 "$down" $moves "$up"
+}
+
 # The system asks "Open in visky?" for every custom-scheme url opened from
 # outside, and the alert takes a tap. Its default button sits in the same place
 # on every device, proportionally, so the deep link and the confirmation are
