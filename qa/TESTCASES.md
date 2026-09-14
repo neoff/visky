@@ -154,12 +154,14 @@ is only this app's own name and the way Siri actually hears it: "whiskey".
 - **Surfaces**: iphone-xs. `n/a` on ios-sim — the simulator has no Siri.
 
 ### D2 — the alternate names are actually in the build
-- **Claim**: the built app carries `INAlternativeAppNames` with the four names
-  and their pronunciation hints.
+- **Claim**: the built app carries `INAlternativeAppNames` with exactly three
+  entries and their pronunciation hints — three because iOS refuses to INSTALL
+  an app with more ("maximum of 3 allowed"), which is a build that looks fine
+  until the moment nothing will install.
 - **Steps**: read `Info.plist` out of the built `.app`:
   `plutil -extract INAlternativeAppNames xml1 -o - <app>/Info.plist`
-- **Proof**: Visky / Visky Music / Visky Radio / Visky Player, each with a
-  `whiskey...` hint.
+- **Proof**: Visky, Visky Music, Frisky Music — and a successful
+  `simctl install`, which is the half that actually catches a fourth entry.
 - **Surfaces**: a build artefact check; no device needed.
 
 ### D3 — the registered mark itself is never claimed

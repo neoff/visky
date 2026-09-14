@@ -26,22 +26,21 @@ const {withInfoPlist} = require('@expo/config-plugins')
  * Android has no equivalent list — Assistant matches the launcher label and the
  * Play listing title, and there is nowhere to add a pronunciation to.
  */
+// THREE, AND NOT ONE MORE. iOS rejects the app at INSTALL time with
+// "has N INAlternativeAppNames in its Info.plist, maximum of 3 allowed" —
+// not at build time, not in review, so a fourth entry looks fine until the
+// day nothing will install. Chosen for coverage of three different failures:
 const ALTERNATIVE_NAMES = [
-  // The mishearing itself, claimed for the app it was meant for: "open
-  // whiskey" with nothing else in the sentence is the utterance that currently
-  // ends in the App Store.
+  // 1. The mishearing. "Open visky" sounds like whiskey and used to answer
+  //    with the Whisky app in the App Store.
   {name: 'Visky', hint: 'whiskey'},
-  // Two-word forms. Siri resolves these far more reliably than one short name
-  // it has to pick out of a sentence, and they cost nothing to add.
+  // 2. The two-word form of the app's own name, which Siri resolves far more
+  //    reliably than one short word inside a sentence.
   {name: 'Visky Music', hint: 'whiskey music'},
-  {name: 'Visky Radio', hint: 'whiskey radio'},
-  {name: 'Visky Player', hint: 'whiskey player'},
-  // "Frisky Music", and deliberately not "Frisky Radio" or a bare "Frisky".
-  // The registered mark is the station's full name; the owner's position is
-  // that the two-word generic pairing is not it, and that visky (vk + frisky)
-  // describes what the app is — VK's copy of that catalogue — rather than
-  // passing itself off as the station. The line that must not be crossed is
-  // the mark itself, which is why case D3 greps for exactly that string.
+  // 3. What people actually say when they mean this music. Deliberately not
+  //    "Frisky Radio" and not a bare "Frisky": the registered mark is the
+  //    station's full name, and case D3 greps for exactly that string so a
+  //    later edit trips over it.
   {name: 'Frisky Music', hint: 'frisky music'},
 ]
 
