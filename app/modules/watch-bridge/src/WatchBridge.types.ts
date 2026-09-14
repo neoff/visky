@@ -16,6 +16,14 @@ export interface WatchSnapshot {
   artist?: string
   /** `${owner_id}_${id}` — the same key the queue entries carry */
   trackId?: string
+  /**
+   * Cover art for the track playing now, as an https url the WATCH fetches.
+   *
+   * A url rather than the bytes: the application context is capped at 256 KB
+   * and one cover is a good fraction of that, while the same cover repeats
+   * across a whole show's worth of rows and the watch caches it once.
+   */
+  artwork?: string
   /** seconds, as of `at` */
   position?: number
   duration?: number
@@ -28,6 +36,8 @@ export interface WatchQueueItem {
   id: string
   title: string
   artist?: string
+  /** https, same as `WatchSnapshot.artwork` */
+  artwork?: string
 }
 
 /** Watch -> phone. */

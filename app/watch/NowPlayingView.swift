@@ -5,7 +5,24 @@ struct NowPlayingView: View {
   @EnvironmentObject private var link: WatchLink
 
   var body: some View {
-    VStack(spacing: 10) {
+    // Scrolls because the cover costs 64pt and the smallest watch does not have
+    // them spare: without this the Playlist button falls off the bottom edge on
+    // a 40mm, where it is the only way into the list.
+    ScrollView {
+      content
+    }
+    .navigationTitle("visky")
+  }
+
+  private var content: some View {
+    VStack(spacing: 8) {
+      // Only once the phone has said something. Before that the screen is a
+      // sentence asking for the phone, and a placeholder square above it would
+      // read as "there is a track, it just has no cover".
+      if link.state.known {
+        ArtworkView(url: link.state.artwork, side: 64, corner: 8)
+      }
+
       title
 
       HStack(spacing: 18) {
@@ -33,7 +50,6 @@ struct NowPlayingView: View {
       .buttonStyle(.bordered)
     }
     .padding(.horizontal, 4)
-    .navigationTitle("visky")
   }
 
   @ViewBuilder

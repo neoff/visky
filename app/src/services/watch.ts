@@ -33,13 +33,20 @@ let lastPublishAt = 0
 let pending: ReturnType<typeof setTimeout> | null = null
 let started = false
 
+const artworkOf = (track: Track | undefined): string | undefined =>
+  typeof track?.artwork === 'string' && track.artwork.startsWith('http')
+    ? track.artwork
+    : undefined
+
 const toQueueItem = (track: Track): WatchQueueItem | null => {
   const id = trackKey(track as never)
   if (!id) return null
+  const artwork = artworkOf(track)
   return {
     id,
     title: track.title ?? 'Unknown',
     ...(track.artist ? {artist: track.artist} : {}),
+    ...(artwork ? {artwork} : {}),
   }
 }
 
@@ -67,13 +74,23 @@ const snapshot = async (): Promise<WatchSnapshot> => {
 
   const active = index == null ? undefined : queue[index]
   const list = await playlist(queue)
+  const activeId = active ? (trackKey(active as never) ?? undefined) : undefined
+  // The player's copy of a track is not always the richest one. A track loaded
+  // by the reconciler is re-resolved from its ids alone, and until the metadata
+  // cache knows the show it comes back with no cover at all — while the same
+  // track in the cached playlist, which came through the frisky merge, has one.
+  // The watch should not go blank over which path happened to load it.
+  const artwork =
+    artworkOf(active) ??
+    artworkOf(list.find((track) => trackKey(track as never) === activeId))
 
   return {
     v: 1,
     playing: state === State.Playing || state === State.Buffering,
     ...(active?.title ? {title: active.title} : {}),
     ...(active?.artist ? {artist: active.artist} : {}),
-    ...(active ? {trackId: trackKey(active as never) ?? undefined} : {}),
+    ...(activeId ? {trackId: activeId} : {}),
+    ...(artwork ? {artwork} : {}),
     position: progress.position,
     duration: progress.duration,
     at: Date.now(),

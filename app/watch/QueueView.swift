@@ -17,6 +17,7 @@ struct QueueView: View {
             link.send("playTrack", trackId: item.id)
           } label: {
             HStack(spacing: 8) {
+              ArtworkView(url: item.artwork, side: 28)
               if item.id == link.state.trackId {
                 Image(systemName: "speaker.wave.2.fill")
                   .font(.caption2)

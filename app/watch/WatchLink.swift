@@ -6,6 +6,8 @@ struct QueueItem: Identifiable, Hashable {
   let id: String
   let title: String
   let artist: String?
+  /// https, fetched by the watch itself; see Artwork.swift for why it is a url
+  let artwork: String?
 }
 
 /// Everything the watch draws.
@@ -14,6 +16,7 @@ struct PlayerState {
   var title: String?
   var artist: String?
   var trackId: String?
+  var artwork: String?
   var queue: [QueueItem] = []
   /// false until the first payload arrives, so the UI can say "no phone" rather
   /// than showing an empty player as if nothing were playing.
@@ -108,7 +111,12 @@ final class WatchLink: NSObject, ObservableObject {
 
     let queue: [QueueItem] = (payload["queue"] as? [[String: Any]] ?? []).compactMap { entry in
       guard let id = entry["id"] as? String, let title = entry["title"] as? String else { return nil }
-      return QueueItem(id: id, title: title, artist: entry["artist"] as? String)
+      return QueueItem(
+        id: id,
+        title: title,
+        artist: entry["artist"] as? String,
+        artwork: entry["artwork"] as? String
+      )
     }
 
     DispatchQueue.main.async {
@@ -117,6 +125,7 @@ final class WatchLink: NSObject, ObservableObject {
         title: payload["title"] as? String,
         artist: payload["artist"] as? String,
         trackId: payload["trackId"] as? String,
+        artwork: payload["artwork"] as? String,
         queue: queue,
         known: true
       )
