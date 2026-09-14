@@ -126,17 +126,37 @@ Surfaces:
 - **Surfaces**: android-emu, iphone-xs.
 
 ### C5 — the show continues when the next link has aged out
-- **Claim**: a failed hand-over is reported and recovered, not swallowed.
-- **Steps**: replace the next queue entry's url with a dead one (see
-  `qa/lib/poison.md`), then let the current track end.
-- **Proof**: `==recovery: restarted <key> after a next failure`, and playback
-  continues within 10 s.
-- **Surfaces**: android-emu. `n/a` on ios-sim (no way to poison without taps).
+- **Claim**: a queued link that has expired does not stop the show.
+- **Steps**: run `qa/fixtures/poison-proxy.mjs` with `QA_POISON_INDEX=<n> --once`,
+  build with `EXPO_PUBLIC_API_URL` pointing at it (via `app/.env.local` — a
+  shell variable loses to `app/.env`), play the track before the poisoned one
+  and seek to its end.
+- **Proof**: PASSED 2026-09-15, raw log at `artifacts/logs/C5-recovery.log`:
+  ```
+  ==prefetch: refreshed the stale link for -42311167_456263800
+  ==prefetch: warmed -42311167_456263800 61s before the hand-over
+  Track changed 1
+  ```
+  The dead link was caught 61 s AHEAD of the hand-over, re-signed, swapped into
+  the queue and warmed; the hand-over itself was silent. Note which layer did
+  the work: the warm-up, not the error recovery.
+- **Surfaces**: android-emu.
 
 ### C6 — a track that keeps failing is given up on
-- **Claim**: recovery is bounded to two attempts per track.
-- **Steps**: poison the same entry three times in a row.
-- **Proof**: `==recovery: giving up on <key>` on the third.
+- **Claim**: `services/recovery.ts` catches a hand-over the warm-up could not
+  save, retries twice, and then stops rather than looping.
+- **Steps**: the warm-up has to fail FIRST, which means poisoning the
+  re-signed answer too. `QA_POISON_INDEX` cannot do that — it rewrites tracks
+  inside a LIST, and the refresh asks `/api/player/track/<owner>/<id>`, which
+  returns one object. Use `QA_POISON_ID=<the next track's id>` WITHOUT `--once`
+  so every answer about that track is poisoned, then play into it.
+- **Proof**: `==recovery: restarted`, then `==recovery: giving up on <key>` on
+  the third attempt.
+- **Status**: NOT YET RUN. Two attempts on 2026-09-15 both ended with the
+  warm-up quietly fixing the link before recovery was needed — which is the
+  system working, and is why proving the inner layer needs the id-based poison
+  above. The path has unit tests (`__tests__/services/recovery.test.ts`, 6 of
+  them) and no runtime evidence. Do not report it as covered.
 - **Surfaces**: android-emu.
 
 ### C7 — playing to the end ticks the track off

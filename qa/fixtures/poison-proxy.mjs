@@ -27,11 +27,19 @@ import {connect as connectTls} from 'node:tls'
 const TARGET = process.env.QA_TARGET ?? 'https://visky.envarg.com'
 const PORT = Number(process.env.QA_PORT ?? 8787)
 const POISON_ID = String(process.env.QA_POISON_ID ?? '')
+/**
+ * Poison the Nth track of a playlist response instead of a named one.
+ *
+ * Which ids sit on the first page changes with every upload, so a hard-coded id
+ * is a test that quietly stops testing. A position always exists: "the track
+ * after the one I am about to play" is exactly the hand-over C5 is about.
+ */
+const POISON_INDEX = process.env.QA_POISON_INDEX ? Number(process.env.QA_POISON_INDEX) : null
 const DEAD_URL = process.env.QA_DEAD_URL ?? 'https://cdn.vk.com/qa-dead/index.m3u8'
 const ONCE = process.argv.includes('--once')
 
-if (!POISON_ID) {
-  console.error('QA_POISON_ID is required — the id of the track to poison')
+if (!POISON_ID && POISON_INDEX === null) {
+  console.error('set QA_POISON_ID (a track id) or QA_POISON_INDEX (a position in the list)')
   process.exit(1)
 }
 
@@ -39,7 +47,21 @@ let poisoned = 0
 
 /** Walk anything, rewriting the url of the track we are after. */
 const poison = (node) => {
-  if (Array.isArray(node)) return node.map(poison)
+  if (Array.isArray(node)) {
+    // A list of tracks is where a position means anything at all.
+    if (POISON_INDEX !== null && node[POISON_INDEX]?.url && node[POISON_INDEX]?.id) {
+      if (!ONCE || poisoned === 0) {
+        poisoned += 1
+        const victim = node[POISON_INDEX]
+        console.log(`poisoned #${POISON_INDEX} (id ${victim.id}) (${poisoned})`)
+        return node.map((item, at) =>
+          at === POISON_INDEX ? {...item, url: DEAD_URL} : poison(item),
+        )
+      }
+      console.log(`left #${POISON_INDEX} alone — already poisoned once`)
+    }
+    return node.map(poison)
+  }
   if (node && typeof node === 'object') {
     if (String(node.id) === POISON_ID && typeof node.url === 'string') {
       if (!ONCE || poisoned === 0) {
