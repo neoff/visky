@@ -42,6 +42,11 @@ else
   echo "==> reusing version $VER"
 fi
 
+# Every frontend carries the API's number rather than one of its own, so the
+# bump is not finished until they have it. See scripts/sync-version.sh for why
+# the api is the source.
+"$ROOT/scripts/sync-version.sh"
+
 echo "==> docker buildx build + push $IMAGE:$VER (+ :latest), linux/amd64"
 docker buildx build --platform linux/amd64 \
   -t "$IMAGE:$VER" \

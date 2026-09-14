@@ -93,6 +93,11 @@ echo "==> eas whoami"
 npx eas-cli@latest whoami
 
 if [ "$BUILD" -eq 1 ]; then
+  # --check, not a write: EAS builds the last COMMIT, so a version synced into
+  # the working tree right now would not reach the build anyway. Better to stop
+  # and say so than to ship a number that disagrees with the backend.
+  "$ROOT/scripts/sync-version.sh" --check
+
   if [ -n "$(git status --porcelain)" ]; then
     echo "!! git tree is dirty — EAS builds the last commit. Commit first." >&2
     exit 1

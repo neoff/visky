@@ -122,7 +122,11 @@ export const loginLocal =
   __DEV && (process.env.EXPO_PUBLIC_LOGIN_LOCAL || process.env.EXPO_LOGIN_LOCAL) === "true"
 let baseHost: string = process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:3000";
 
-if (__DEV) {
+// In dev fall back to the platform's localhost alias ONLY when no explicit
+// EXPO_PUBLIC_API_URL is given. A real device (not the emulator) can't reach
+// 10.0.2.2; set EXPO_PUBLIC_API_URL=http://<dev-LAN-ip>:3000 to point it at the
+// local server over Wi-Fi, and that wins here.
+if (__DEV && !process.env.EXPO_PUBLIC_API_URL) {
   switch (Platform.OS) {
     case "android":
       baseHost = "http://10.0.2.2:3000";

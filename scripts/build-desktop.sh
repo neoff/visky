@@ -125,19 +125,13 @@ esac
 BUNDLE_DIR="$SHELL_DIR/target/$RUST_TARGET/release/bundle"
 
 # ---------------------------------------------------------------------------
-# 1. Version, kept in step with the phone app
+# 1. Version, taken from the api
 # ---------------------------------------------------------------------------
-VERSION="$(node -p "require('$APP_DIR/app.json').expo.version")"
-node -e "
-  const fs = require('fs');
-  const file = '$SHELL_DIR/tauri.conf.json';
-  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (config.version !== '$VERSION') {
-    config.version = '$VERSION';
-    fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');
-  }
-"
-echo "==> version $VERSION"
+# The api is the source of the version for everything (see sync-version.sh for
+# why). It writes shell/tauri.conf.json among the rest, so this script no longer
+# edits that file itself.
+"$ROOT/scripts/sync-version.sh"
+VERSION="$(node -p "require('$ROOT/api/package.json').version")"
 
 # ---------------------------------------------------------------------------
 # 2. The web bundle

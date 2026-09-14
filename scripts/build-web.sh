@@ -77,10 +77,12 @@ if [ "$SERVE" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Version, kept in step with the phone app
+# 2. Version, taken from the api
 # ---------------------------------------------------------------------------
-VERSION="$(node -p "require('$APP_DIR/app.json').expo.version")"
-echo "==> version $VERSION"
+# The image tag is the api version, so a deployed web bundle names the backend
+# it was built against rather than a number of its own.
+"$ROOT/scripts/sync-version.sh"
+VERSION="$(node -p "require('$ROOT/api/package.json').version")"
 
 # ---------------------------------------------------------------------------
 # 3. The image

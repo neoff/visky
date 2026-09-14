@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "visky",
-  "version": "1.0.0",
+  "version": "1.5.48",
   "identifier": "com.envarg.visky.desktop",
   "build": {
     "frontendDist": "../web"

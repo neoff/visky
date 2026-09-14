@@ -29,6 +29,9 @@ cd "$APP_DIR"
 echo "==> eas whoami"
 npx eas-cli@latest whoami
 
+# EAS builds the last COMMIT, so the api version has to be committed too.
+"$ROOT/scripts/sync-version.sh" --check
+
 if [ -n "$(git status --porcelain)" ]; then
   echo "!! git tree is dirty — EAS builds the last commit. Commit first." >&2
   exit 1

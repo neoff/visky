@@ -1,6 +1,6 @@
 {
   "name": "visky-desktop",
-  "version": "1.0.0",
+  "version": "1.5.48",
   "private": true,
   "description": "visky desktop player \u2014 the Expo web bundle in an Electron shell",
   "main": "main.js",

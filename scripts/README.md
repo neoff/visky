@@ -141,16 +141,50 @@ scripts/deploy-api.sh latest   # deploy :latest
 Target defaults (override via env): `KCTX=oracle NS=frisky DEPLOY=visky-api
 CONTAINER=visky-api IMAGE=varg/visky-api`.
 
-## `version.sh` — semver helper
+## Versioning — one number, and it comes from the API
+
+`api/package.json` is the single source. Every frontend — phone app, desktop
+shell, Electron fallback, web image — carries the **API's** version, not one of
+its own.
+
+```bash
+scripts/sync-version.sh           # write the api version into every target
+scripts/sync-version.sh --check   # report drift, write nothing, exit 1 if any
+```
+
+The point is not to describe the frontend, it is to record the backend the
+frontend was built against. A desktop build that goes `1.5.40 -> 1.5.48` with no
+desktop commits in between is the intended reading: same app, newer backend
+contract. Conversely a frontend version never answers "did the frontend change" —
+use git for that.
+
+`build-api.sh` runs the sync right after it bumps, so the bump is not finished
+until the frontends carry it. `build-desktop*.sh` and `build-web.sh` run it and
+then read the number back, so a local build cannot package a stale one.
+
+`build-app.sh` and `deploy-ios.sh` run `--check` instead, and refuse to build on
+drift. They go through EAS, which builds the **last commit** — syncing their
+working tree at that point would change nothing about what actually gets built,
+so stopping is the only honest option. Sync, commit, re-run.
+
+The write is a text replacement pinned to the version key, not a JSON
+round-trip: `desktop-electron/package.json` keeps its em dash and © as `\u2014`
+and `\u00a9` escapes, and `JSON.stringify` silently unescapes them. It also
+refuses to touch a file where the key is not unique.
+
+### `version.sh` — semver helper
 Sourced utility. `get_next_version [major|minor|patch]` prints the next version
-from the `package.json` in the current directory (the build scripts use
-`npm version` directly; this is here for ad-hoc use).
+from the `package.json` in the current directory. `build-api.sh` uses
+`npm version` directly, so this is here for ad-hoc use.
 
 ## Typical release flows
 
 ```bash
-# API: ship a new version to production
+# API: ship a new version to production. Bumps api/package.json AND writes that
+# version into every frontend, so commit afterwards even if you touched nothing
+# else — that is what pins the next app release to this backend.
 scripts/build-api.sh --deploy
+git commit -am "chore: version -> $(node -p "require('./api/package.json').version")"
 
 # App: ship a new version to Google Play
 git commit -am "…"          # EAS builds the last commit

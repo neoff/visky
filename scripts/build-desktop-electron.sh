@@ -105,19 +105,11 @@ if [ ! -f "$ICON_OUT" ] || [ "$ICON_SRC" -nt "$ICON_OUT" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Version, kept in step with the phone app
+# 3. Version, taken from the api
 # ---------------------------------------------------------------------------
-VERSION="$(node -p "require('$APP_DIR/app.json').expo.version")"
-node -e "
-  const fs = require('fs');
-  const file = '$DESKTOP_DIR/package.json';
-  const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (pkg.version !== '$VERSION') {
-    pkg.version = '$VERSION';
-    fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
-  }
-"
-echo "==> version $VERSION"
+# sync-version.sh writes desktop-electron/package.json among the rest.
+"$ROOT/scripts/sync-version.sh"
+VERSION="$(node -p "require('$ROOT/api/package.json').version")"
 
 cd "$DESKTOP_DIR"
 [ -d node_modules ] || { echo "==> installing desktop dependencies"; npm install --no-audit --no-fund; }

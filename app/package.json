@@ -1,10 +1,11 @@
 {
   "name": "visky",
-  "version": "1.0.0",
+  "version": "1.5.48",
   "main": "index.js",
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "samsung": "expo run:android --device 'SM_N950F'",
     "iphone": "expo run:ios --device 'iPhone envarg' --configuration Release",
     "macos": "expo run:macos",
     "lint": "eslint .",
