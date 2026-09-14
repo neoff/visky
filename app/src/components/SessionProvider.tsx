@@ -1,8 +1,9 @@
 import { useStorageState } from "@/hooks/useStorageState";
 import { ensureDeviceId } from "@/helpers/device";
 import { setAuthHeaders } from "@/helpers/network";
+import { onSessionRevoked, resetRevocation } from "@/services/revocation";
 import { AuthFragments } from "@/types/auth";
-import { createContext, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 
 
 const AuthContext = createContext<{
@@ -66,6 +67,32 @@ export function SessionProvider({children}: PropsWithChildren) {
     setSession(JSON.stringify({...parsed, device_id: deviceId}));
   }, [parsed, deviceId]);
 
+  const clearSession = useCallback(() => {
+    setSession(null);
+    setAuthUrl(null);
+  }, [setSession, setAuthUrl]);
+
+  // Signed out from another device.
+  //
+  // The two things that can find this out — the axios layer and the playback
+  // socket — are module singletons that exist outside the tree, so they raise
+  // it through services/revocation rather than reaching for a hook. All that is
+  // left to do here is what a local sign-out does: drop the stored session. The
+  // router already sends a sessionless app to the login screen.
+  useEffect(() => {
+    onSessionRevoked(clearSession);
+    return () => onSessionRevoked(null);
+  }, [clearSession]);
+
+  // A fresh session may be revoked in its turn, on this same launch.
+  const armedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const token = parsed?.access_token ?? null;
+    if (!token || armedFor.current === token) return;
+    armedFor.current = token;
+    resetRevocation();
+  }, [parsed]);
+
   // Mirror the stored session into the network layer's auth headers (RN has no
   // cookie jar). Runs on login, on sign-out, and on cold-start once storage loads.
   //
@@ -90,11 +117,7 @@ export function SessionProvider({children}: PropsWithChildren) {
             : null;
           setAuthUrl(param.auth_url??null);
         },
-        signOut: () => {
-          setSession(null);
-          setAuthUrl(null);
-
-        },
+        signOut: clearSession,
         getSession: (): AuthFragments | null => parsed,
         auth_url,
         session,

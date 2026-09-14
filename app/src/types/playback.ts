@@ -65,4 +65,8 @@ export type ServerFrame =
   // frisky.fm. Nothing about playback changed — it is the cue to re-read the
   // list on screen, so a tracklist appears without a manual pull-to-refresh.
   | {t: 'catalog'; track_ids: string[]; server_now_ms: number}
+  // This installation was signed out from another device. Drop the session and
+  // go back to the login screen. Best effort: an app that was closed when the
+  // button was pressed is told by the 401 on its first request instead.
+  | {t: 'revoked'; server_now_ms: number}
   | {t: 'error'; message: string}

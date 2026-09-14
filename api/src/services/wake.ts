@@ -21,7 +21,12 @@ import {getPushToken} from "@/services/devices";
 const lastWake = new Map<string, number>();
 
 export interface WakeReason {
-  type: "transfer" | "state";
+  /**
+   * "revoked" is a doorbell with nothing behind it: the app wakes, reconnects,
+   * is refused, and signs itself out. Nothing in the payload is trusted for
+   * that -- a push is not a place to put an instruction to drop a session.
+   */
+  type: "transfer" | "state" | "revoked";
   user_id: string;
   version: number;
 }

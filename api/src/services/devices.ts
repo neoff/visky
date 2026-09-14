@@ -20,9 +20,28 @@ interface DeviceRow {
   app_version: string | null;
   push_token: string | null;
   last_seen_ms: number | null;
+  /** set once the account signed this installation out; see the migration */
+  revoked_at: number | null;
+  /** when this row was last read from or written to Postgres */
+  checked_at: number;
   /** a live socket on THIS process */
   connected: boolean;
 }
+
+/**
+ * How stale a "not revoked" answer may be.
+ *
+ * The revoke is written by whichever replica served the button press, and the
+ * cache above is per replica: another one holding the doomed device's socket
+ * would keep believing it. Rather than a second Kafka topic for one boolean,
+ * the negative answer simply expires — a revoked device is cut off within this
+ * long wherever it is connected, and the positive answer never expires because
+ * revocation does not un-happen.
+ *
+ * Costs one primary-key read per device per window, on requests that are
+ * already talking to VK over the network.
+ */
+const REVOKED_RECHECK_MS = 30_000;
 
 /** user_id -> device_id -> row */
 const cache = new Map<string, Map<string, DeviceRow>>();
@@ -52,6 +71,7 @@ const persist = async (row: DeviceRow): Promise<void> => {
         appVersion: row.app_version,
         pushToken: row.push_token,
         lastSeen: row.last_seen_ms ? new Date(row.last_seen_ms) : null,
+        revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
       },
       ["id"],
     );
@@ -79,6 +99,8 @@ const hydrate = async (userId: string): Promise<void> => {
         app_version: row.appVersion ?? null,
         push_token: row.pushToken ?? null,
         last_seen_ms: row.lastSeen ? row.lastSeen.getTime() : null,
+        revoked_at: row.revokedAt ? row.revokedAt.getTime() : null,
+        checked_at: Date.now(),
         connected: false,
       });
     }
@@ -112,6 +134,11 @@ export const touchDevice = async (
     app_version: identity.app_version ?? existing?.app_version ?? null,
     push_token: identity.push_token ?? existing?.push_token ?? null,
     last_seen_ms: Date.now(),
+    // Carried, never cleared. `touchDevice` runs on almost every request, and
+    // dropping it here would let a revoked device un-revoke itself simply by
+    // asking for something.
+    revoked_at: existing?.revoked_at ?? null,
+    checked_at: existing?.checked_at ?? Date.now(),
     connected: connected ?? existing?.connected ?? false,
   };
   b.set(row.device_id, row);
@@ -146,6 +173,7 @@ export const listDevices = async (
   await hydrate(userId);
   const now = Date.now();
   return [...bucket(userId).values()]
+    .filter((row) => row.revoked_at === null)
     .map((row) => ({
       device_id: row.device_id,
       name: row.name,
@@ -157,6 +185,57 @@ export const listDevices = async (
       can_wake: Boolean(row.push_token),
     }))
     .sort((a, b) => (b.last_seen_ms ?? 0) - (a.last_seen_ms ?? 0));
+};
+
+/**
+ * Sign an installation out of this account.
+ *
+ * Returns false when there is no such device, so the route can answer 404
+ * rather than pretend. The caller is responsible for the loud half — cutting
+ * the socket and ringing the push doorbell; this is only the durable fact.
+ */
+export const revokeDevice = async (userId: string, deviceId: string): Promise<boolean> => {
+  await hydrate(userId);
+  const row = bucket(userId).get(deviceId);
+  if (!row) return false;
+  if (row.revoked_at !== null) return true;
+
+  row.revoked_at = Date.now();
+  row.checked_at = Date.now();
+  row.connected = false;
+  await persist(row);
+  console.log(`==playback: device revoked user=${userId} device=${deviceId}`);
+  return true;
+};
+
+/**
+ * May this installation still speak for this account?
+ *
+ * Answered from the cache, with the negative answer re-read from Postgres every
+ * `REVOKED_RECHECK_MS` — see the constant for why. A device nobody has heard of
+ * is NOT revoked: that is a fresh install, or this replica's first sight of it.
+ */
+export const isDeviceRevoked = async (userId: string, deviceId: string): Promise<boolean> => {
+  await hydrate(userId);
+  const row = bucket(userId).get(deviceId);
+  if (row?.revoked_at) return true;
+  if (row && Date.now() - row.checked_at < REVOKED_RECHECK_MS) return false;
+
+  const ds = await initDataSource();
+  if (!ds) return false;
+  try {
+    const stored = await ds.getRepository(Device).findOne({where: {id: deviceId, userId}});
+    const revokedAt = stored?.revokedAt ? stored.revokedAt.getTime() : null;
+    if (row) {
+      row.revoked_at = revokedAt;
+      row.checked_at = Date.now();
+    }
+    return revokedAt !== null;
+  } catch (error) {
+    // A database that is down must not sign everybody out.
+    console.error("==playback: could not check revocation:", (error as Error)?.message ?? error);
+    return false;
+  }
 };
 
 /** Tests only. */

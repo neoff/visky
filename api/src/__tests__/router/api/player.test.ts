@@ -150,6 +150,43 @@ describe('/api/player', () => {
     expect(remember).toHaveBeenCalled();
   });
 
+  describe('signing another device out', () => {
+    const bothSeen = async () => {
+      await asPhone(request(app).get('/api/player/devices'));
+      await asTablet(request(app).get('/api/player/devices'));
+    };
+
+    it('drops the device from the roster', async () => {
+      await bothSeen();
+
+      const removed = await asPhone(request(app).delete(`/api/player/devices/${TABLET}`));
+      expect(removed.status).toBe(200);
+      expect(removed.body.devices.map((d: any) => d.device_id)).toEqual([PHONE]);
+
+      // and it stays gone for anyone who asks again
+      const again = await asPhone(request(app).get('/api/player/devices'));
+      expect(again.body.devices.map((d: any) => d.device_id)).toEqual([PHONE]);
+    });
+
+    it('refuses to sign the calling device out of itself', async () => {
+      await bothSeen();
+
+      const res = await asPhone(request(app).delete(`/api/player/devices/${PHONE}`));
+      expect(res.status).toBe(400);
+      expect(res.body.errCode).toBe('self_revoke');
+
+      // Sign out is a local button; the roster must be untouched by the refusal.
+      const roster = await asPhone(request(app).get('/api/player/devices'));
+      expect(roster.body.devices.map((d: any) => d.device_id).sort()).toEqual([PHONE, TABLET].sort());
+    });
+
+    it('404s a device this account has never had', async () => {
+      await bothSeen();
+      const res = await asPhone(request(app).delete('/api/player/devices/somebody-elses-phone'));
+      expect(res.status).toBe(404);
+    });
+  });
+
   it('404s a track VK does not know', async () => {
     vkMethod.mockResolvedValue({response: []});
     const res = await asPhone(request(app).get('/api/player/track/-42311167/9'));

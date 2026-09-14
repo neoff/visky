@@ -5,6 +5,7 @@ import axios, {AxiosError, AxiosRequestConfig, Method} from "axios";
 import {TrackType} from "react-native-track-player";
 import {AuthFragments} from "@/types/auth";
 import {PlaybackDeviceInfo, PlaybackState} from "@/types/playback";
+import {isRevokedResponse, sessionRevoked} from "@/services/revocation";
 
 /**
  * RN axios does not persist the server session cookie, so authenticated calls
@@ -123,6 +124,13 @@ const apiRequest = async (url: string, method: Method | string, {data, next}:{da
     })
     .catch((error: AxiosError) => {
       console.error(`==ERROR apiRequest: ${error.status} error:`, (error.response?.data as { message?: string })?.message);
+      // Every authenticated call passes through here, which makes this the one
+      // place that catches "signed out from another device" however the app
+      // happened to find out — including on a cold start, where the first
+      // playlist refresh is the first thing that speaks to the server at all.
+      if (isRevokedResponse(error.response?.status, error.response?.data)) {
+        sessionRevoked(`${method} ${url}`);
+      }
       throw error;
     });
 }
@@ -427,6 +435,19 @@ export const transferPlayback = async (
   return await apiRequest(apiUrls.playerTransferUrl, 'POST', {
     data: {to_device_id: toDeviceId, ...(play === undefined ? {} : {play})},
   });
+};
+
+/**
+ * Sign another installation out of this account.
+ *
+ * Not this one — the API refuses that with 400 `self_revoke`, because signing
+ * THIS device out is the local Sign out button and clearing the session is the
+ * whole of it.
+ */
+export const removeDevice = async (
+  deviceId: string,
+): Promise<{devices: PlaybackDeviceInfo[]}> => {
+  return await apiRequest(`${apiUrls.playerDevicesUrl}/${encodeURIComponent(deviceId)}`, 'DELETE', {});
 };
 
 /**

@@ -106,4 +106,10 @@ export type ServerFrame =
   // the list it is showing, so a tracklist appears without waiting for a manual
   // pull-to-refresh. Ignoring the frame is harmless.
   | {t: "catalog"; track_ids: string[]; server_now_ms: number}
+  // This installation has been signed out from another device. The app clears
+  // its session and goes back to the login screen; the socket is closed right
+  // behind this frame, and every REST call would answer 401 device_revoked from
+  // here on. Sent on a best-effort basis -- an app that was not running when the
+  // button was pressed learns the same thing from its first request instead.
+  | {t: "revoked"; server_now_ms: number}
   | {t: "error"; message: string};

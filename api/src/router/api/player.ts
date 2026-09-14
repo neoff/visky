@@ -4,7 +4,7 @@ import {checkAuthAndroid} from "@/helper/vk";
 import {vkMethod} from "@/helper/vk";
 import {cleanupDataAndSortPart, formatPlaylist} from "@/helper";
 import {enrich, kick, remember} from "@/services/friskyCache";
-import {listDevices, touchDevice} from "@/services/devices";
+import {listDevices, revokeDevice, touchDevice} from "@/services/devices";
 import {
   applyUpdate,
   getState,
@@ -13,7 +13,7 @@ import {
 } from "@/services/playback";
 import {whenReplayed} from "@/services/kafka";
 import {wakeDevice} from "@/services/wake";
-import {isDeviceConnected, refreshDevices} from "@/ws/hub";
+import {isDeviceConnected, kickDevice, refreshDevices} from "@/ws/hub";
 import {PlaybackUpdate} from "@/types/playback";
 
 export const player = express.Router();
@@ -244,6 +244,58 @@ player.post("/devices", checkAuthAndroid, async (req: Request, res: Response) =>
     // a device the sockets have not seen yet: tell them, or the picker on the
     // other devices will not list it
     refreshDevices(user_id);
+    res.status(200).send({
+      devices: await listDevices(user_id, getState(user_id).active_device_id),
+      server_now_ms: Date.now(),
+    });
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
+
+/**
+ * Sign another installation out of this account.
+ *
+ * Not this one. A device cannot revoke itself: the button for that already
+ * exists and is called Sign out, it clears the session locally, and letting
+ * this route do it would leave the app holding a token the server has stopped
+ * accepting while still believing it is signed in.
+ *
+ * The durable half is a column (services/devices); the loud half is here. A
+ * device with a socket on this replica is cut off immediately, and one without
+ * gets its doorbell rung so it reconnects, is refused, and signs itself out --
+ * which is also exactly what an app that was closed the whole time does the
+ * first time it is opened.
+ */
+player.delete("/devices/:device_id", checkAuthAndroid, rememberDevice, async (req: Request, res: Response) => {
+  const target = req.params.device_id;
+  if (!target) {
+    res.status(400).send({errMessage: "No device id"});
+    return;
+  }
+  if (target === deviceOf(req)) {
+    res.status(400).send({errMessage: "A device cannot sign itself out", errCode: "self_revoke"});
+    return;
+  }
+
+  try {
+    const user_id = userOf(req);
+    if (!(await revokeDevice(user_id, target))) {
+      res.status(404).send({errMessage: "Unknown device"});
+      return;
+    }
+
+    kickDevice(user_id, target);
+    // The roster lost a row: every other screen of this account is showing the
+    // old one until it is told.
+    refreshDevices(user_id);
+    if (!isDeviceConnected(user_id, target)) {
+      // Best effort, and deliberately still sent to a device we believe is
+      // offline: the push is the only thing that reaches an app in the
+      // background, and being refused on reconnect is how it finds out.
+      void wakeDevice(user_id, target, {type: "revoked", user_id, version: getState(user_id).version});
+    }
+
     res.status(200).send({
       devices: await listDevices(user_id, getState(user_id).active_device_id),
       server_now_ms: Date.now(),

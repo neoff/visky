@@ -4,6 +4,7 @@ import { AndroidClient, deviceIDgen, md5 } from ".";
 import { version } from "@/constants";
 import {AxiosError, AxiosResponse} from "axios";
 import {VkResponse} from "@/__genedated__/openapi/vk";
+import {isDeviceRevoked} from "@/services/devices";
 
 
 export const checkAuthAndroid = async(req: Request, res: Response, next: NextFunction) => {
@@ -36,6 +37,24 @@ export const checkAuthAndroid = async(req: Request, res: Response, next: NextFun
         res.status(403).send(new AxiosError("No token or secret"));
         return;
     }
+
+    // Signed out from another device.
+    //
+    // Here rather than on the playback routes alone, because "signed out" has to
+    // mean the whole API: a device that could still read the playlist and the
+    // audio urls has not been signed out of anything. This is also the answer to
+    // "what if the app was closed the whole time" — it was, its first request on
+    // launch lands here, and 401 device_revoked is what it gets.
+    //
+    // 401, not the 403 above: the app has to tell "you never sent credentials"
+    // from "your credentials are no longer welcome". Only the second one clears
+    // the session.
+    if (req.session.device_id && await isDeviceRevoked(String(req.session.user_id), req.session.device_id)) {
+        console.warn(`===checkAuthAndroid: refused a revoked device ${req.session.device_id}`);
+        res.status(401).send({errMessage: "This device was signed out", errCode: "device_revoked"});
+        return;
+    }
+
     next();
 }
 

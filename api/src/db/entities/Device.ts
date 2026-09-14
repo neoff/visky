@@ -44,6 +44,18 @@ export class Device {
   @Column({name: "last_seen", type: "timestamptz", nullable: true})
   lastSeen?: Date | null;
 
+  /**
+   * When the account signed this installation out from another device.
+   *
+   * Set rather than deleted: the device is usually not running when the button
+   * is pressed, and a deleted row would simply be recreated by its next
+   * request as if nothing had happened. While this is set the API refuses the
+   * device, which is how an app that was closed at the time finds out — on its
+   * very first call after launch.
+   */
+  @Column({name: "revoked_at", type: "timestamptz", nullable: true})
+  revokedAt?: Date | null;
+
   @CreateDateColumn({name: "created_at", type: "timestamptz"})
   createdAt!: Date;
 

@@ -1,24 +1,43 @@
-import React from 'react'
+import React, {useCallback, useState} from 'react'
 import {ScrollView, StyleSheet, Text, View} from 'react-native'
-import {MaterialCommunityIcons} from '@expo/vector-icons'
 import {AuthHandoff} from '@/components/AuthHandoff'
-import {iconFor, lastSeenLabel} from '@/components/DevicePicker'
+import {DeviceRow} from '@/components/DeviceRow'
 import {colors, fonts, layout, screenPadding} from '@/constants'
+import {removeDevice} from '@/helpers/network'
 import {usePlaybackStore} from '@/store/playback'
 
 /**
  * Everything signed into this account, and how to add one more.
  *
  * The list is the same one "Play on" offers — every app holding a socket for
- * this VK user — but read-only here: this screen answers "what is signed in as
- * me?", not "where should the sound come out?". A device that has been swiped
- * away keeps its row until the token expires, which is the point: it is still
- * signed in, and this is where you would notice one you do not recognise.
+ * this VK user — but it answers a different question: "what is signed in as
+ * me?", not "where should the sound come out?". An app that has been swiped away
+ * keeps its row, which is the point: it is still signed in, and this is where
+ * you would notice one you do not recognise — and now sign it out.
  */
 const DevicesScreen = () => {
   const devices = usePlaybackStore((store) => store.devices)
   const thisDevice = usePlaybackStore((store) => store.deviceId)
   const connected = usePlaybackStore((store) => store.connected)
+  const [error, setError] = useState<string | null>(null)
+
+  /**
+   * The answer carries the new roster, so the list is replaced rather than
+   * patched: the server has just decided what is signed in, and it is the only
+   * thing that knows. The sockets of every other device get the same list
+   * pushed to them, so this screen open on the desktop updates by itself.
+   */
+  const remove = useCallback(async (deviceId: string) => {
+    setError(null)
+    try {
+      const {devices: left} = await removeDevice(deviceId)
+      usePlaybackStore.getState().setDevices(left)
+    } catch (failure) {
+      console.warn('==devices: could not sign that device out', failure)
+      setError('Could not sign that device out. Try again in a moment.')
+      throw failure
+    }
+  }, [])
 
   return (
     <View style={styles.screen}>
@@ -34,30 +53,25 @@ const DevicesScreen = () => {
         ) : (
           <View style={styles.list}>
             {devices.map((device) => (
-              <View key={device.device_id} style={styles.row}>
-                <MaterialCommunityIcons
-                  name={iconFor(device.platform)}
-                  size={22}
-                  color={device.online ? colors.icon : colors.textMutedDarker}
-                />
-                <View style={styles.rowText}>
-                  <Text style={styles.name} numberOfLines={1}>
-                    {device.name || 'Unnamed device'}
-                    {device.device_id === thisDevice ? ' · this one' : ''}
-                  </Text>
-                  <Text style={styles.state}>{lastSeenLabel(device)}</Text>
-                </View>
-              </View>
+              <DeviceRow
+                key={device.device_id}
+                device={device}
+                isThisDevice={device.device_id === thisDevice}
+                onRemove={remove}
+              />
             ))}
           </View>
         )}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Text style={styles.heading}>Add a device</Text>
         <AuthHandoff />
 
         <Text style={styles.footnote}>
-          Signing out here does not sign the others out — each one holds its own copy of the VK
-          token until it expires.
+          Swipe a device to sign it out. It loses access straight away, and an app that was closed
+          at the time is signed out the moment it is next opened. This one can only be signed out
+          with the Sign out button.
         </Text>
       </ScrollView>
     </View>
@@ -89,30 +103,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.surfaceDivider,
-  },
-  rowText: {
-    flex: 1,
-  },
-  name: {
-    color: colors.text,
-    fontSize: fonts.sm,
-    fontWeight: '600',
-  },
-  state: {
-    color: colors.textMuted,
-    fontSize: fonts.xs,
-    marginTop: 2,
-  },
   empty: {
     color: colors.textMuted,
+    fontSize: fonts.xs,
+  },
+  error: {
+    color: '#FF6B6B',
     fontSize: fonts.xs,
   },
   footnote: {

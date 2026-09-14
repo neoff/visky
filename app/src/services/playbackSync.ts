@@ -1,5 +1,6 @@
 import {AppState, AppStateStatus, Platform} from 'react-native'
 import {apiUrls} from '@/constants'
+import {sessionRevoked} from '@/services/revocation'
 import {usePlaybackStore} from '@/store/playback'
 import {PlaybackState, PlaybackUpdate, ServerFrame} from '@/types/playback'
 
@@ -227,6 +228,13 @@ class PlaybackSync {
         }
         return
       }
+      case 'revoked':
+        // The socket is closed right behind this frame. Stop first, so the
+        // reconnect loop does not immediately start hammering a server that
+        // will refuse the upgrade anyway.
+        this.stop()
+        sessionRevoked('playback socket')
+        return
       case 'catalog':
         // Metadata arrived for some tracks. Nothing about playback changed, so
         // the state is left alone — the lists on screen re-read themselves.

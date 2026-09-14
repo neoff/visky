@@ -11,7 +11,7 @@ import {IncomingMessage, Server as HttpServer} from "http";
 import {Socket} from "net";
 import {WebSocket, WebSocketServer} from "ws";
 import {playback as cfg} from "@/configurations/playback";
-import {listDevices, setConnected, touchDevice} from "@/services/devices";
+import {isDeviceRevoked, listDevices, setConnected, touchDevice} from "@/services/devices";
 import {
   applyProgress,
   applyUpdate,
@@ -26,6 +26,15 @@ import {wakeDevice} from "@/services/wake";
 import {ClientFrame, PlaybackState, ServerFrame} from "@/types/playback";
 
 export const WS_PATH = "/api/player/ws";
+
+/**
+ * Close code for a socket whose device has been signed out.
+ *
+ * In the 4000-4999 application range, and only a hint: the `revoked` frame sent
+ * just before it is what the app acts on, because a close code is not delivered
+ * at all when the connection is already broken.
+ */
+const CLOSE_REVOKED = 4401;
 
 interface Connection {
   ws: WebSocket;
@@ -60,6 +69,24 @@ const room = (userId: string): Set<Connection> => {
 /** Is this device holding a socket on this replica? */
 const isHere = (userId: string, deviceId: string): boolean =>
   [...(rooms.get(userId) ?? [])].some((c) => c.deviceId === deviceId && c.ws.readyState === WebSocket.OPEN);
+
+/**
+ * Cut every socket this device holds here, telling it why first.
+ *
+ * Called by the revoke route on the replica that served it, and by the ping
+ * path on any other replica that finds out later. Safe to call twice.
+ */
+export const kickDevice = (userId: string, deviceId: string): void => {
+  for (const connection of rooms.get(userId) ?? []) {
+    if (connection.deviceId !== deviceId) continue;
+    send(connection, {t: "revoked", server_now_ms: Date.now()});
+    try {
+      connection.ws.close(CLOSE_REVOKED, "device revoked");
+    } catch {
+      connection.ws.terminate();
+    }
+  }
+};
 
 const broadcastState = (state: PlaybackState): void => {
   const frame: ServerFrame = {t: "state", state, server_now_ms: Date.now()};
@@ -109,6 +136,13 @@ const handleFrame = async (connection: Connection, frame: ClientFrame): Promise<
   switch (frame.t) {
     case "hello": {
       connection.deviceId = frame.device_id;
+      // The handshake is the first point at which a socket names its device --
+      // the upgrade may have carried no `x-auth-device` at all -- so this is
+      // where a revoked one is turned away.
+      if (await isDeviceRevoked(connection.userId, frame.device_id)) {
+        kickDevice(connection.userId, frame.device_id);
+        return;
+      }
       await touchDevice(
         connection.userId,
         {
@@ -167,8 +201,19 @@ const handleFrame = async (connection: Connection, frame: ClientFrame): Promise<
       send(connection, {t: "pong", client_now_ms: frame.client_now_ms, server_now_ms: Date.now()});
       // cheap presence write-through, so other replicas see this device as live
       if (connection.deviceId && Date.now() - connection.persistedAt > 60_000) {
+        const deviceId = connection.deviceId;
         connection.persistedAt = Date.now();
-        void touchDevice(connection.userId, {device_id: connection.deviceId}, true);
+        // ...and the same moment answers "may this device still be here?". The
+        // revoke may have been served by another replica, which cannot reach
+        // this socket; `isDeviceRevoked` re-reads Postgres on its own schedule,
+        // so this is the path by which a device connected elsewhere is cut off.
+        void (async () => {
+          if (await isDeviceRevoked(connection.userId, deviceId)) {
+            kickDevice(connection.userId, deviceId);
+            return;
+          }
+          await touchDevice(connection.userId, {device_id: deviceId}, true);
+        })();
       }
       return;
     }
@@ -189,6 +234,15 @@ export const attachPlaybackSocket = (server: HttpServer): WebSocketServer => {
       const credentials = credentialsFrom(request);
       const userId = await verifyCredentials(credentials);
       if (!userId) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      // A device signed out from elsewhere never gets a socket back. The app
+      // learns the same thing from its REST calls, which is what a cold start
+      // does first anyway -- this only stops a revoked device from rejoining
+      // the session in the seconds before it asks for anything.
+      if (credentials.device_id && (await isDeviceRevoked(userId, credentials.device_id))) {
         socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         socket.destroy();
         return;
