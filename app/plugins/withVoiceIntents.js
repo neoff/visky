@@ -36,6 +36,13 @@ const ALTERNATIVE_NAMES = [
   {name: 'Visky Music', hint: 'whiskey music'},
   {name: 'Visky Radio', hint: 'whiskey radio'},
   {name: 'Visky Player', hint: 'whiskey player'},
+  // "Frisky Music", and deliberately not "Frisky Radio" or a bare "Frisky".
+  // The registered mark is the station's full name; the owner's position is
+  // that the two-word generic pairing is not it, and that visky (vk + frisky)
+  // describes what the app is — VK's copy of that catalogue — rather than
+  // passing itself off as the station. The line that must not be crossed is
+  // the mark itself, which is why case D3 greps for exactly that string.
+  {name: 'Frisky Music', hint: 'frisky music'},
 ]
 
 const withVoiceIntents = (config) =>

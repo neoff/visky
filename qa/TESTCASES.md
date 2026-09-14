@@ -142,11 +142,15 @@ The app is called visky, and it stays called visky. The spoken name people
 reach for — the station's — belongs to somebody else, so what is claimed here
 is only this app's own name and the way Siri actually hears it: "whiskey".
 
-### D1 — Siri opens the app when it hears the name wrong
-- **Claim**: "open whiskey music" (which is what "open visky music" sounds like)
-  launches this app instead of offering the Whisky app in the App Store.
-- **Steps**: say it to Siri on a device with the build installed.
-- **Proof**: the app comes to the foreground; no App Store card appears.
+### D1 — Siri opens the app for both the misheard name and the spoken one
+- **Claim**: two utterances land here — "open visky music", which Siri hears as
+  "whiskey music" and used to answer with the Whisky app in the App Store, and
+  "open frisky music", which it did not understand at all.
+- **Steps**: say each to Siri on a device with the build installed.
+- **Proof**: the app comes to the foreground both times; no App Store card.
+- **Counter-check**: "open frisky radio" must still open the STATION's app, not
+  this one. If it opens this one, the alternate names have overreached and D3
+  is failing in a way a grep cannot see.
 - **Surfaces**: iphone-xs. `n/a` on ios-sim — the simulator has no Siri.
 
 ### D2 — the alternate names are actually in the build
@@ -158,14 +162,15 @@ is only this app's own name and the way Siri actually hears it: "whiskey".
   `whiskey...` hint.
 - **Surfaces**: a build artefact check; no device needed.
 
-### D3 — no third-party name is claimed
-- **Claim**: the build does not try to answer to another station's brand — not
-  in the alternate names, not in the bundle display name, not in the Android
-  label.
+### D3 — the registered mark itself is never claimed
+- **Claim**: "Frisky Music" is answered to; "Frisky Radio" — the registered
+  mark — is not, anywhere: not in the alternate names, not in the bundle
+  display name, not in the Android label.
 - **Steps**: grep the built `Info.plist` and `AndroidManifest.xml`.
-- **Proof**: no case-insensitive match for the station's name anywhere in them.
-  This case exists to FAIL LOUDLY if somebody adds it later: it is a trademark
-  claim, and App Review reads metadata as carefully as the app name.
+- **Proof**: no case-insensitive match for `frisky radio`, and no bare `Frisky`
+  standing alone as a name. This case exists to FAIL LOUDLY if one is ever
+  added: App Review reads metadata as carefully as the app name, and the
+  difference between the pairing and the mark is the whole argument.
 - **Surfaces**: build artefact check.
 
 ### D4 — Assistant opens the app by its label

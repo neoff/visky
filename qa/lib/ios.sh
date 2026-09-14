@@ -17,7 +17,17 @@ set -euo pipefail
 SIM="${QA_SIM:-iPhone Xs}"
 BUNDLE="${QA_BUNDLE:-com.envarg.visky}"
 DEVICE_UDID="${QA_DEVICE_UDID:-6D60CF0D-BDF9-5288-B3A3-6C2EAC540E2A}"
-ARTIFACTS="${QA_ARTIFACTS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/artifacts}"
+# Sourced from bash this resolves next to the harness; sourced from anything
+# else — zsh has no BASH_SOURCE — it falls back to the repo layout rather than
+# dying on an unset variable three lines into a test run.
+if [ -n "${QA_ARTIFACTS:-}" ]; then
+  ARTIFACTS="$QA_ARTIFACTS"
+elif [ -n "${BASH_SOURCE+set}" ]; then
+  ARTIFACTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/artifacts"
+else
+  ARTIFACTS="$PWD/qa/artifacts"
+fi
+mkdir -p "$ARTIFACTS"
 
 # ---------------------------------------------------------------- simulator
 qa_ios_boot() {
