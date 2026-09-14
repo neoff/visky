@@ -93,8 +93,17 @@ QA_IOS_TITLEBAR="${QA_IOS_TITLEBAR:-28}"
 # 1080 px away and looked exactly like a tap the app ignored. An hour went into
 # that. Park first, then the arithmetic below is honest.
 qa_ios_stage() {
+  # Every OTHER simulator window is pushed aside first. Parking two windows at
+  # the same spot is how a whole afternoon disappears: the clicks are aimed
+  # correctly, they land on the window that happens to be in front, and the app
+  # under test looks like it is ignoring input.
   osascript -e "
     tell application \"System Events\" to tell process \"Simulator\"
+      repeat with w in windows
+        if name of w does not start with \"$SIM\" then
+          set position of w to {1400, 60}
+        end if
+      end repeat
       set target to first window whose name starts with \"$SIM\"
       set position of target to {${QA_IOS_WINDOW_X:-60}, ${QA_IOS_WINDOW_Y:-60}}
       perform action \"AXRaise\" of target
@@ -102,8 +111,10 @@ qa_ios_stage() {
   " >/dev/null 2>&1
 }
 
-# Points of the device screen, from a screenshot: pixels / 3.
-qa_ios_screen_points() {
+# The screenshot's own pixel size. NOT divided by anything: the device scale is
+# 3x on a phone and 2x on an iPad, and assuming one of them is how every tap on
+# the iPad missed by a third of the screen.
+qa_ios_screen_px() {
   local shot
   shot="$(mktemp -t viskyshot).png"
   xcrun simctl io "$SIM" screenshot "$shot" >/dev/null 2>&1
@@ -111,69 +122,63 @@ qa_ios_screen_points() {
   w="$(sips -g pixelWidth "$shot" | awk '/pixelWidth/{print $2}')"
   h="$(sips -g pixelHeight "$shot" | awk '/pixelHeight/{print $2}')"
   rm -f "$shot"
-  echo "$((w / 3)) $((h / 3))"
+  echo "$w $h"
 }
 
-# Tap at a point in DEVICE POINTS — the same coordinate space the app's layout
-# is written in, so a tap can be aimed from a screenshot by dividing its pixel
-# position by 3.
-qa_ios_tap() { # <x-points> <y-points>
-  local pointX="$1" pointY="$2"
+# Tap at a point given in SCREENSHOT PIXELS — the coordinates you read straight
+# off the image you are looking at, with no scale to remember and no per-device
+# arithmetic to get wrong.
+#
+# The mapping needs no device scale at all. The window's content area has the
+# same aspect ratio as the screenshot, so its height (window height minus the
+# title bar) and that ratio give its width, and whatever is left over is the
+# padding on either side.
+qa_ios_tap() { # <x-px> <y-px>
+  local pixelX="$1" pixelY="$2"
   osascript -e 'tell application "Simulator" to activate' >/dev/null
   qa_ios_stage
   sleep 0.4
 
-  # BY NAME, never "window 1". More than one simulator is usually booted, the
-  # frontmost window is whichever was touched last, and clicking the wrong one
-  # lands a tap in another device's app — which looks exactly like a tap that
-  # did nothing.
-  local geometry
+  local geometry winX winY winW winH shot shotW shotH
   geometry="$(osascript -e "
     tell application \"System Events\" to tell process \"Simulator\"
       set target to first window whose name starts with \"$SIM\"
-      perform action \"AXRaise\" of target
       get {position, size} of target
     end tell
   ")"
-  local winX winY winW winH
   winX="$(echo "$geometry" | cut -d, -f1 | tr -d ' ')"
   winY="$(echo "$geometry" | cut -d, -f2 | tr -d ' ')"
   winW="$(echo "$geometry" | cut -d, -f3 | tr -d ' ')"
   winH="$(echo "$geometry" | cut -d, -f4 | tr -d ' ')"
+  shot="$(qa_ios_screen_px)"
+  shotW="$(echo "$shot" | cut -d' ' -f1)"
+  shotH="$(echo "$shot" | cut -d' ' -f2)"
 
-  local points logicalW logicalH
-  points="$(qa_ios_screen_points)"
-  logicalW="$(echo "$points" | cut -d' ' -f1)"
-  logicalH="$(echo "$points" | cut -d' ' -f2)"
-
-  # The window is scaled to fit; the scale comes from the height, where the
-  # only unknown is the title bar, and the horizontal padding is whatever is
-  # left over. One python call, one pair of numbers — an earlier version read
-  # them through a heredoc and silently produced nothing.
   local screen
   screen="$(python3 -c "
 win_x, win_y, win_w, win_h = $winX, $winY, $winW, $winH
-logical_w, logical_h = $logicalW, $logicalH
-scale = (win_h - $QA_IOS_TITLEBAR) / logical_h
-pad_x = (win_w - logical_w * scale) / 2
-print(f'{round(win_x + pad_x + scale * $pointX)},{round(win_y + $QA_IOS_TITLEBAR + scale * $pointY)}')
+shot_w, shot_h = $shotW, $shotH
+content_h = win_h - $QA_IOS_TITLEBAR
+content_w = content_h * (shot_w / shot_h)
+pad_x = (win_w - content_w) / 2
+print(f'{round(win_x + pad_x + content_w * $pixelX / shot_w)},{round(win_y + $QA_IOS_TITLEBAR + content_h * $pixelY / shot_h)}')
 ")"
 
-  [ -n "${QA_TAP_DEBUG:-}" ] && echo "tap ${pointX},${pointY} pt -> ${screen} screen (window $winX,$winY ${winW}x${winH})" >&2
+  [ -n "${QA_TAP_DEBUG:-}" ] && echo "tap ${pixelX},${pixelY}px of ${shotW}x${shotH} -> ${screen} (window $winX,$winY ${winW}x${winH})" >&2
   cliclick "c:${screen}"
 }
 
-# Drag, for the gestures a tap cannot stand in for: dismissing a modal that
-# only closes by swipe, and pull-to-refresh. cliclick does press, move and
-# release as separate verbs, and the intermediate moves are what make the
-# simulator read it as a drag rather than a teleport.
-qa_ios_swipe() { # <x1> <y1> <x2> <y2> [steps]
+# Drag, for the gestures a tap cannot stand in for — dismissing a modal that
+# only closes by swipe, and pull-to-refresh. Screenshot pixels, same as above.
+# cliclick does press, move and release as separate verbs, and the intermediate
+# moves are what make the simulator read it as a drag rather than a teleport.
+qa_ios_swipe() { # <x1-px> <y1-px> <x2-px> <y2-px> [steps]
   local fromX="$1" fromY="$2" toX="$3" toY="$4" steps="${5:-12}"
   osascript -e 'tell application "Simulator" to activate' >/dev/null
   qa_ios_stage
   sleep 0.4
 
-  local geometry winX winY winW winH points logicalW logicalH
+  local geometry winX winY winW winH shot shotW shotH
   geometry="$(osascript -e "
     tell application \"System Events\" to tell process \"Simulator\"
       set target to first window whose name starts with \"$SIM\"
@@ -184,18 +189,19 @@ qa_ios_swipe() { # <x1> <y1> <x2> <y2> [steps]
   winY="$(echo "$geometry" | cut -d, -f2 | tr -d ' ')"
   winW="$(echo "$geometry" | cut -d, -f3 | tr -d ' ')"
   winH="$(echo "$geometry" | cut -d, -f4 | tr -d ' ')"
-  points="$(qa_ios_screen_points)"
-  logicalW="$(echo "$points" | cut -d' ' -f1)"
-  logicalH="$(echo "$points" | cut -d' ' -f2)"
+  shot="$(qa_ios_screen_px)"
+  shotW="$(echo "$shot" | cut -d' ' -f1)"
+  shotH="$(echo "$shot" | cut -d' ' -f2)"
 
-  local plan
+  local plan down moves up
   plan="$(python3 -c "
 win_x, win_y, win_w, win_h = $winX, $winY, $winW, $winH
-logical_w, logical_h = $logicalW, $logicalH
-scale = (win_h - $QA_IOS_TITLEBAR) / logical_h
-pad_x = (win_w - logical_w * scale) / 2
+shot_w, shot_h = $shotW, $shotH
+content_h = win_h - $QA_IOS_TITLEBAR
+content_w = content_h * (shot_w / shot_h)
+pad_x = (win_w - content_w) / 2
 def screen(px, py):
-    return round(win_x + pad_x + scale * px), round(win_y + $QA_IOS_TITLEBAR + scale * py)
+    return round(win_x + pad_x + content_w * px / shot_w), round(win_y + $QA_IOS_TITLEBAR + content_h * py / shot_h)
 steps = $steps
 moves = []
 for i in range(steps + 1):
@@ -205,8 +211,6 @@ print('dd:%d,%d' % screen($fromX, $fromY))
 print(' '.join(moves))
 print('du:%d,%d' % screen($toX, $toY))
 ")"
-
-  local down moves up
   down="$(echo "$plan" | sed -n 1p)"
   moves="$(echo "$plan" | sed -n 2p)"
   up="$(echo "$plan" | sed -n 3p)"
@@ -220,12 +224,12 @@ print('du:%d,%d' % screen($toX, $toY))
 qa_ios_open() { # <visky://...>
   qa_ios_deeplink "$1"
   sleep 3
-  local points logicalW logicalH
-  points="$(qa_ios_screen_points)"
-  logicalW="$(echo "$points" | cut -d' ' -f1)"
-  logicalH="$(echo "$points" | cut -d' ' -f2)"
+  local shot shotW shotH
+  shot="$(qa_ios_screen_px)"
+  shotW="$(echo "$shot" | cut -d' ' -f1)"
+  shotH="$(echo "$shot" | cut -d' ' -f2)"
   # "Open" is the right-hand button of a centred two-button alert.
-  qa_ios_tap "$((logicalW * 68 / 100))" "$((logicalH * 545 / 1000))"
+  qa_ios_tap "$((shotW * 68 / 100))" "$((shotH * 545 / 1000))"
   sleep 3
 }
 
