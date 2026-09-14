@@ -46,6 +46,22 @@ Surfaces:
 - **Proof**: the songs list loads without the welcome screen appearing.
 - **Surfaces**: android-emu, iphone-xs.
 
+### A4 — a session that cannot be read does not leave a black screen
+- **Claim**: when the keychain refuses — a damaged entitlement, a locked
+  device, a restore from backup — the app says something rather than rendering
+  nothing.
+- **Steps**: install a build whose entitlements are missing (an unsigned
+  simulator build reproduces it exactly:
+  `CODE_SIGNING_ALLOWED=NO` strips them and `expo-secure-store` then throws
+  `KeyChainException: A required entitlement isn't present`), launch, screenshot.
+- **Proof**: the screenshot shows the welcome screen or an error, NOT an empty
+  black frame. Found the hard way: the app currently renders black and the only
+  trace is an uncaught promise rejection in the device log.
+- **Status**: this case is expected to FAIL today. It is written down because a
+  known hole with a name is worth more than a surprise, and because the same
+  failure on a real phone looks like a dead app.
+- **Surfaces**: ios-sim.
+
 ## B. The list
 
 ### B1 — paging forward keeps the window bounded
