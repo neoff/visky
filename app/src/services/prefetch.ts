@@ -240,6 +240,10 @@ export const prefetchNextTrack = async (position: number, duration: number): Pro
   try {
     await warm(index + 1, next)
     remember(key)
+    // The success path used to say nothing at all, which made it impossible to
+    // tell a hand-over that was warmed from one that simply happened to work —
+    // the two look identical from outside, and only one of them is the feature.
+    console.debug('==prefetch: warmed', key, `${Math.round(duration - position)}s before the hand-over`)
   } catch (error) {
     console.warn('==prefetch: warm-up failed', error)
   } finally {
