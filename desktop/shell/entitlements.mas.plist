@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for the MAC APP STORE build, and only for it. The Developer ID
+  build (scripts/build-desktop.sh) ships with none of this: direct distribution
+  asks for a hardened runtime, the App Store asks for a sandbox, and the two
+  are different promises.
+
+  The sandbox is the whole reason this file exists. Inside it the app may only
+  do what is listed here, and what this app does is:
+
+    * talk to the API over HTTPS and keep a socket open to it, and let
+      WKWebView stream VK's HLS — all of it OUTGOING, so the network client
+      entitlement covers every one of them;
+    * nothing else. No file access beyond its own container, no microphone, no
+      camera, no printing. The desktop never logs in to VK (it is paired from
+      a phone) and never opens a file the user chose.
+
+  The identifier below is the PHONE app's, on purpose. A macOS app that shares
+  the iOS bundle id joins the same App Store Connect record as another platform
+  instead of needing a second listing with its own name, description and
+  screenshots. The Developer ID build keeps com.envarg.visky.desktop and is
+  untouched by any of this — scripts/build-desktop-mas.sh rewrites the
+  identifier in the copy it signs, never in shell/tauri.conf.json.
+
+  It has to match the App ID in the developer portal and the one inside the
+  provisioning profile, or codesign rejects the bundle with a mismatch that
+  names none of the three.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.application-identifier</key>
+	<string>N853W9Q344.com.envarg.visky</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>N853W9Q344</string>
+</dict>
+</plist>

@@ -406,3 +406,9 @@ credentials.json
 credentials/
 *.jks
 *.keystore
+
+# Provisioning profiles are fetched from Apple, not authored here: they carry a
+# team id, a certificate and an expiry, and a stale one in the tree is a build
+# signed against something Apple has already forgotten.
+*.provisionprofile
+*.mobileprovision

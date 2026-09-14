@@ -2,7 +2,7 @@
   "expo": {
     "name": "visky",
     "slug": "visky",
-    "version": "1.0.0",
+    "version": "1.5.48",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -81,7 +81,8 @@
       "expo-notifications",
       "./plugins/withVkTrustAnchor",
       "./plugins/withWatchApp",
-      "./plugins/withCarPlay"
+      "./plugins/withCarPlay",
+      "./plugins/withVoiceIntents"
     ],
     "experiments": {
       "typedRoutes": true,
