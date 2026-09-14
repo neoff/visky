@@ -1,5 +1,5 @@
 import {MaterialCommunityIcons} from '@expo/vector-icons'
-import {ActivityIndicator, Modal, Pressable, StyleSheet, Text, View} from 'react-native'
+import {ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native'
 import {useSafeAreaInsets} from 'react-native-safe-area-context'
 import {colors, fonts, screenPadding} from '@/constants'
 import {transferPlayback} from '@/helpers/network'
@@ -109,6 +109,11 @@ export const DevicePicker = ({visible, onClose}: {visible: boolean; onClose: () 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
+      {/* The sheet is CAPPED, and the cap is not cosmetic: the roster grows by
+          one row per device that has ever signed in, and an uncapped sheet grew
+          straight past the top of the screen — "Sound output" printed over the
+          clock and the Dynamic Island, and the rows below the fold could not be
+          reached at all. */}
       <View style={[styles.sheet, {paddingBottom: bottom + 16}]}>
         <View style={styles.handle} />
 
@@ -151,7 +156,10 @@ export const DevicePicker = ({visible, onClose}: {visible: boolean; onClose: () 
             )}
           </View>
         ) : (
-          devices.map((device) => {
+          // Scrolls, because the list is as long as the account's history and
+          // the sheet is not.
+          <ScrollView style={styles.deviceList} showsVerticalScrollIndicator={false}>
+          {devices.map((device) => {
             const disabled = !device.online && !device.can_wake
             return (
               <Pressable
@@ -185,7 +193,8 @@ export const DevicePicker = ({visible, onClose}: {visible: boolean; onClose: () 
                 {device.is_active && <MaterialCommunityIcons name="cast-connected" size={22} color={colors.primary} />}
               </Pressable>
             )
-          })
+          })}
+          </ScrollView>
         )}
       </View>
     </Modal>
@@ -198,11 +207,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   sheet: {
+    // 85%, so the sheet always stops short of the status bar whatever the
+    // device and however long the roster.
+    maxHeight: '85%',
     backgroundColor: '#141414',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     paddingHorizontal: screenPadding.horizontal + 8,
     paddingTop: 10,
+  },
+  // A bounded scroller rather than a growing column; the cap above is what
+  // keeps the sheet off the status bar, and this is what keeps every device
+  // reachable once it is capped.
+  deviceList: {
+    flexGrow: 0,
   },
   handle: {
     alignSelf: 'center',

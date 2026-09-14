@@ -213,6 +213,29 @@ is only this app's own name and the way Siri actually hears it: "whiskey".
 - **Proof**: `==playback: ` transfer lines, audio here, the label gone.
 - **Surfaces**: android-emu.
 
+### E3 — the device sheet stops short of the status bar
+- **Claim**: however long the roster, the "Play on" sheet never renders under
+  the clock, and every row in it can be reached.
+- **Steps**: on an account with a dozen or more devices in its history, open the
+  picker from the mini player and screenshot; then scroll the list to its end.
+- **Proof**: the sheet's top edge sits below the status bar, and the last row
+  can be brought into view. Found failing on a 6.9" simulator: the sheet had no
+  height cap and no scroller, so "Sound output" printed over the clock and the
+  Dynamic Island and the rows past the bottom of the screen were unreachable.
+- **Surfaces**: ios-sim, android-emu.
+
+### E4 — the roster is not full of ghosts
+- **Claim**: the "Play on" list names each device once and does not accumulate
+  entries nobody will use again.
+- **Steps**: open the picker and read the list.
+- **Proof**: no two rows carry the same name for the same physical device, and
+  nothing twelve days stale is offered as a target.
+- **Status**: expected to FAIL today — the same simulator appears twice, and
+  the tail of the list is browsers and phones last seen almost a fortnight ago.
+  This is an API/product question (when does a device expire?), not a layout
+  bug, and it is recorded rather than fixed.
+- **Surfaces**: ios-sim, android-emu.
+
 ## F. Store artefacts
 
 ### F1 — screenshots exist for every required size
