@@ -39,6 +39,42 @@ Needs: `eas whoami` authenticated and the Google Service Account Key on EAS
 (already set — `eas-submit@visky-464014`). `--local` also needs the Android SDK
 and **JDK 17** here; anything newer breaks CMake.
 
+### Off EAS entirely — `deploy-ios-local.sh`, `build-app-local.sh`
+Same two destinations, no expo.dev in the path at all. `build-app.sh --local`
+still signs in to EAS and takes its credentials from there; these do not.
+
+```bash
+scripts/deploy-ios-local.sh              # xcodebuild archive -> altool upload
+scripts/deploy-ios-local.sh --no-upload  # keep the .ipa, upload nothing
+scripts/build-app-local.sh               # gradlew bundleRelease -> Play internal
+scripts/build-app-local.sh --track alpha
+```
+
+Everything EAS was doing implicitly becomes explicit:
+
+* **`expo prebuild` runs first.** `app/ios` and `app/android` are gitignored and
+  generated, so skipping it silently builds a stale project. `--no-prebuild`
+  reuses what is there when you know it is current.
+* **The build number comes from the store**, not from a file —
+  `scripts/lib/next-build-number.js` asks App Store Connect or Play for the
+  highest one and adds one. A counter in git drifts the moment two machines,
+  a rebase, or a failed-after-bump build are involved, and both stores reject a
+  duplicate at the *end* of a long upload. The store enforces the rule, so the
+  store is asked.
+* **Provisioning profiles are found by bundle id**, not by name: EAS names them
+  with a timestamp that changes every regeneration.
+* **Signing material** comes from `~/apple-signing` — the distribution
+  certificate in the login keychain for iOS, the keystore and its passwords for
+  Android. Passwords go straight into Gradle's arguments and are never written
+  into the project, which `prebuild` would wipe anyway.
+
+`scripts/lib/play-upload.js` talks to the Play Developer API with a
+service-account JWT and no SDK. Play uses an edit model — open, upload, assign a
+track, commit — so a failure part-way leaves the listing untouched; the script
+abandons the edit rather than leaving a stale one behind.
+
+Neither script submits for review. That stays deliberate and separate.
+
 ### `deploy-ios.sh` — cloud build (expo.dev) + App Store Connect / TestFlight
 EAS **cloud** build of the iOS app, auto-submitted to App Store Connect. The
 build shows up in TestFlight; promoting it to a public App Store release stays a
