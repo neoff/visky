@@ -178,15 +178,23 @@ The app is called visky, and it stays called visky. The spoken name people
 reach for — the station's — belongs to somebody else, so what is claimed here
 is only this app's own name and the way Siri actually hears it: "whiskey".
 
-### D1 — Siri opens the app for both the misheard name and the spoken one
-- **Claim**: two utterances land here — "open visky music", which Siri hears as
-  "whiskey music" and used to answer with the Whisky app in the App Store, and
-  "open frisky music", which it did not understand at all.
-- **Steps**: say each to Siri on a device with the build installed.
-- **Proof**: the app comes to the foreground both times; no App Store card.
-- **Counter-check**: "open frisky radio" must still open the STATION's app, not
-  this one. If it opens this one, the alternate names have overreached and D3
-  is failing in a way a grep cannot see.
+### D1 — Siri opens the app for the names people actually say
+- **Claim**: the utterances a listener reaches for land on this app, and the
+  station's own name does not.
+- **Steps**: say each phrase to Siri on a device with the build installed.
+- **Proof**: run on the iPhone XS, 2026-09-15, on the signed Release build:
+
+  | phrase | outcome |
+  |--------|---------|
+  | "open frisky music" | **opens visky** — the case this work exists for |
+  | "open frisky radio" | opens the STATION's own app, not ours — the counter-check holds |
+  | "open visky music" | **opens Apple Music** — FAILED |
+
+  The failure is worth keeping written down: "music" pulls hard towards the
+  system app, and an unfamiliar first word does not outweigh it. The alias was
+  changed to "Visky App" for exactly that reason — a suffix with no gravity of
+  its own leaves Siri to resolve the distinctive word — and that variant is
+  NOT yet retested.
 - **Surfaces**: iphone-xs. `n/a` on ios-sim — the simulator has no Siri.
 
 ### D2 — the alternate names are actually in the build

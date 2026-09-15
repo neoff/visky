@@ -34,9 +34,11 @@ const ALTERNATIVE_NAMES = [
   // 1. The mishearing. "Open visky" sounds like whiskey and used to answer
   //    with the Whisky app in the App Store.
   {name: 'Visky', hint: 'whiskey'},
-  // 2. The two-word form of the app's own name, which Siri resolves far more
-  //    reliably than one short word inside a sentence.
-  {name: 'Visky Music', hint: 'whiskey music'},
+  // 2. "App", NOT "Music". "Open visky music" was tried on a device and opens
+  //    APPLE MUSIC: the word music pulls hard towards the system app, and an
+  //    unfamiliar first word is not enough to outweigh it. "App" carries no
+  //    such gravity, so the distinctive word is the one Siri has to resolve.
+  {name: 'Visky App', hint: 'whiskey app'},
   // 3. What people actually say when they mean this music. Deliberately not
   //    "Frisky Radio" and not a bare "Frisky": the registered mark is the
   //    station's full name, and case D3 greps for exactly that string so a
