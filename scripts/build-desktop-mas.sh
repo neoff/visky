@@ -85,6 +85,31 @@ esac
 BUNDLE_DIR="$SHELL_DIR/target/$RUST_TARGET/release/bundle"
 APP="$DIST/visky.app"
 
+# APPLE REFUSES A SINGLE-ARCHITECTURE STORE BUILD unless the deployment target
+# is 12.0 or later:
+#
+#   Invalid bundle. The "visky.app" bundle supports arm64 but not Intel-based
+#   Mac computers. Your build must include the x86_64 architecture to support
+#   Intel-based Mac computers. To support arm64 only, your macOS deployment
+#   target must be 12.0 or higher.                                     (90869)
+#
+# That verdict arrives from the upload, i.e. after a full release build has
+# already been compiled, signed and packaged. Refuse it here instead, where it
+# costs nothing. The minimum is read out of the same config the app is built
+# from, so this cannot drift away from what actually ships.
+if [ "$ARCH" != "universal" ]; then
+  CONFIGURED_MIN="$(node -p "require('$SHELL_DIR/tauri.conf.json').bundle.macOS.minimumSystemVersion" 2>/dev/null || echo "")"
+  MIN_MAJOR="${CONFIGURED_MIN%%.*}"
+  if [ -z "$MIN_MAJOR" ] || [ "$MIN_MAJOR" -lt 12 ] 2>/dev/null; then
+    echo "!! --arch $ARCH builds a single-architecture app, and the deployment" >&2
+    echo "   target is ${CONFIGURED_MIN:-unset} — the App Store rejects that (90869)." >&2
+    echo "   Either drop --arch to build universal, or raise" >&2
+    echo "   bundle.macOS.minimumSystemVersion to 12.0 in shell/tauri.conf.json" >&2
+    echo "   (which drops every Intel Mac and macOS 11 and earlier)." >&2
+    exit 1
+  fi
+fi
+
 # Same keg-only rustup problem as in build-desktop.sh: a non-interactive shell
 # never reads the profile line that puts cargo's shims on PATH.
 if ! command -v cargo >/dev/null 2>&1; then
@@ -246,10 +271,44 @@ codesign -d --entitlements - --xml "$APP" | plutil -p - | sed 's/^/    /'
 # ---------------------------------------------------------------------------
 PKG="$DIST/visky-${VERSION}-${ARCH}-mas.pkg"
 echo "==> building the upload package"
-COMPONENT="$(mktemp -d)/component.pkg"
+WORK="$(mktemp -d)"
+COMPONENT="$WORK/component.pkg"
 pkgbuild --install-location /Applications --component "$APP" "$COMPONENT" >/dev/null
-productbuild --package "$COMPONENT" --sign "$PKG_CERT" "$PKG" >/dev/null
-rm -rf "$(dirname "$COMPONENT")"
+
+# THE PRE-INSTALL REQUIREMENTS, which is how the minimum OS reaches the archive.
+# Without them the store rejects the upload with 90264: "The lowest minimum
+# system version in the product definition property list, none, must equal the
+# LSMinimumSystemVersion value, 10.15" — `none` because nothing declared one.
+# The value has to MATCH the app's LSMinimumSystemVersion, so it is read back
+# out of the built app rather than written down a second time here.
+MIN_OS="$(plutil -extract LSMinimumSystemVersion raw "$APP/Contents/Info.plist")"
+{
+  printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+  printf '%s\n' '<plist version="1.0">'
+  printf '%s\n' '<dict>'
+  printf '%s\n' '  <key>os</key>'
+  printf '  <array><string>%s</string></array>\n' "$MIN_OS"
+  printf '%s\n' '</dict>'
+  printf '%s\n' '</plist>'
+} > "$WORK/product.plist"
+
+# THE PRODUCT ELEMENT, which productbuild never synthesises on its own. altool
+# reads product-metadata.product-identifier and product-metadata.product-version
+# from a top-level <product>, and rejects the archive with two 90230s when it is
+# absent. So synthesise the distribution, inject the element, and build from
+# that instead of letting productbuild go straight to a package.
+productbuild --synthesize \
+  --product "$WORK/product.plist" \
+  --package "$COMPONENT" \
+  "$WORK/distribution.xml" >/dev/null
+
+"$ROOT/scripts/lib/inject-product.py" "$WORK/distribution.xml" "$BUNDLE_ID" "$VERSION"
+
+productbuild --distribution "$WORK/distribution.xml" \
+  --package-path "$WORK" \
+  --sign "$PKG_CERT" \
+  "$PKG" >/dev/null
+rm -rf "$WORK"
 
 # ---------------------------------------------------------------------------
 # 7. Validate, and upload only when asked
