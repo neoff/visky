@@ -11,30 +11,33 @@ pipelines run at once. What an agent may and may not decide is in
 
 ## App (React Native / Expo, package `com.envarg.visky`)
 
-### `build-app.sh` — cloud build (expo.dev) + Google Play
-EAS **cloud** build of the Android app. The artifact is hosted on **expo.dev**
-and, by default, **auto-submitted to Google Play** (internal track).
+### `build-app.sh` — Android → Google Play, in the cloud or on this machine
+One script, two places the build can happen. `--local` is the whole difference.
 
 ```bash
-scripts/build-app.sh                # production build, auto-submit to Google Play
-scripts/build-app.sh --no-submit    # build only (still hosted on expo.dev)
-PROFILE=preview scripts/build-app.sh # use a different eas.json profile
+scripts/build-app.sh                    # cloud build + submit
+scripts/build-app.sh --local            # build here + submit
+scripts/build-app.sh --no-submit        # build only
+scripts/build-app.sh --local --no-submit
+PROFILE=preview scripts/build-app.sh    # a different eas.json profile
 ```
 
-Needs: `eas whoami` authenticated, a **clean git tree** (EAS builds the last
-commit), Google Service Account Key configured on EAS (already set).
+|            | cloud (default)            | `--local`                       |
+|------------|----------------------------|---------------------------------|
+| builds     | **the last commit**        | **the working tree**            |
+| artifact   | hosted on expo.dev         | `app/build/*.aab`, stays here   |
+| submits    | from expo.dev              | straight from disk              |
+| git guard  | clean tree required        | none                            |
 
-### `build-app-local.sh` — clean local build → Google Play only (no expo.dev)
-Compiles the `.aab` **locally** (not hosted on expo.dev) and submits it straight
-to Google Play (internal track).
+The guard asymmetry is deliberate, not an oversight. A cloud build uploads the
+commit, so an uncommitted change is silently missing from it — including the
+version — and that is worth stopping for. A local build compiles the tree in
+front of you, so dirty is simply what you asked for. The version check runs
+either way, because the artifact carries the number either way.
 
-```bash
-scripts/build-app-local.sh              # local build + submit to Google Play
-scripts/build-app-local.sh --no-submit  # local build only, keeps app/build/*.aab
-```
-
-Needs: local **Android SDK + JDK 17**, `eas` auth (for `eas submit`), clean git
-tree. Slower to set up than the cloud build; use it to keep the build off expo.dev.
+Needs: `eas whoami` authenticated and the Google Service Account Key on EAS
+(already set — `eas-submit@visky-464014`). `--local` also needs the Android SDK
+and **JDK 17** here; anything newer breaks CMake.
 
 ### `deploy-ios.sh` — cloud build (expo.dev) + App Store Connect / TestFlight
 EAS **cloud** build of the iOS app, auto-submitted to App Store Connect. The
@@ -168,9 +171,11 @@ until the frontends carry it. `build-desktop*.sh` and `build-web.sh` run it and
 then read the number back, so a local build cannot package a stale one.
 
 `build-app.sh` and `deploy-ios.sh` run `--check` instead, and refuse to build on
-drift. They go through EAS, which builds the **last commit** — syncing their
-working tree at that point would change nothing about what actually gets built,
-so stopping is the only honest option. Sync, commit, re-run.
+drift. A cloud build goes through EAS, which packages the **last commit** —
+syncing the working tree at that point would change nothing about what actually
+gets built, so stopping is the only honest option. Sync, commit, re-run.
+(`build-app.sh --local` does compile the working tree, but it still refuses on
+drift: a stale version in the artifact is wrong wherever it was produced.)
 
 The write is a text replacement pinned to the version key, not a JSON
 round-trip: `desktop-electron/package.json` keeps its em dash and © as `\u2014`
