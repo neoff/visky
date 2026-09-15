@@ -105,6 +105,26 @@ Surfaces:
 - **Proof**: `Track changed` followed by a mini player whose title matches the row.
 - **Surfaces**: android-emu, iphone-xs.
 
+### C1b — a tapped track stays tapped
+- **Claim**: starting a track from the list plays THAT track, and a snapshot of
+  the session written before the tap cannot move playback afterwards.
+- **Steps**: cold-start the app, tap the first row, watch for ten seconds.
+- **Proof**: no `Track changed` to an index other than the tapped one.
+- **Status**: fixed 2026-09-15 and confirmed once on the iPhone XS — but ONE
+  clean pass is weak evidence here, because the failure is a race and the
+  reporter notes it is hard to reproduce. The durable guard is the unit test
+  (`__tests__/services/playbackReconciler.test.ts`, "ignores a snapshot that is
+  ours but no newer than the tap"), which fails without the fix.
+- **How it looked when it was broken**, from the emulator log — worth keeping,
+  because this is the shape to watch for:
+  ```
+  Track changed 0      <- the tap
+  Track changed 3      <- a track from before the tap
+  Track changed 0      <- and back again
+  ```
+  On the emulator it came back; on the phone it stayed on the wrong track.
+- **Surfaces**: android-emu, iphone-xs.
+
 ### C2 — the collapsed mini player shows the position
 - **Claim**: the divider under the mini player fills as the track plays.
 - **Steps**: play 60 s, screenshot; play 120 s more, screenshot.
