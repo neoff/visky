@@ -76,7 +76,7 @@ const serialize = (work: () => Promise<void>): Promise<void> => {
  * makes it to the server (a socket that died between the tap and the send),
  * the claim has to expire or this device would ignore the session forever.
  */
-let claim: {until: number} | null = null
+let claim: {until: number; version: number} | null = null
 
 /** Longest a claim is honoured without the server answering. */
 const CLAIM_TIMEOUT_MS = 5_000
@@ -98,15 +98,25 @@ const CLAIM_TIMEOUT_MS = 5_000
  * one pauses the track the user just started. So until a frame comes back
  * carrying THIS device's own update, frames that name somebody else are
  * history and are skipped.
+ *
+ * THE VERSION IS PART OF THE CLAIM, and it has to be. A frame this device
+ * ORIGINATED is not proof the server has heard about the tap: the last thing
+ * this installation did before the tap — restoring a track when it started,
+ * say — carries the same `origin_device_id`. Recognising the takeover by
+ * device alone accepted that stale frame as the answer, dropped the claim and
+ * applied it, so a tap on the first row started, jumped to whatever had been
+ * playing before, and then came back. Only a version HIGHER than the one
+ * standing when the claim was made can be news about the tap.
  */
 export const runLocalAction = async <T>(work: () => Promise<T>): Promise<T> => {
-  claim = {until: Date.now() + CLAIM_TIMEOUT_MS}
+  const version = usePlaybackStore.getState().state?.version ?? 0
+  claim = {until: Date.now() + CLAIM_TIMEOUT_MS, version}
   let result: T
   await serialize(async () => {
     result = await work()
     // Measured from the END of the work: `reset` + `add` + `play` over a slow
     // network can outlast the deadline all by itself.
-    claim = {until: Date.now() + CLAIM_TIMEOUT_MS}
+    claim = {until: Date.now() + CLAIM_TIMEOUT_MS, version}
   })
   return result!
 }
@@ -336,10 +346,14 @@ export const reconcile = async (state: PlaybackState): Promise<void> => {
     return
   }
   if (claim) {
-    // Our own takeover came back: the session agrees, the claim is spent.
-    if (state.origin_device_id === deviceId || Date.now() > claim.until) {
+    // Our own takeover came back — this device AND a version the server can
+    // only have reached by hearing about it. Anything else that arrives while
+    // the claim stands was written before the tap, whoever sent it, and is
+    // ignored rather than applied on top of what the user just started.
+    const acknowledged = state.origin_device_id === deviceId && state.version > claim.version
+    if (acknowledged || Date.now() > claim.until) {
       claim = null
-    } else if (state.active_device_id !== deviceId) {
+    } else {
       return
     }
   }

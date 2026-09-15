@@ -277,3 +277,48 @@ describe('a track the user just picked', () => {
     expect(TrackPlayer.pause).toHaveBeenCalled()
   })
 })
+
+/**
+ * "Тапнул первый трек — он перескочил на второй сам."
+ *
+ * Reported from an iPhone, reproduced on the emulator: the tap started track 0,
+ * playback jumped to a track from the PREVIOUS session, and only then came
+ * back. The claim that is supposed to hold the reconciler off recognised "our
+ * own takeover came back" by device id alone — and the stale frame it accepted
+ * as the answer had been originated by this very device, before the tap.
+ */
+describe('a local action against a frame this device sent earlier', () => {
+  it('ignores a snapshot that is ours but no newer than the tap', async () => {
+    __load([track(1), track(2), track(3), track(4)], 3, true)
+    // What this installation last told the session, before the user touched
+    // anything: it is playing track 4, and IT said so.
+    usePlaybackStore.setState({
+      deviceId: THIS_DEVICE,
+      state: sessionState({
+        version: 7,
+        active_device_id: THIS_DEVICE,
+        origin_device_id: THIS_DEVICE,
+        track: {track_id: key(4), owner_id: -42311167, id: 4, duration: 3600},
+      }),
+    })
+
+    await runLocalAction(async () => {
+      await TrackPlayer.skip(0)
+    })
+
+    // The frame that was already in flight when the tap happened. Same device,
+    // same version — it cannot be news about the tap.
+    await reconcile(
+      sessionState({
+        version: 7,
+        active_device_id: THIS_DEVICE,
+        origin_device_id: THIS_DEVICE,
+        track: {track_id: key(4), owner_id: -42311167, id: 4, duration: 3600},
+      }),
+    )
+
+    // Still on what the user chose. Before the version was part of the claim,
+    // this landed back on track 4.
+    expect(__player.index).toBe(0)
+  })
+})
