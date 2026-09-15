@@ -32,15 +32,75 @@ describe('helpers', () => {
     expect(result).toBe('a=1&b=2');
   });
 
+  // The fixture said "Show 2024 - " and passed, because the rule used to accept
+  // ANY word before a year. The catalogue has none of those and plenty of real
+  // titles that were wrecked by it, so the month is spelled properly here now.
   test('cleanupData should clean artist and title', () => {
     const data: Tracklist = {
       items: [
-        { artist: 'FRISKY | Some Artist', title: 'Show 2024 - Hello [vk.com/feelin_frisky]', type: 'other' }
+        { artist: 'FRISKY | Some Artist', title: 'December 2024 - Hello [vk.com/feelin_frisky]', type: 'other' }
       ]
     } as unknown as Tracklist;
     const result = cleanupData(data);
     expect(result.items[0].artist).toBe('Some Artist');
     expect(result.items[0].title).toBe('Hello');
+  });
+
+  /**
+   * "видимо опять поменялся формат треков и кое где есть September 2026"
+   *
+   * Only "кое где" — in SOME places — and that is the whole diagnosis. VK moved
+   * the air date from the front of the title to the middle, and the old rule
+   * (`\w+? \d{4} - `, any word before a year) needed a dash AFTER the date to
+   * fire. A multipart show still had one, so "... August 2026 - Part 2" was
+   * cleaned and looked fine; a single-part show ended at the date, nothing
+   * matched, and "Tassili September 2026" went to the screen intact.
+   */
+  test('cleanupData strips the air date from a single-part new-format title', () => {
+    const data: Tracklist = {
+      items: [
+        { artist: 'Nadia', title: 'FRISKY | Tassili September 2026', type: 'hls' },
+        { artist: 'Boogiemann', title: 'FRISKY | Klub Kultur August 2026', type: 'hls' },
+        // the show's own name ends in a bracket, which must survive
+        { artist: 'Kirill', title: 'FRISKY | Hiraeth [5th Anniversary] September 2026', type: 'hls' },
+        // no FRISKY marker at all, and a dash holding the date on
+        { artist: 'EANP', title: 'INTERFACE - May 2026', type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = cleanupData(data);
+    expect(result.items.map(i => i.title)).toEqual([
+      'Tassili',
+      'Klub Kultur',
+      'Hiraeth [5th Anniversary]',
+      'INTERFACE'
+    ]);
+  });
+
+  /**
+   * What the old rule did to uploads that are not broadcasts at all. Every one
+   * of these is a real row in the catalogue, and every one came out mangled
+   * because a year preceded by any word was treated as an air date.
+   */
+  test('cleanupData leaves a title that merely contains a year alone', () => {
+    const data: Tracklist = {
+      items: [
+        { artist: 'x', title: 'One Side Of The Underground 2026 - Part 2', type: 'hls' },
+        { artist: 'x', title: 'live @ Arenes de Nimes for Cercle 2022 - Part 1', type: 'hls' },
+        { artist: 'x', title: '29-Sep-2025 Boom Festival 2025 - Part 1', type: 'hls' },
+        // a real month, but bracketed: it belongs to the title, not to the show
+        { artist: 'Daria Fomina', title: 'Purple Sky 39 (September 2019)', type: 'hls' },
+        // ...and a real month mid-sentence, with no dash to end the date
+        { artist: 'x', title: 'Memories of September 2020 Remix', type: 'hls' }
+      ]
+    } as unknown as Tracklist;
+    const result = cleanupData(data);
+    expect(result.items.map(i => i.title)).toEqual([
+      'One Side Of The Underground 2026 - Part 2',
+      'live @ Arenes de Nimes for Cercle 2022 - Part 1',
+      '29-Sep-2025 Boom Festival 2025 - Part 1',
+      'Purple Sky 39 (September 2019)',
+      'Memories of September 2020 Remix'
+    ]);
   });
 
   test('sortLocalPartTracks should sort (Part N) blocks', () => {
@@ -213,8 +273,8 @@ describe('helpers', () => {
   test('cleanupDataAndSortPart combines both clean and sort', () => {
     const data: Tracklist = {
       items: [
-        { artist: 'FRISKY | Blue', title: 'Event 2024 - Mix (Part 2) [vk.com/feelin_frisky]', type: 'other' },
-        { artist: 'FRISKY | Blue', title: 'Event 2024 - Mix (Part 1) [vk.com/feelin_frisky]', type: 'other' }
+        { artist: 'FRISKY | Blue', title: 'March 2024 - Mix (Part 2) [vk.com/feelin_frisky]', type: 'other' },
+        { artist: 'FRISKY | Blue', title: 'March 2024 - Mix (Part 1) [vk.com/feelin_frisky]', type: 'other' }
       ]
     } as unknown as Tracklist;
     const result = cleanupDataAndSortPart(data);

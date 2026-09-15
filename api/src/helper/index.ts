@@ -54,23 +54,67 @@ export const deviceIDgen = () => {
     return result;
 }
 
-// Titles arrive in two shapes:
-//   old: artist "FRISKY | Blue",  title "Event 2024 - Mix (Part 2) [vk.com/feelin_frisky]"
-//   new: artist "Melamanos",      title "FRISKY | Artist of the Week August 2026 - Part 2"
-// Both rules are kept: the old cleanup is untouched, the "FRISKY | " prefix is
-// now stripped from the title too, and the part suffix is matched in both the
-// "(Part N)" and "- Part N" / "Part N" spellings.
+// Titles arrive in two shapes, and the two FIELDS are swapped between them:
+//
+//   old  artist "FRISKY | Wander"   title "December 2024 - Michael McGarrity [vk.com/feelin_frisky]"
+//   new  artist "Michael McGarrity" title "FRISKY | Wander December 2024 - Part 2"
+//
+// So the old era put the SHOW in `artist` and the DJ in `title`; the new era
+// has them the right way round, which is also how frisky.fm writes a mix:
+// "Wander - December 2024 - Michael McGarrity". Nothing here reorders the
+// fields — VK is the one that changed and both shapes are served as they come.
+// All this has to do is take the air date out of the title, because the app
+// shows the date in its own right and does not want it twice.
 const friskyPrefixRegex = /^\s*FRISKY\s*\|\s*/i
+const vkSuffixRegex = /\s*\[vk\.com\/[^\]]*]/gi
 const partRegex = /^(.*?)\s*(?:[-\u2013\u2014]\s*)?\(?\s*Part\s+(\d+)\s*\)?$/i
 
+const MONTHS =
+    "January|February|March|April|May|June|July|August|September|October|November|December"
+
+/**
+ * The air date, wherever in the title it sits, with whichever dash was holding
+ * it there.
+ *
+ * One expression for both eras: the date is a PREFIX in the old shape
+ * ("December 2024 - Michael McGarrity") and an INFIX in the new one
+ * ("Wander December 2024 - Part 2"), and the surrounding punctuation differs,
+ * but what has to go is the same chunk in both.
+ *
+ * Written narrowly on purpose, because the rule this replaces was
+ * `/\w+? \d{4} - /g` — ANY word before a year — and the catalogue shows what
+ * that costs. It rewrote real, non-FRISKY uploads into nonsense:
+ *
+ *   "One Side Of The Underground 2026 - Part 2"    -> "One Side Of The Part 2"
+ *   "live @ Arenes de Nimes for Cercle 2022 - ..." -> "live @ Arenes de Nimes for ..."
+ *   "29-Sep-2025 Boom Festival 2025 - Part 1"      -> "29-Sep-2025 Boom Part 1"
+ *
+ * Only real month names match now, so all three are left alone. Spelled out
+ * rather than abbreviated: VK always writes the month in full, and accepting
+ * "Sep" would put the Boom Festival row straight back in the list above.
+ *
+ * The boundaries are what keep a date that belongs to the title itself:
+ * `(^|\s)` refuses a month sitting inside brackets, and the tail must be the
+ * end of the string or a dash, so "Purple Sky 39 (September 2019)" and
+ * "Memories of September 2020 Remix" both survive intact.
+ */
+const airDateRegex = new RegExp(
+    `(?:^|\\s)[-\\u2013\\u2014]?\\s*(?:${MONTHS})\\s+\\d{4}(?:\\s*[-\\u2013\\u2014]\\s*|\\s*$)`,
+    "i",
+)
+
 export const cleanupData = (data: VkPlaylistResponse): VkPlaylistResponse => {
-    //remove from items.artist/title "FRISKY | ", the "Month YYYY - " prefix and the "[vk.com/feelin_frisky]" suffix
     data.items = data?.items?.map((item) => {
         item.artist = item.artist?.replace(friskyPrefixRegex, "");
         item.title = item.title?.replace(friskyPrefixRegex, "");
-        item.title = item.title?.replace(/\w+? \d{4} - /g, "");
-        item.title = item.title?.replace(/ \[vk\.com\/feelin_frisky]/g, "");
-        item.title = item.title?.trim();
+        // The group's advert goes first: in the new shape the date is the LAST
+        // thing in the title, and it is only last once this is gone.
+        item.title = item.title?.replace(vkSuffixRegex, "");
+        // A space, not nothing: the date can sit between two halves of the
+        // title ("Wander December 2024 - Part 2"), and joining them would read
+        // "WanderPart 2".
+        item.title = item.title?.replace(airDateRegex, " ");
+        item.title = item.title?.replace(/\s{2,}/g, " ").trim();
         return item;
     });
     return data;
