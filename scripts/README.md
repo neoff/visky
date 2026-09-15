@@ -4,6 +4,11 @@ Build, release and deploy scripts for the monorepo. Run them from the repo root
 (they resolve their own paths, so `scripts/build-api.sh` works from anywhere).
 Make sure they're executable: `chmod +x scripts/*.sh`.
 
+Releases are run through subagents on Haiku 4.5, one per pipeline, so the main
+session does not fill up with spinner frames and build logs — and so the four
+pipelines run at once. What an agent may and may not decide is in
+[docs/deploy-process.md](../docs/deploy-process.md).
+
 ## App (React Native / Expo, package `com.envarg.visky`)
 
 ### `build-app.sh` — cloud build (expo.dev) + Google Play
