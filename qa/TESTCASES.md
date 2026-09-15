@@ -179,22 +179,28 @@ reach for — the station's — belongs to somebody else, so what is claimed her
 is only this app's own name and the way Siri actually hears it: "whiskey".
 
 ### D1 — Siri opens the app for the names people actually say
-- **Claim**: the utterances a listener reaches for land on this app, and the
+- **Claim**: the utterance a listener reaches for lands on this app, and the
   station's own name does not.
 - **Steps**: say each phrase to Siri on a device with the build installed.
-- **Proof**: run on the iPhone XS, 2026-09-15, on the signed Release build:
+- **Proof**: iPhone XS, signed Release builds, 2026-09-15:
 
   | phrase | outcome |
   |--------|---------|
-  | "open frisky music" | **opens visky** — the case this work exists for |
-  | "open frisky radio" | opens the STATION's own app, not ours — the counter-check holds |
-  | "open visky music" | **opens Apple Music** — FAILED |
+  | "open frisky music" | **opens visky** — twice, on two separate builds |
+  | "open frisky radio" | opens the STATION's app, not ours — counter-check holds |
+  | "open visky music" | opens **Apple Music** |
+  | "open visky app" | opens **Waze** |
 
-  The failure is worth keeping written down: "music" pulls hard towards the
-  system app, and an unfamiliar first word does not outweigh it. The alias was
-  changed to "Visky App" for exactly that reason — a suffix with no gravity of
-  its own leaves Siri to resolve the distinctive word — and that variant is
-  NOT yet retested.
+- **What the failures are really saying**: "Visky" is acoustically unlucky, and
+  every suffix tried so far hands the phrase to an app the phone already has.
+  "Music" belongs to Apple Music; "visky app" is heard as "Waze app". The
+  pronunciation hint cannot outrank an installed app that matches the sound
+  better than we do — which is why the working phrase is the one with a
+  distinctive FIRST word, not a suffix.
+- **Status**: the case PASSES on the phrase it was written for. The "visky ..."
+  variants remain unresolved, and are a nice-to-have rather than the goal; do
+  not spend twenty-minute rebuilds guessing at them without a reason to expect
+  a different answer.
 - **Surfaces**: iphone-xs. `n/a` on ios-sim — the simulator has no Siri.
 
 ### D2 — the alternate names are actually in the build
