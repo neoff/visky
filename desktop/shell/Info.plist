@@ -14,5 +14,14 @@
 	<string>visky reads the pairing code shown by a signed-in phone.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<!--
+	  Export compliance, answered up front. Without this key App Store Connect
+	  blocks the submission on 'usesNonExemptEncryption' and the answer has to be
+	  set by hand on every build. The app speaks HTTPS and nothing else — no
+	  proprietary cryptography — so the exemption applies. The phone app declares
+	  the same thing as ITSAppUsesNonExemptEncryption in app.json.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
