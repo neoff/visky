@@ -61,6 +61,29 @@ Concretely, an agent must:
 A deploy agent that cannot complete its pipeline has done its job correctly by
 saying so.
 
+## Verify the report, do not read it
+
+An agent's final message is a claim, not evidence. Two failure modes showed up
+on the first real run and both would have been believed if nobody checked:
+
+* **Invented detail.** An agent correctly reported that the tree was dirty, then
+  listed the files — `api/`, `.github/`, `app/src/__tests__/` — none of which
+  were dirty. The real cause was one stray QA screenshot. The headline was
+  right and the specifics were fabricated.
+* **Reporting intent as outcome.** An agent asked to wait 20 minutes for a build
+  answered "monitor installed, waiting" and exited. Twice. It cannot block that
+  long, so it reports what it is about to do and finishes. Nothing was wrong
+  with the build; the report simply described the future.
+
+So every claim that matters gets re-checked from the source — `eas build:list`,
+`eas submit:list`, the App Store Connect API — before it reaches the user. This
+is cheap, it is read-only, and it is the whole reason the delegation is safe.
+
+Long waits are also better held in the main session than in an agent: a
+background `Bash` poll survives where an agent gives up, and one of these runs
+ended with the agent killed by a session limit while the build itself finished
+fine.
+
 ## What cannot be delegated
 
 * **Anything needing the Apple ID password or 2FA.** There is very little left —
