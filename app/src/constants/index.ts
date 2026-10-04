@@ -120,13 +120,31 @@ export const __DEV = _envDev === "true" || false
 // accepted too but Expo will not expose it to the app.
 export const loginLocal =
   __DEV && (process.env.EXPO_PUBLIC_LOGIN_LOCAL || process.env.EXPO_LOGIN_LOCAL) === "true"
-let baseHost: string = process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:3000";
+/**
+ * Where the API lives.
+ *
+ * TWO variables, and the order matters.
+ *
+ * `EXPO_PUBLIC_API_URL` is what a RELEASE build passes in — eas.json, and every
+ * scripts/build-*.sh — and it is the production origin. It wins over anything in
+ * app/.env, because that file holds whatever server the developer is pointing at
+ * today: a release bundle that baked it in is a shipped app talking to a machine
+ * nobody else has. That is exactly how the desktop build came to be exported
+ * with `http://localhost:3000` in it, fail every playlist refresh in silence and
+ * keep serving the page it had cached in localStorage — a playlist frozen on the
+ * day it was built.
+ *
+ * `EXPO_PUBLIC_API_LOCAL_URL` is the dev override for a device on the LAN, and
+ * only the emulator alias is left when neither is set.
+ */
+let baseHost: string =
+  process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_LOCAL_URL || "http://10.0.2.2:3000";
 
-// In dev fall back to the platform's localhost alias ONLY when no explicit
-// EXPO_PUBLIC_API_URL is given. A real device (not the emulator) can't reach
-// 10.0.2.2; set EXPO_PUBLIC_API_URL=http://<dev-LAN-ip>:3000 to point it at the
-// local server over Wi-Fi, and that wins here.
-if (__DEV && !process.env.EXPO_PUBLIC_API_URL) {
+// In dev fall back to the platform's localhost alias ONLY when no explicit host
+// is given. A real device (not the emulator) can't reach 10.0.2.2; set
+// EXPO_PUBLIC_API_LOCAL_URL=http://<dev-LAN-ip>:3000 to point it at the local
+// server over Wi-Fi, and that wins here.
+if (__DEV && !process.env.EXPO_PUBLIC_API_URL && !process.env.EXPO_PUBLIC_API_LOCAL_URL) {
   switch (Platform.OS) {
     case "android":
       baseHost = "http://10.0.2.2:3000";

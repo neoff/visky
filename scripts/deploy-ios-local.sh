@@ -30,6 +30,18 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$ROOT/app"
+
+# The API origin the SHIPPED bundle talks to.
+#
+# app/.env holds whatever server the developer is pointing at today — often
+# http://localhost:3000 — and a release build must never bake that in: the app
+# then fails every request in silence and shows the list it had cached, which is
+# how the desktop player sat on a week-old playlist. constants/index.ts reads
+# EXPO_PUBLIC_API_URL FIRST for that reason, and this is where it is set.
+#
+# Override for a build against something else: API_URL=http://192.168.1.5:3000
+export EXPO_PUBLIC_API_URL="${API_URL:-https://frisky.envarg.com}"
+
 IOS_DIR="$APP_DIR/ios"
 BUILD_DIR="$APP_DIR/build/ios-local"
 
@@ -181,7 +193,24 @@ xcodebuild archive \
 [ -d "$ARCHIVE" ] || { echo "!! archive was not produced" >&2; exit 1; }
 
 echo "==> xcodebuild -exportArchive"
-xcodebuild -exportArchive \
+# PATH IS NARROWED FOR THIS ONE COMMAND, and it is not superstition.
+#
+# The packaging step shells out to /usr/bin/rsync, which on current macOS is
+# Apple's openrsync. openrsync starts a second copy of itself for the receiving
+# side by looking up `rsync` ON THE PATH — and if Homebrew's rsync is ahead of
+# /usr/bin there, the two halves disagree: Xcode passes Apple's `-E`
+# (--extended-attributes), rsync 3.x has no such option, and the whole export
+# dies with the least helpful message Xcode has:
+#
+#     error: exportArchive Copy failed
+#
+# The real error is only in the distribution log:
+#
+#     rsync: on remote machine: --extended-attributes: unknown option
+#
+# Only this command is narrowed. A PATH like this for the whole script would
+# hide the Homebrew node/npx everything above depends on.
+PATH="/usr/bin:/bin:/usr/sbin:/sbin" xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportOptionsPlist "$EXPORT_PLIST" \
   -exportPath "$BUILD_DIR" \

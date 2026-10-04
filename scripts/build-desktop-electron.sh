@@ -37,6 +37,18 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$ROOT/app"
+
+# The API origin the SHIPPED bundle talks to.
+#
+# app/.env holds whatever server the developer is pointing at today — often
+# http://localhost:3000 — and a release build must never bake that in: the app
+# then fails every request in silence and shows the list it had cached, which is
+# how the desktop player sat on a week-old playlist. constants/index.ts reads
+# EXPO_PUBLIC_API_URL FIRST for that reason, and this is where it is set.
+#
+# Override for a build against something else: API_URL=http://192.168.1.5:3000
+export EXPO_PUBLIC_API_URL="${API_URL:-https://frisky.envarg.com}"
+
 DESKTOP_DIR="$ROOT/desktop-electron"
 WEB_OUT="$DESKTOP_DIR/web"
 ICON_SRC="$APP_DIR/assets/icon.png"
