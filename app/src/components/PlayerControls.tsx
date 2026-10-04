@@ -4,6 +4,7 @@ import TrackPlayer, {useIsPlaying} from "react-native-track-player";
 import {FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {colors} from "@/constants";
 import {useHoldToSeek} from "@/hooks/useSeekGestures";
+import {runLocalAction} from "@/services/playbackReconciler";
 import {beginTrackSwitch, endTrackSwitch, useIsSwitchingTrack} from "@/store/trackSwitch";
 import {playerControlStyle} from "@/styles";
 
@@ -101,7 +102,15 @@ export const SkipToNextButton = ({ type, iconSize = 40 }: PlayerButtonProps) => 
     // as long as that took.
     beginTrackSwitch()
     try {
-      await TrackPlayer.skipToNext()
+      // Inside the session's own lock, exactly like a tap on a row — and for a
+      // sharper reason. The frames already in flight when the button was
+      // pressed still name the track we just left, and this device is the
+      // active one, so the reconciler applied one and `skip`ped BACK: pressing
+      // NEXT landed on the previous track, and the two of them ping-ponged
+      // until a press happened to miss the window (issue #4). `runLocalAction`
+      // claims the session until the server answers with news of this press,
+      // and frames written before it are ignored instead of applied on top.
+      await runLocalAction(() => TrackPlayer.skipToNext())
     } catch (error) {
       endTrackSwitch()
       console.warn('Unable to skip to the next track', error)
@@ -153,7 +162,8 @@ export const SkipToPreviousButton = ({ type, iconSize = 40 }: PlayerButtonProps)
         // spinner
         beginTrackSwitch()
         try {
-          await TrackPlayer.skipToPrevious()
+          // Claimed for the same reason as ⏭ above.
+          await runLocalAction(() => TrackPlayer.skipToPrevious())
         } catch (error) {
           endTrackSwitch()
           throw error

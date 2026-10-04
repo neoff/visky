@@ -1,5 +1,6 @@
 import TrackPlayer, {Event, State, Track} from 'react-native-track-player'
 import {trackKey} from '@/helpers/miscellaneous'
+import {runLocalAction} from '@/services/playbackReconciler'
 import {SONGS_CACHE_KEY, cachedTracks} from '@/store/library'
 import {WatchBridge, WatchCommand, WatchQueueItem, WatchSnapshot} from '../../modules/watch-bridge'
 
@@ -135,52 +136,61 @@ export const publishToWatch = async (immediate = false): Promise<void> => {
 const handleCommand = async (command: WatchCommand): Promise<void> => {
   console.log('==watch: command', command.command)
   try {
+    // A press on the wrist is as deliberate as one in the app, so it takes the
+    // same claim on the session (services/playbackReconciler.runLocalAction).
+    // Without it the frames still in flight — written before the press — are
+    // applied on top of what the user just asked for, and the player is skipped
+    // back to the track it was on: issue #4, where ⏭ played the PREVIOUS track.
+    // `refresh` asks for nothing and changes nothing, so it stays outside.
     switch (command.command) {
       case 'play':
-        await TrackPlayer.play()
+        await runLocalAction(() => TrackPlayer.play())
         break
       case 'pause':
-        await TrackPlayer.pause()
+        await runLocalAction(() => TrackPlayer.pause())
         break
-      case 'toggle': {
-        const {state} = await TrackPlayer.getPlaybackState()
-        const playing = state === State.Playing || state === State.Buffering
-        await (playing ? TrackPlayer.pause() : TrackPlayer.play())
+      case 'toggle':
+        await runLocalAction(async () => {
+          const {state} = await TrackPlayer.getPlaybackState()
+          const playing = state === State.Playing || state === State.Buffering
+          await (playing ? TrackPlayer.pause() : TrackPlayer.play())
+        })
         break
-      }
       case 'next':
-        await TrackPlayer.skipToNext()
+        await runLocalAction(() => TrackPlayer.skipToNext())
         break
       case 'previous':
-        await TrackPlayer.skipToPrevious()
+        await runLocalAction(() => TrackPlayer.skipToPrevious())
         break
-      case 'playTrack': {
-        // Already loaded? Move within the queue, so whatever the user lined up
-        // on the phone survives and resuming costs one skip.
-        const queue = await TrackPlayer.getQueue()
-        const queued = queue.findIndex((track) => trackKey(track as never) === command.trackId)
-        if (queued >= 0) {
-          await TrackPlayer.skip(queued)
-          await TrackPlayer.play()
-          break
-        }
+      case 'playTrack':
+        await runLocalAction(async () => {
+          // Already loaded? Move within the queue, so whatever the user lined
+          // up on the phone survives and resuming costs one skip.
+          const queue = await TrackPlayer.getQueue()
+          const queued = queue.findIndex((track) => trackKey(track as never) === command.trackId)
+          if (queued >= 0) {
+            await TrackPlayer.skip(queued)
+            await TrackPlayer.play()
+            return
+          }
 
-        // Otherwise the row came from the playlist the watch was sent, so load
-        // that playlist and start there — a tap on the wrist means "play my
-        // list from here", not "play this one track and fall silent".
-        const list = await playlist(queue)
-        const index = list.findIndex((track) => trackKey(track as never) === command.trackId)
-        if (index < 0) {
-          // The watch is showing a list that has since been replaced. Say
-          // nothing to the user, but do not skip to a random track either.
-          console.warn('==watch: asked for a track that is no longer in the playlist')
-          break
-        }
-        await TrackPlayer.setQueue(list)
-        await TrackPlayer.skip(index)
-        await TrackPlayer.play()
+          // Otherwise the row came from the playlist the watch was sent, so
+          // load that playlist and start there — a tap on the wrist means
+          // "play my list from here", not "play this one track and fall
+          // silent".
+          const list = await playlist(queue)
+          const index = list.findIndex((track) => trackKey(track as never) === command.trackId)
+          if (index < 0) {
+            // The watch is showing a list that has since been replaced. Say
+            // nothing to the user, but do not skip to a random track either.
+            console.warn('==watch: asked for a track that is no longer in the playlist')
+            return
+          }
+          await TrackPlayer.setQueue(list)
+          await TrackPlayer.skip(index)
+          await TrackPlayer.play()
+        })
         break
-      }
       case 'refresh':
         break
     }

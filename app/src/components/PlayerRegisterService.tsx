@@ -1,6 +1,7 @@
 import TrackPlayer, { Event, State } from "react-native-track-player";
 import { prefetchNextTrack } from "@/services/prefetch";
-import { recoverFromPlaybackError } from "@/services/recovery";
+import { noteActiveTrackChanged, notePosition, recoverFromPlaybackError } from "@/services/recovery";
+import { runLocalAction } from "@/services/playbackReconciler";
 import { startCarLink } from "@/services/car";
 import { startWatchLink } from "@/services/watch";
 
@@ -42,20 +43,21 @@ const PlayerRegisterService = async () => {
     TrackPlayer.addEventListener(Event.RemotePlay, () => {
       TrackPlayer.play()
     })
-    TrackPlayer.addEventListener(Event.RemotePlay, () => {
-      TrackPlayer.play()
-    })
 
     TrackPlayer.addEventListener(Event.RemotePause, () => {
       TrackPlayer.pause()
     });
 
+    // The lock screen, the headset button and the car's own ⏭ are the same
+    // deliberate switch as the button in the app, so they take the same claim
+    // on the session — without it the reconciler applies a frame written before
+    // the press and skips back to the track that was just left (issue #4).
     TrackPlayer.addEventListener(Event.RemoteNext, () => {
-      TrackPlayer.skipToNext()
+      void runLocalAction(() => TrackPlayer.skipToNext())
     });
 
     TrackPlayer.addEventListener(Event.RemotePrevious, () => {
-      TrackPlayer.skipToPrevious()
+      void runLocalAction(() => TrackPlayer.skipToPrevious())
     });
 
     // Warm the NEXT track before this one runs out.
@@ -65,7 +67,17 @@ const PlayerRegisterService = async () => {
     // is played with the phone in a pocket. A timer in the UI would be frozen
     // by the OS exactly when the hand-over happens.
     TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, (event) => {
+      // Where the show actually is, remembered for the recovery below: by the
+      // time a failure is reported the player may already have moved on, and
+      // then its own state no longer says what broke or where it was.
+      notePosition(event.position, event.duration);
       void prefetchNextTrack(event.position, event.duration);
+    });
+
+    // Which track left, and whether it had run out or was cut off. Both are in
+    // the event and nowhere else by the time an error arrives.
+    TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event) => {
+      noteActiveTrackChanged(event);
     });
 
     TrackPlayer.addEventListener(Event.RemoteStop, () => {

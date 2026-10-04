@@ -1,4 +1,5 @@
 import TrackPlayer, {Event, State, Track} from 'react-native-track-player'
+import {runLocalAction} from '@/services/playbackReconciler'
 import {ensureTrackPlayer} from '@/services/trackPlayer'
 import {trackKey} from '@/helpers/miscellaneous'
 import {
@@ -282,27 +283,34 @@ const handleCommand = async (command: CarCommand): Promise<void> => {
     // the player cannot be created.
     if (command.command !== 'refresh') await ensureTrackPlayer()
 
+    // A press on the head unit is as deliberate as one in the app, so it takes
+    // the same claim on the session (services/playbackReconciler.runLocalAction).
+    // Without it the frames still in flight — written before the press — are
+    // applied on top of what the driver just asked for, and the player is
+    // skipped back to the track it was on: issue #4, where ⏭ played the
+    // PREVIOUS track. `refresh` changes nothing, so it stays outside.
     switch (command.command) {
       case 'play':
-        await playNode(command.nodeId)
+        await runLocalAction(() => playNode(command.nodeId))
         break
-      case 'playPause': {
-        const {state} = await TrackPlayer.getPlaybackState()
-        const playing = state === State.Playing || state === State.Buffering
-        await (playing ? TrackPlayer.pause() : TrackPlayer.play())
+      case 'playPause':
+        await runLocalAction(async () => {
+          const {state} = await TrackPlayer.getPlaybackState()
+          const playing = state === State.Playing || state === State.Buffering
+          await (playing ? TrackPlayer.pause() : TrackPlayer.play())
+        })
         break
-      }
       case 'resume':
-        await TrackPlayer.play()
+        await runLocalAction(() => TrackPlayer.play())
         break
       case 'pause':
-        await TrackPlayer.pause()
+        await runLocalAction(() => TrackPlayer.pause())
         break
       case 'next':
-        await TrackPlayer.skipToNext()
+        await runLocalAction(() => TrackPlayer.skipToNext())
         break
       case 'previous':
-        await TrackPlayer.skipToPrevious()
+        await runLocalAction(() => TrackPlayer.skipToPrevious())
         break
       case 'refresh':
         break

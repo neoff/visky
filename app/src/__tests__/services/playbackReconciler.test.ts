@@ -322,3 +322,72 @@ describe('a local action against a frame this device sent earlier', () => {
     expect(__player.index).toBe(0)
   })
 })
+
+/**
+ * Issue #4: "2 songs went into a loop".
+ *
+ * ⏭ on the ACTIVE device, with a frame for the track it was on still on the
+ * way. The frame names this device as the one playing, so the reconciler used
+ * to apply it — and applying it means skipping to the track the session knows
+ * about, i.e. BACK. Press ⏭, hear the previous show; press again, same thing,
+ * because the skip the reconciler performed also deafened the sync for 1.2s so
+ * the new track was never reported upward.
+ *
+ * The skip buttons now take the same claim a tap on a row does (the components
+ * are what call `runLocalAction`; this pins the behaviour it buys them).
+ */
+describe('⏭ on the device that owns the sound', () => {
+  it('is not dragged back by a frame written before the press', async () => {
+    __load([track(1), track(2), track(3)], 1, true)
+    usePlaybackStore.setState({
+      deviceId: THIS_DEVICE,
+      state: sessionState({
+        version: 9,
+        active_device_id: THIS_DEVICE,
+        origin_device_id: THIS_DEVICE,
+      }),
+    })
+
+    // the press, through the same wrapper the buttons use
+    await runLocalAction(() => TrackPlayer.skipToNext())
+    expect(__player.index).toBe(2)
+
+    // the frame that was already in flight: this device, still on track 2
+    await reconcile(
+      sessionState({
+        version: 9,
+        active_device_id: THIS_DEVICE,
+        origin_device_id: THIS_DEVICE,
+        track: {track_id: key(2), owner_id: -42311167, id: 2, duration: 3600},
+      }),
+    )
+
+    expect(__player.index).toBe(2)
+    expect(__player.queue[__player.index!].id).toBe(3)
+    // ...and the sync was never deafened, so the press can still be reported
+    expect(isApplyingRemote()).toBe(false)
+  })
+
+  it('hands control back once the session has heard about the press', async () => {
+    __load([track(1), track(2), track(3)], 1, true)
+    usePlaybackStore.setState({
+      deviceId: THIS_DEVICE,
+      state: sessionState({version: 9, active_device_id: THIS_DEVICE, origin_device_id: THIS_DEVICE}),
+    })
+
+    await runLocalAction(() => TrackPlayer.skipToNext())
+    // our own update came back, version advanced: the claim is spent
+    await reconcile(
+      sessionState({
+        version: 10,
+        active_device_id: THIS_DEVICE,
+        origin_device_id: THIS_DEVICE,
+        track: {track_id: key(3), owner_id: -42311167, id: 3, duration: 3600},
+      }),
+    )
+    // and a later frame from the other device is obeyed again
+    await reconcile(sessionState({version: 11}))
+
+    expect(TrackPlayer.pause).toHaveBeenCalled()
+  })
+})
