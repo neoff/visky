@@ -195,6 +195,8 @@ export const apiUrls = {
   // not a route, so the Favorites tab 404'd on every refresh and stayed empty.
   playListUrl: `${playlistUrl}`,
   favoritesUrl: `${playlistUrl}/frisky/favorites`,
+  // The group's DJs, and one DJ's shows: `${artistsUrl}/${key}`.
+  artistsUrl: `${playlistUrl}/frisky/artists`,
   playlistsUrl: `${playlistUrl}/frisky/playlists`,
   createFavoritesUrl: `${playlistUrl}/frisky/create-favorites`,
   eqUrl: `${playerUrl}/equaliser`,

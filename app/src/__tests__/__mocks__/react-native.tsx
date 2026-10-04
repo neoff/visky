@@ -18,6 +18,8 @@ export const View = host('View')
 export const Text = host('Text')
 export const TouchableOpacity = host('TouchableOpacity')
 export const Pressable = host('Pressable')
+export const TouchableHighlight = host('TouchableHighlight')
+export const Switch = host('Switch')
 export const TextInput = host('TextInput')
 export const ActivityIndicator = host('ActivityIndicator')
 export const ScrollView = host('ScrollView')
@@ -80,6 +82,8 @@ export const AppState = {
 export type AppStateStatus = string
 
 export default {
+  TouchableHighlight,
+  Switch,
   View,
   Text,
   TextInput,

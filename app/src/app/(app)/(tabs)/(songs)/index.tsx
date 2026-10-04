@@ -102,10 +102,6 @@ const SongsScreen = () => {
         placeholder="Find in songs"
         onSearchChange={setQuery}
         scrollY={scrollY}
-        // The button is the desktop's SECOND way in; the gesture below is the
-        // first — see PullToRefresh.
-        onRefresh={reset}
-        refreshing={refreshing}
       />
       {/* The desktop has no pull-to-refresh of its own: react-native-web's
           RefreshControl drops `onRefresh` on the floor. The overscroll is

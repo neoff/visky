@@ -1,11 +1,12 @@
 import {Button, Text, View} from 'react-native';
 import {Redirect, router, SplashScreen, Stack, useRouter} from 'expo-router';
 import {apiUrls, authPage, colors} from "@/constants";
-import React, {useCallback, useRef, useState} from "react";
+import React, {useCallback, useEffect, useRef, useState} from "react";
 import {useSetupTrackPlayer} from "@/hooks/useSetupTrackPlayer";
 import {usePlaybackSync} from "@/hooks/usePlaybackSync";
 import {useLogTrackPlayerState} from "@/hooks/useLogTrackPlayerState";
 import {useSession} from "@/components/SessionProvider";
+import {useFavoritesStore} from "@/store/favorites";
 import {AuthFragments} from "@/types/auth";
 
 export default function AppLayout() {
@@ -17,6 +18,19 @@ export default function AppLayout() {
   // Hooks cannot sit behind the early returns below, so it runs unconditionally
   // and stays idle until there is a session to sync with.
   usePlaybackSync();
+
+  // Frisky-favorites, read once per launch. Nothing else fills that map until a
+  // tab has been opened, and a cold start can land straight in the player with
+  // the restored track: its heart was dark for a track that has been a
+  // favourite for months. Same rule as above — before the early returns.
+  const hydrateFavorites = useFavoritesStore((state) => state.hydrate);
+  const signedIn = Boolean(
+    userSession?.access_token && userSession?.secret && userSession?.user_id,
+  );
+  useEffect(() => {
+    if (!signedIn) return;
+    void hydrateFavorites();
+  }, [signedIn, hydrateFavorites]);
 
   if (isLoading) {
     console.log("--AppLayout=Loading...");

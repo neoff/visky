@@ -15,6 +15,12 @@ class MMKVInstance {
   setArray(): never {
     throw new Error('MMKV is not available')
   }
+  getBool(): never {
+    throw new Error('MMKV is not available')
+  }
+  setBool(): never {
+    throw new Error('MMKV is not available')
+  }
   getStringAsync(): Promise<null> {
     return Promise.resolve(null)
   }

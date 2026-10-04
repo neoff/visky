@@ -3,13 +3,13 @@ import express from "express";
 import {Request, Response} from "@/types";
 import {checkAuthAndroid, vkMethod} from "@/helper/vk";
 import {cleanupData, cleanupDataAndSortPart, formatPlaylist} from "@/helper";
+import {artistKey} from "@/helper/friskyMatch";
 import {Tracklist, type VkPlaylistResponse, VkResponse, TrackItem} from "@/__genedated__/openapi/vk";
-import {enrich, kick, remember} from "@/services/friskyCache";
+import {artistCards, enrich, friskyShowKeys, FRISKY_OWNER_ID, kick, remember, showKey} from "@/services/friskyCache";
 
 
 export const api = express.Router();
 
-const FRISKY_OWNER_ID = -42311167;
 const FRISKY_FAVORITES_PLAYLIST_TITLE = "Frisky-favorites";
 
 const getPlaylistData =  async (req: Request, owner: number, count: number, offset: number): Promise<Tracklist> => {
@@ -38,6 +38,18 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
  * cleaned by `cleanupData`, i.e. without the "FRISKY | " prefix) is what stays
  * the same, so that is the key we match on.
  */
+/**
+ * The artist's name as a person would write it.
+ *
+ * VK has used two spellings for the group's uploads — "FRISKY | El Reyalto" and
+ * plain "El Reyalto" — and only the prefix differs. It is dropped here for the
+ * same reason `cleanupData` drops it from the list: it is the group's branding,
+ * not part of anyone's name. Used only when frisky.fm has no row for the artist
+ * and their own spelling is unavailable.
+ */
+const displayArtist = (artist: string | null | undefined): string =>
+  String(artist ?? "").replace(/\s*FRISKY\s*\|\s*/gi, " ").replace(/\s+/g, " ").trim();
+
 const favoriteKey = (item: { artist?: string; title?: string }): string =>
   `${(item.artist ?? "").trim().toLowerCase()}|${(item.title ?? "").trim().toLowerCase()}`;
 
@@ -293,6 +305,86 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
     }
     
     res.status(500).send({errMessage: errorMessage});
+  }
+});
+
+
+/**
+ * The artists the group actually carries.
+ *
+ * Built from the catalogue rather than from the frisky directory: frisky knows
+ * thousands of DJs, and the only ones this app can play are the ones VK has an
+ * upload for. Each key is then joined to the mirrored directory for the photo,
+ * the genres and the home city (services/friskyCache.artistCards).
+ *
+ * Ordered by how much of the archive is theirs, then by name — the first screen
+ * of a browse list should be the residents, not whoever starts with an "A".
+ */
+api.get("/frisky/artists", checkAuthAndroid, async (req: Request, res: Response) => {
+  try {
+    const catalog = await loadFriskyCatalog(req);
+
+    // Counted on the RAW artist string. `artistKey` already strips the
+    // "FRISKY | " prefix, so the catalogue does not need the title cleanup the
+    // list endpoints run — and that cleanup mutates the cached rows in place.
+    const counted = new Map<string, {name: string; shows: number}>();
+    for (const item of catalog) {
+      const key = artistKey(item.artist);
+      if (!key) continue;
+      const seen = counted.get(key);
+      if (seen) {
+        seen.shows += 1;
+      } else {
+        counted.set(key, {name: displayArtist(item.artist), shows: 1});
+      }
+    }
+
+    const items = await artistCards(counted);
+    items.sort((a, b) => b.shows - a.shows || a.name.localeCompare(b.name));
+
+    res.status(200).send({count: items.length, items});
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message || error.error_msg || ''});
+  }
+});
+
+/**
+ * One artist's shows, as a page of the same track shape every list uses.
+ *
+ * `key` is `artistKey(artist)` — the normalised name, which is what survives
+ * both spellings VK has used for the group's uploads.
+ */
+api.get("/frisky/artists/:key", checkAuthAndroid, async (req: Request, res: Response) => {
+  const key = String(req.params.key ?? "");
+  const count: number = parseInt(req.query?.count as string) || 100;
+  const offset: number = parseInt(req.query.offset as string) || 0;
+
+  try {
+    const catalog = await loadFriskyCatalog(req);
+    const mine = catalog.filter((item) => artistKey(item.artist) === key);
+    const clean = cleanupDataAndSortPart({count: mine.length, items: mine});
+    const page = clean.items.slice(offset, offset + count);
+
+    const response: Tracklist = {
+      ...formatPlaylist({count: page.length, items: page}, offset),
+      total: mine.length
+    };
+
+    // the same heart the Songs tab draws, resolved against the same playlist
+    const {byKey} = await loadFavoritesIndex(req);
+    if (byKey.size > 0) {
+      response.items = response.items.map((item) => ({
+        ...item,
+        favorite: byKey.has(favoriteKey(item))
+      }));
+    }
+
+    response.items = await enrich(response.items);
+    kick();
+
+    res.status(200).send(response);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message || error.error_msg || ''});
   }
 });
 
@@ -672,6 +764,142 @@ api.get("/frisky/favorites", checkAuthAndroid, async (req: Request, res: Respons
     }
 
     res.status(200).send(formatted);
+  } catch (error: Error | any) {
+    res.status(500).send({errMessage: error.message});
+  }
+});
+
+
+/**
+ * Sweep the frisky tracks out of the user's own audio and into Frisky-favorites.
+ * POST /api/playlist/frisky/favorites/sync
+ *
+ * Years of hearts landed in the VK library itself, before this app kept a
+ * playlist of them — and the Favorites tab only ever shows the playlist. This
+ * walks the library, keeps what the group uploaded, and adds whatever is
+ * missing IN THE ORDER IT WAS ADDED: VK serves a library newest-first, so it is
+ * filled from the bottom up and the playlist ends up reading the way the
+ * library does.
+ *
+ * Which tracks are the group's is answered by the cache, not by the words of a
+ * title: `audio.add` gives a copy the USER's owner id, so the owner says
+ * nothing, and "does it say frisky somewhere" catches a fraction of the archive
+ * (the group has dropped and re-added that advert several times over). With no
+ * database there is no answer, and the sweep does nothing rather than guess.
+ *
+ * Idempotent: a second run finds everything already in the playlist and adds
+ * nothing, which is what lets the app call it whenever "All" is opened.
+ */
+const SYNC_BATCH_LIMIT = 200;
+/** how many tracks one `audio.addToPlaylist` carries */
+const SYNC_CHUNK = 50;
+/** VK allows three calls a second, and a sweep is the one place that can flood it */
+const SYNC_PAUSE_MS = 350;
+
+api.post("/frisky/favorites/sync", checkAuthAndroid, async (req: Request, res: Response) => {
+  try {
+    const keys = await friskyShowKeys();
+    if (keys.size === 0) {
+      // "I cannot tell", NOT "nothing is frisky" — adding on a guess would put
+      // the user's unrelated music in the playlist, and it cannot be undone
+      // from the app
+      res.status(200).send({
+        status: "skipped",
+        reason: "catalog_unknown",
+        message: "The frisky catalogue is not cached yet",
+        candidates: 0,
+        added: 0,
+        remaining: 0
+      });
+      return;
+    }
+
+    const library = await vkMethod(req, "audio.get", {
+      owner_id: req.session.user_id,
+      count: 6000,
+      offset: 0
+    }, false);
+    const items = (library.response as VkPlaylistResponse)?.items ?? [];
+    // raw, before anything cleans them — the sweep reads the whole library, and
+    // that is the cheapest page of metadata there is
+    remember(items);
+
+    // the library arrives newest-added first; oldest-first is the order to add in
+    const candidates = [...items].reverse().filter((item) => keys.has(showKey(item)));
+
+    const playlistId = await ensureFriskyFavoritesPlaylistId(req);
+    const existing = await loadPlaylistIndex(req, playlistId);
+
+    // COPIES: cleanupData rewrites artist and title in place, and `showKey`
+    // above needs them as VK sent them
+    const cleaned = cleanupData({
+      count: candidates.length,
+      items: candidates.map((item) => ({...item}))
+    }).items;
+
+    const missing: Array<{ id: number; owner_id: number }> = [];
+    const seen = new Set<string>();
+    for (let index = 0; index < cleaned.length; index++) {
+      const key = favoriteKey(cleaned[index]);
+      if (existing.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      missing.push({id: candidates[index].id, owner_id: candidates[index].owner_id});
+    }
+
+    const batch = missing.slice(0, SYNC_BATCH_LIMIT);
+    let added = 0;
+    const failed: string[] = [];
+
+    // `audio.addToPlaylist`, NOT `audio.add`: these tracks are already the
+    // user's own copies, and `audio.add` would copy each of them A SECOND TIME
+    // into the library — a sweep meant to tidy the library would double it.
+    // Whole chunks at a time, in order, because the playlist keeps the order it
+    // is filled in and VK allows three calls a second.
+    for (let index = 0; index < batch.length; index += SYNC_CHUNK) {
+      const chunk = batch.slice(index, index + SYNC_CHUNK);
+      const audioIds = chunk.map((track) => `${track.owner_id}_${track.id}`);
+      try {
+        await vkMethod(req, "audio.addToPlaylist", {
+          owner_id: req.session.user_id,
+          playlist_id: playlistId,
+          audio_ids: audioIds.join(",")
+        }, false);
+        added += chunk.length;
+      } catch (error) {
+        console.error("==sync: addToPlaylist failed, falling back to audio.add:", error);
+        // One at a time through the path the heart uses. It COPIES the track,
+        // so it is the second choice — but a favourite that is in the playlist
+        // twice over is still better than one that never arrives.
+        for (const track of chunk) {
+          try {
+            await vkMethod(req, "audio.add", {
+              audio_id: track.id,
+              owner_id: track.owner_id,
+              album_id: playlistId
+            }, false);
+            added++;
+          } catch (addError) {
+            console.error(`==sync: could not add ${track.owner_id}_${track.id}:`, addError);
+            failed.push(`${track.owner_id}_${track.id}`);
+          }
+          await pause(SYNC_PAUSE_MS);
+        }
+      }
+      await pause(SYNC_PAUSE_MS);
+    }
+
+    if (added > 0) invalidateFavoritesIndex(req);
+
+    res.status(200).send({
+      status: "ok",
+      playlist_id: playlistId,
+      candidates: candidates.length,
+      added,
+      failed: failed.length,
+      // what a second call would still have to do — the batch is capped so one
+      // sweep cannot spend minutes inside VK's rate limit
+      remaining: Math.max(missing.length - batch.length, 0)
+    });
   } catch (error: Error | any) {
     res.status(500).send({errMessage: error.message});
   }

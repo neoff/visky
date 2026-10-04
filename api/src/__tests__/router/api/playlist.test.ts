@@ -581,3 +581,95 @@ describe('/api/playlist', () => {
     expect(res.body.errData).toBe('No owner_id');
   });
 });
+describe('the artist directory', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __resetFriskyCatalog();
+    __resetFavoritesIndexCache();
+  });
+
+  // The two spellings VK has used for the group's uploads. They are ONE artist,
+  // and the whole point of keying on the normalised name is that they collapse.
+  const prefixed = {
+    id: 11,
+    owner_id: -42311167,
+    artist: 'FRISKY | El Reyalto',
+    title: 'May 2016 - Tech Coast Tribal (Part 1) [vk.com/feelin_frisky]',
+    duration: 3600,
+    url: 'https://example.com/1',
+    date: 1462492800,
+  };
+  const bare = {
+    id: 12,
+    owner_id: -42311167,
+    artist: 'El Reyalto',
+    title: 'FRISKY | Tech Coast Tribal June 2016 - Part 1',
+    duration: 3600,
+    url: 'https://example.com/2',
+    date: 1465084800,
+  };
+  const other = {
+    id: 13,
+    owner_id: -42311167,
+    artist: 'FRISKY | Just Her',
+    title: 'September 2026 - Helix [vk.com/feelin_frisky]',
+    duration: 3600,
+    url: 'https://example.com/3',
+    date: 1757980800,
+  };
+
+  const catalog = {count: 3, items: [prefixed, bare, other]};
+
+  it('lists every artist the group carries, most-published first', async () => {
+    vkMethod.mockResolvedValue({response: catalog});
+
+    const res = await request(app).get('/api/playlist/frisky/artists');
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toEqual(2);
+
+    const [first, second] = res.body.items;
+    expect(first.key).toEqual('elreyalto');
+    expect(first.shows).toEqual(2);
+    // the group's branding is not part of anyone's name
+    expect(first.name).toEqual('El Reyalto');
+    expect(second.key).toEqual('justher');
+    expect(second.shows).toEqual(1);
+  });
+
+  it('serves the card with no photo or genres when the directory is off', async () => {
+    vkMethod.mockResolvedValue({response: catalog});
+
+    const res = await request(app).get('/api/playlist/frisky/artists');
+
+    expect(res.status).toBe(200);
+    // FRISKY_API_ENABLED / the database are absent here: a name and a count is
+    // all a card can carry, and it must still be a card
+    expect(res.body.items[0].photo).toBeNull();
+    expect(res.body.items[0].genres).toEqual([]);
+  });
+
+  it('gives one artist their own shows, under both VK spellings', async () => {
+    vkMethod.mockResolvedValue({response: catalog});
+
+    const res = await request(app).get('/api/playlist/frisky/artists/elreyalto?count=100&offset=0');
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toEqual(2);
+    expect(res.body.items.length).toEqual(2);
+    expect(res.body.items.map((item: {artist: string}) => item.artist))
+      .toEqual(['El Reyalto', 'El Reyalto']);
+    // the same cleanup the list endpoints run: no prefix, no vk advert, no date
+    expect(res.body.items[0].title).toEqual('Tech Coast Tribal (Part 1)');
+  });
+
+  it('answers an artist nobody in the group is with an empty list', async () => {
+    vkMethod.mockResolvedValue({response: catalog});
+
+    const res = await request(app).get('/api/playlist/frisky/artists/nobody');
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toEqual(0);
+    expect(res.body.items).toEqual([]);
+  });
+});

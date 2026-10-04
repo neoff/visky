@@ -309,6 +309,30 @@ export const removeFromFavorites = async (
   return apiRequest(`${apiUrls.favoritesUrl}/${track.id}?owner_id=${owner}${filter}`, 'DELETE', {});
 };
 
+/** What one sweep of the library into Frisky-favorites did. */
+export type FavoritesSyncResult = {
+  status: 'ok' | 'skipped'
+  reason?: string
+  candidates: number
+  added: number
+  failed?: number
+  /** what is still missing — the API caps one sweep so it cannot flood VK */
+  remaining: number
+}
+
+/**
+ * Move the frisky tracks sitting loose in the VK library into Frisky-favorites.
+ *
+ * Idempotent, and cheap when there is nothing to do: the API compares the
+ * library with the playlist and only adds what is missing. Which tracks are the
+ * group's is decided by our own cache of the group's uploads, not by the words
+ * of a title.
+ */
+export const syncFriskyFavorites = async (): Promise<FavoritesSyncResult> => {
+  const data = await apiRequest(`${apiUrls.favoritesUrl}/sync`, 'POST', {});
+  return data as FavoritesSyncResult;
+};
+
 export type UserPlaylist = {
   id: number
   title: string
@@ -363,6 +387,40 @@ export const searchFavorites = async (
     items: mapApiTracks(data?.items),
     global: mapApiTracks(data?.global),
   };
+};
+
+/** One DJ as the Artists tab lists them. See `GET /api/playlist/frisky/artists`. */
+export type Artist = {
+  /** the normalised name; the id every other artist call takes */
+  key: string
+  name: string
+  /** how many of the group's uploads are theirs */
+  shows: number
+  photo: string | null
+  genres: string[]
+  homeCity: string | null
+  biography: string | null
+}
+
+/**
+ * Every DJ the group carries, most-published first.
+ *
+ * Not a window: the directory is a few hundred rows and is answered in one
+ * call, so the tab has nothing to page.
+ */
+export const loadArtists = async (): Promise<Artist[]> => {
+  const url = apiUrls.artistsUrl;
+  console.info(`GET ${url}`);
+  const data = await apiRequest(url, 'GET', {});
+  return (data?.items ?? []) as Artist[];
+};
+
+/** One page of one DJ's shows, in the same shape every list uses. */
+export const fetchArtistPage = async (key: string, offset: number, count: number) => {
+  const url = `${apiUrls.artistsUrl}/${encodeURIComponent(key)}?count=${count}&offset=${offset}`;
+  console.info(`GET ${url}`);
+  const data = await apiRequest(url, 'GET', {});
+  return mapApiTracks(data?.items);
 };
 
 export type VkProfile = {

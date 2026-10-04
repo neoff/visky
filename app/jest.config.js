@@ -33,6 +33,10 @@ module.exports = {
     '^react-native-reanimated$': '<rootDir>/src/__tests__/__mocks__/reanimated.ts',
     '^react-native-awesome-slider$': '<rootDir>/src/__tests__/__mocks__/slider.tsx',
     '^react-native-gesture-handler$': '<rootDir>/src/__tests__/__mocks__/gestureHandler.tsx',
+    // The swipeable is a gesture on a reanimated transform; the fake keeps the
+    // render props so a test can read what each direction offers.
+    '^react-native-gesture-handler/ReanimatedSwipeable$': '<rootDir>/src/__tests__/__mocks__/swipeable.tsx',
+    '^react-native-fast-image$': '<rootDir>/src/__tests__/__mocks__/fastImage.tsx',
     '^react-native-safe-area-context$': '<rootDir>/src/__tests__/__mocks__/safeArea.ts',
     '^react-native-vector-icons/.*$': '<rootDir>/src/__tests__/__mocks__/vectorIconsLegacy.tsx',
     '^@expo/vector-icons$': '<rootDir>/src/__tests__/__mocks__/icons.tsx',

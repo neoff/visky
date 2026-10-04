@@ -1,5 +1,5 @@
 import {useActiveTrack} from 'react-native-track-player'
-import {useIsFavorite, useToggleFavorite} from '@/store/favorites'
+import {useIsFriskyFavorite, useToggleFriskyFavorite} from '@/store/favorites'
 
 /**
  * Favourite state of the track that is playing.
@@ -11,8 +11,10 @@ import {useIsFavorite, useToggleFavorite} from '@/store/favorites'
  */
 export const useTrackPlayerFavorite = () => {
   const activeTrack = useActiveTrack()
-  const isFavorite = useIsFavorite(activeTrack)
-  const toggle = useToggleFavorite()
+  // Frisky-favorites, never the Favorites tab's current selection: the track
+  // that is playing is not part of any list on screen
+  const isFavorite = useIsFriskyFavorite(activeTrack)
+  const toggle = useToggleFriskyFavorite()
 
   const toggleFavorite = async () => {
     if (!activeTrack) return

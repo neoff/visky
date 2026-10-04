@@ -23,6 +23,8 @@ export type TrackListProps = Partial<FlashListProps<unknown>> & {
   tracks: (Track | TrackListSection)[]
   refresh?: boolean
   hideQueueControls?: boolean
+  /** off for a list that IS the favourites — see TrackListItem */
+  showFavorite?: boolean
 }
 
 export const TrackList = ({
@@ -30,6 +32,7 @@ export const TrackList = ({
                             tracks,
                             hideQueueControls = false,
                             refresh = false,
+                            showFavorite = true,
                             ...flatListProps
                           }: TrackListProps) => {
   const { activeQueueId, setActiveQueueId } = useQueue()
@@ -127,7 +130,11 @@ export const TrackList = ({
       renderItem={({ item: track }) => (
         isSection(track)
           ? <SectionHeading title={track.__section}/>
-          : <TrackListItem onTrackSelect={handleTrackSelect} track={track as Track} />
+          : <TrackListItem
+              onTrackSelect={handleTrackSelect}
+              track={track as Track}
+              showFavorite={showFavorite}
+            />
       )}
       {...flatListProps}
     />

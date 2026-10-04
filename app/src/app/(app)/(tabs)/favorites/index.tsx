@@ -2,13 +2,14 @@ import {defaultStyles} from "@/styles"
 import {ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, RefreshControl, StatusBar, StyleSheet, Text, View} from "react-native"
 import {colors, fonts, layout, screenPadding} from "@/constants";
 import {TrackList, TrackListSection} from "@/components/TrackList";
-import {generateTracksListId} from "@/helpers/miscellaneous";
+import {generateTracksListId, trackKey} from "@/helpers/miscellaneous";
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {Track} from "react-native-track-player";
-import {fetchFavoritesPage, searchFavorites} from "@/helpers/network";
+import {fetchFavoritesPage, searchFavorites, syncFriskyFavorites} from "@/helpers/network";
 import {useDebouncedValue} from "@/hooks/useDebouncedValue";
 import {useFocusEffect, useNavigation} from "expo-router";
 import {useFavoritesStore} from "@/store/favorites";
+import {useSettingsStore} from "@/store/settings";
 import {useSharedValue} from "react-native-reanimated";
 import {AnimatedSearchHeader} from "@/components/AnimatedSearchHeader";
 import {PullToRefresh} from "@/components/PullToRefresh";
@@ -36,7 +37,7 @@ const FavoriteScreen = () => {
     // Only the Frisky list is cached: it is what the tab opens on, and the other
     // playlists must not end up in the cache that seeds the next cold start.
     const cacheKey = selection.kind === 'frisky' ? FAVORITES_CACHE_KEY : undefined
-    const {tracks, refreshing, loadingMore, reset, loadMore, loadPrevious} =
+    const {tracks, refreshing, loadingMore, reset, refreshWindow, loadMore, loadPrevious} =
       useWindowedTracks(loadPage, true, cacheKey)
 
     const pickSelection = useCallback((next: PlaylistSelection) => {
@@ -46,12 +47,20 @@ const FavoriteScreen = () => {
         reset();
     }, [reset])
 
-    // hearts are toggled on the Songs tab and in the player, so re-read the
-    // CURRENT list every time this tab comes back into view
+    // Hearts are toggled on the Songs tab and in the player, so re-read the
+    // list every time this tab comes back into view — the pages that are ON
+    // SCREEN, not the list from the top.
+    //
+    // This used to call `reset()`. Closing the player refocuses this screen, so
+    // playing a track from the bottom of a long list and then collapsing the
+    // player threw the window back to page 0 and the scroll to the top — with
+    // no way back except paging down again. `refreshWindow` re-reads the same
+    // pages in place and keeps the position; see useWindowedTracks, which was
+    // built for exactly this and was not being used for it.
     useFocusEffect(
       useCallback(() => {
-          reset();
-      }, [reset])
+          void refreshWindow();
+      }, [refreshWindow])
     );
 
     // The filter resets when the tab is entered, not on every focus: opening and
@@ -87,9 +96,31 @@ const FavoriteScreen = () => {
         if (selection.kind === 'frisky') {
             setKeysFromTracks(tracks as any)
         } else {
-            applyServerFlags(tracks as any)
+            // every row of a playlist view is in THAT playlist, which says
+            // nothing about Frisky-favorites — and the player reads that one
+            applyServerFlags(tracks as any, 'scope')
         }
     }, [tracks, selection, setKeysFromTracks, applyServerFlags]);
+
+    // Switching to "All" is the moment the library is on screen, so it is the
+    // moment to sweep the frisky tracks out of it and into the playlist this
+    // tab is otherwise made of — years of hearts predate that playlist. Once
+    // per visit to the tab: the sweep is idempotent, but it still costs VK
+    // calls, and the picker can be opened a dozen times in a row.
+    const autoSync = useSettingsStore((state) => state.autoSyncFavorites)
+    const swept = useRef(false)
+    useEffect(() => {
+        if (selection.kind !== 'all' || !autoSync || swept.current) return
+        swept.current = true
+        syncFriskyFavorites()
+          // the Frisky list changed, and the hearts on this screen are read
+          // from it — but only a sweep that actually added something is worth a
+          // reload
+          .then((result) => {
+              if (result.added > 0) reset()
+          })
+          .catch((error) => console.warn('Unable to sync the favorites', error))
+    }, [selection, autoSync, reset]);
 
     const scrollY = useSharedValue(0);
     const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -133,14 +164,29 @@ const FavoriteScreen = () => {
         }
     }, [debouncedQuery, selection])
 
+    // A row this session removed is gone from the list at once. The window is
+    // not refetched on a toggle — nothing would have taken it out until the
+    // next reload, so "remove from favorites" left the row sitting there.
+    const overrides = useFavoritesStore((state) => state.overrides)
+
     const isSearching = debouncedQuery.trim().length >= 2
     // the VK-wide section belongs to the "All" view only
     const hasSuggestions = isSearching && selection.kind === 'all' && globalResults.length > 0
 
     const listData = useMemo(() => {
-        if (!isSearching) return tracks
-        return hasSuggestions ? [...searchResults, SUGGESTED, ...globalResults] : searchResults
-    }, [isSearching, hasSuggestions, tracks, searchResults, globalResults])
+        const base = !isSearching
+          ? tracks
+          : hasSuggestions
+            ? [...searchResults, SUGGESTED, ...globalResults]
+            : searchResults
+        // the VK-wide suggestions are NOT in this list, so a `false` there means
+        // nothing and must not hide them
+        return base.filter((item: any) => {
+            if ((item as TrackListSection).__section) return true
+            const key = trackKey(item)
+            return !(key !== undefined && overrides[key] === false)
+        })
+    }, [isSearching, hasSuggestions, tracks, searchResults, globalResults, overrides])
 
     return (
       <View style={{...defaultStyles.container}}>
@@ -151,13 +197,14 @@ const FavoriteScreen = () => {
             onSearchChange={setQuery}
             scrollY={scrollY}
             action={<PlaylistFilter selection={selection} onChange={pickSelection}/>}
-            onRefresh={reset}
-            refreshing={refreshing}
           />
           {/* the desktop's swipe-down; a pass-through on the phones, which
               have the gesture already — see PullToRefresh */}
           <PullToRefresh scrollY={scrollY} onRefresh={reset} refreshing={refreshing} topOffset={HEADER_HEIGHT}>
             <TrackList
+              // every row here IS a favourite; a heart on each of them is a
+              // column of decoration. Swipe left is how one leaves.
+              showFavorite={false}
               id={generateTracksListId(
                 `favorites-${selection.kind === 'playlist' ? selection.id : selection.kind}`,
                 listData.length,

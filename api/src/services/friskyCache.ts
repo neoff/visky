@@ -20,7 +20,7 @@
 // Every part of this is optional. With no Postgres, or FRISKY_API_ENABLED=false,
 // `remember()` and `enrich()` are no-ops and the playlist is served exactly as
 // it was before: VK data, nothing added.
-import {In, IsNull, LessThan, Not} from "typeorm";
+import {DataSource, In, IsNull, LessThan, Not} from "typeorm";
 import {initDataSource} from "@/configurations/typeorm.config";
 import {frisky as cfg} from "@/configurations/frisky";
 import {db} from "@/configurations/playback";
@@ -43,6 +43,9 @@ import {
 import {TrackItem} from "@/__genedated__/openapi/vk";
 
 export const isFriskyCacheEnabled = (): boolean => db.enabled && cfg.enabled;
+
+/** The Frisky Radio group: the owner every original upload belongs to. */
+export const FRISKY_OWNER_ID = -42311167;
 
 /** A VK audio row as it arrives, BEFORE `cleanupData` rewrites artist and title. */
 export interface RawVkItem {
@@ -161,6 +164,112 @@ export const usableTrackList = (
 ): Array<{title?: string; artist?: string}> => (!tracks?.length || isPartMarker(tracks) ? [] : tracks);
 
 /**
+ * The row a track's METADATA is really about.
+ *
+ * `audio.add` COPIES a track into the user's library under a new VK id, so a
+ * favourite and the group's original share no `track_id` at all. The favourites
+ * tab looked itself up by id, found only the bare row it had just written for
+ * the copy, and served VK's answer untouched: no cover, no tracklist, no show.
+ *
+ * The match keys — artist, the words of the title, the month — are the identity
+ * the two copies DO share, so the original is found by those and everything
+ * below is read off it.
+ */
+const twinScore = (
+  candidate: VkTrack,
+  wantedTitle: string,
+  wantedPeriod: {year: number | null; month: number | null},
+  wantedPart: number | null,
+): number => {
+  // a different show is never the same broadcast, whatever else agrees
+  if (!wantedTitle || candidate.titleKey !== wantedTitle) return 0;
+
+  let score = 1;
+  if (wantedPeriod.year !== null && candidate.periodYear !== null && candidate.periodYear !== undefined) {
+    if (candidate.periodYear !== wantedPeriod.year) return 0;
+    score += 1;
+    if (wantedPeriod.month !== null && candidate.periodMonth !== null && candidate.periodMonth !== undefined) {
+      if (candidate.periodMonth !== wantedPeriod.month) return 0;
+      score += 1;
+    }
+  }
+  // Part 1 and Part 2 are one episode, so a mismatch is not fatal — but the
+  // right piece is still the better source
+  if (wantedPart !== null && wantedPart !== undefined && candidate.part === wantedPart) score += 1;
+  // the group's own row is the original; a copy of a copy knows no more
+  if (String(candidate.ownerId) === String(FRISKY_OWNER_ID)) score += 0.5;
+  return score;
+};
+
+const resolveTwins = async (
+  ds: DataSource,
+  items: TrackItem[],
+  rowByTrack: Map<string, VkTrack>,
+): Promise<Map<string, VkTrack>> => {
+  const needy = items.filter(
+    (item) => !rowByTrack.get(trackIdOf(item.owner_id, item.id))?.friskyMixId,
+  );
+  if (needy.length === 0) return new Map();
+
+  const keys = new Set<string>();
+  for (const item of needy) {
+    const key = rowByTrack.get(trackIdOf(item.owner_id, item.id))?.artistKey || artistKey(item.artist);
+    if (key) keys.add(key);
+  }
+  if (keys.size === 0) return new Map();
+
+  // one query for the whole page: every matched row by these artists
+  const candidates = await ds.getRepository(VkTrack).find({
+    where: {artistKey: In([...keys]), friskyMixId: Not(IsNull())},
+  });
+  if (candidates.length === 0) return new Map();
+
+  const byArtist = new Map<string, VkTrack[]>();
+  for (const candidate of candidates) {
+    const bucket = byArtist.get(candidate.artistKey ?? "");
+    if (bucket) bucket.push(candidate);
+    else byArtist.set(candidate.artistKey ?? "", [candidate]);
+  }
+
+  const twins = new Map<string, VkTrack>();
+  for (const item of needy) {
+    const trackId = trackIdOf(item.owner_id, item.id);
+    const own = rowByTrack.get(trackId);
+    const bucket = byArtist.get(own?.artistKey || artistKey(item.artist));
+    if (!bucket?.length) continue;
+
+    // The row is preferred over the item: it was written from the RAW VK track,
+    // and by the time the app sees a title the cleanup has taken the month out
+    // of it — which is half of what tells two mixes of a weekly show apart.
+    const wantedTitle = own?.titleKey || titleKey(item.title, item.artist);
+    const wantedPeriod = own
+      ? {year: own.periodYear ?? null, month: own.periodMonth ?? null}
+      : periodOf(item.title, item.artist);
+    const wantedPart = own?.part ?? partNumber(item.title);
+
+    let best: {row: VkTrack; score: number} | null = null;
+    for (const candidate of bucket) {
+      const score = twinScore(candidate, wantedTitle, wantedPeriod, wantedPart);
+      if (score > 0 && (!best || score > best.score)) best = {row: candidate, score};
+    }
+    if (best) twins.set(trackId, best.row);
+  }
+  return twins;
+};
+
+/**
+ * The cover the cache holds, when the response has none.
+ *
+ * A library copy arrives from VK without an album thumb far more often than the
+ * group's own upload does, and that is exactly the row the Favorites tab is
+ * made of — this is why that tab was a column of placeholders.
+ */
+const withCachedArtwork = (item: TrackItem, own?: VkTrack, meta?: VkTrack): TrackItem => {
+  const artwork = item.artwork || own?.artwork || meta?.artwork;
+  return artwork ? {...item, artwork} : item;
+};
+
+/**
  * Merge everything already known about these tracks into the VK response.
  *
  * Everything is read off the EPISODE, not off one mix. A broadcast is cut into
@@ -183,9 +292,27 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
   try {
     const ids = items.map((item) => trackIdOf(item.owner_id, item.id));
     const rows = await ds.getRepository(VkTrack).find({where: {trackId: In(ids)}});
-    const mixIds = [...new Set(rows.map((row) => row.friskyMixId).filter((id): id is number => !!id))];
-    const episodeIds = [...new Set(rows.map((row) => row.friskyEpisodeId).filter((id): id is number => !!id))];
-    if (mixIds.length === 0) return items;
+    const rowByTrack = new Map(rows.map((row) => [row.trackId, row]));
+    // the group's original for every row that carries no match of its own
+    const twinByTrack = await resolveTwins(ds, items, rowByTrack);
+
+    /** this track's own row, and the row its metadata comes from */
+    const sourceOf = (item: TrackItem): {own?: VkTrack; meta?: VkTrack} => {
+      const trackId = trackIdOf(item.owner_id, item.id);
+      const own = rowByTrack.get(trackId);
+      return {own, meta: own?.friskyMixId ? own : twinByTrack.get(trackId) ?? own};
+    };
+
+    const metaRows = items.map((item) => sourceOf(item).meta);
+    const mixIds = [...new Set(metaRows.map((row) => row?.friskyMixId).filter((id): id is number => !!id))];
+    const episodeIds = [...new Set(metaRows.map((row) => row?.friskyEpisodeId).filter((id): id is number => !!id))];
+    // nothing is matched yet, but the cache may still hold the cover
+    if (mixIds.length === 0) {
+      return items.map((item) => {
+        const {own, meta} = sourceOf(item);
+        return withCachedArtwork(item, own, meta);
+      });
+    }
 
     // the matched mixes AND every sibling piece of their episodes
     const repository = ds.getRepository(FriskyMix);
@@ -214,14 +341,12 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
       : [];
     const showById = new Map(shows.map((show) => [show.id, show]));
 
-    const rowByTrack = new Map(rows.map((row) => [row.trackId, row]));
-
     return items.map((item) => {
-      const row = rowByTrack.get(trackIdOf(item.owner_id, item.id));
-      const mix = row?.friskyMixId ? mixById.get(row.friskyMixId) : undefined;
-      if (!mix) return item;
+      const {own, meta} = sourceOf(item);
+      const mix = meta?.friskyMixId ? mixById.get(meta.friskyMixId) : undefined;
+      if (!mix) return withCachedArtwork(item, own, meta);
 
-      const episodeId = row?.friskyEpisodeId ?? mix.episodeId ?? null;
+      const episodeId = meta?.friskyEpisodeId ?? mix.episodeId ?? null;
       // the matched piece first, so its own data wins a tie with a sibling's
       const pieces = [mix, ...(episodeId ? byEpisode.get(episodeId) ?? [] : []).filter((s) => s.id !== mix.id)];
       const artist = mix.artistId ? artistById.get(mix.artistId) : undefined;
@@ -239,14 +364,17 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
       // still served, as `frisky.artist_photo`, for a UI that wants the person.
       const artwork =
         pieces.find((piece) => piece.artwork)?.artwork || show?.imageUrl || show?.albumArtUrl || show?.thumbUrl;
+      // this track's own part, then the original's — a copy of Part 2 is Part 2
+      const part = own?.part ?? meta?.part ?? null;
 
       return {
         ...item,
-        // VK's own cover wins: it is what the list has been rendering
-        artwork: item.artwork || artwork || undefined,
+        // VK's own cover wins: it is what the list has been rendering. Then the
+        // cache, which is where a library copy finds the group's cover.
+        artwork: item.artwork || own?.artwork || meta?.artwork || artwork || undefined,
         genre_list: genreList(genres),
         track_list: trackList(tracks),
-        multipart: row?.part !== null && row?.part !== undefined,
+        multipart: part !== null,
         frisky: {
           mix_id: mix.id,
           episode_id: episodeId,
@@ -260,7 +388,7 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
           artist_photo: artist?.photoUrl ?? null,
           biography: artist?.biography ?? null,
           reach: mix.reach === null || mix.reach === undefined ? null : Number(mix.reach),
-          part: row?.part ?? null,
+          part,
         },
       } as TrackItem;
     });
@@ -268,6 +396,57 @@ export const enrich = async (items: TrackItem[]): Promise<TrackItem[]> => {
     console.error("==frisky: could not read the metadata cache:", (error as Error)?.message ?? error);
     return items;
   }
+};
+
+/**
+ * The identity of a show, as both copies of it spell it.
+ *
+ * Artist plus the words of the title, with the month, the part number and the
+ * group's advert taken out — the same keys `remember()` writes down, so a row
+ * in the cache and a raw VK track can be compared without either being cleaned.
+ */
+export const showKey = (item: {artist?: string | null; title?: string | null}): string =>
+  `${artistKey(item.artist)}|${titleKey(item.title, item.artist)}`;
+
+/**
+ * Every show the Frisky Radio group has uploaded, as show keys.
+ *
+ * Which of the user's own audio came from the group cannot be read off the
+ * track: `audio.add` keeps the group's words and gives the copy the USER's
+ * owner id, so the owner says nothing. The cache holds the group's own rows —
+ * so the question becomes "does a group row describe this show", which is what
+ * this set answers.
+ *
+ * Empty when there is no database, and the caller must treat that as "I cannot
+ * tell", never as "nothing is frisky".
+ */
+const FRISKY_KEYS_TTL_MS = 5 * 60_000;
+let friskyKeys: {at: number; keys: Set<string>} | null = null;
+
+export const friskyShowKeys = async (): Promise<Set<string>> => {
+  if (!isFriskyCacheEnabled()) return new Set();
+  if (friskyKeys && Date.now() - friskyKeys.at < FRISKY_KEYS_TTL_MS) return friskyKeys.keys;
+
+  const ds = await initDataSource();
+  if (!ds) return new Set();
+
+  try {
+    const rows = await ds.getRepository(VkTrack).find({
+      where: {ownerId: String(FRISKY_OWNER_ID)},
+      select: {trackId: true, artistKey: true, titleKey: true},
+    });
+    const keys = new Set(rows.map((row) => `${row.artistKey ?? ""}|${row.titleKey ?? ""}`));
+    friskyKeys = {at: Date.now(), keys};
+    return keys;
+  } catch (error) {
+    console.error("==frisky: could not read the group's keys:", (error as Error)?.message ?? error);
+    return new Set();
+  }
+};
+
+/** test seam — the key set is module state, like every other cache here */
+export const __resetFriskyShowKeys = (): void => {
+  friskyKeys = null;
 };
 
 // ---------------------------------------------------------------------------
@@ -628,6 +807,104 @@ const resolveShow = async (group: ShowGroup): Promise<string[]> => {
   await ensureShows(matchedShowIds);
 
   return matched;
+};
+
+// ---------------------------------------------------------------------------
+// the artist directory
+// ---------------------------------------------------------------------------
+
+/** What the Artists tab shows for one DJ. */
+export interface ArtistCard {
+  /** `artistKey` of their name — how the app asks for their shows */
+  key: string;
+  /** their own spelling, from frisky when it is known and from VK otherwise */
+  name: string;
+  /** how many of the group's uploads are theirs */
+  shows: number;
+  photo: string | null;
+  genres: string[];
+  homeCity: string | null;
+  biography: string | null;
+}
+
+/**
+ * The artists among a set of VK artist keys.
+ *
+ * The keys come from the VK catalogue — that is the only side that knows which
+ * artists the group actually carries — and the directory mirrored in
+ * `frisky_artists` is what turns each one into a face, a home city and a list of
+ * genres. `key` is the join column on both sides (helper/friskyMatch.artistKey).
+ *
+ * A KEY THE DIRECTORY DOES NOT HAVE IS DROPPED, and that is the point of this
+ * function rather than an accident of the join. Fifteen years of uploads are not
+ * tagged consistently: on a large minority of the group's rows the `artist`
+ * field holds the SHOW ("Artist of the Week", "Tech Coast Tribal") or the group
+ * itself ("Feelin FRISKY"), not the person who played. Those keys are also the
+ * highest-counting ones — a weekly show has far more episodes than any one DJ
+ * has sets — so counting the raw field and ordering by it puts the mis-tagged
+ * rows at the top of the screen and the residents below them. frisky.fm's own
+ * directory is the only thing that knows which of the two a string is.
+ *
+ * With no database, or with the cache switched off, nothing can be told apart,
+ * so every key comes back as a bare card with the VK spelling of the name. A
+ * list of names with no photos beats an empty tab; a list of show titles
+ * presented as people does not.
+ */
+export const artistCards = async (
+  counted: Map<string, {name: string; shows: number}>,
+): Promise<ArtistCard[]> => {
+  const bare = (): ArtistCard[] =>
+    [...counted.entries()].map(([key, {name, shows}]) => ({
+      key,
+      name,
+      shows,
+      photo: null,
+      genres: [],
+      homeCity: null,
+      biography: null,
+    }));
+
+  if (!isFriskyCacheEnabled() || counted.size === 0) return bare();
+
+  try {
+    const ds = await initDataSource();
+    if (!ds) return bare();
+    const known = await ds.getRepository(FriskyArtist).find({where: {key: In([...counted.keys()])}});
+    const byKey = new Map(known.map((row) => [row.key, row]));
+
+    // Nothing mirrored yet — the worker fills the directory as it matches
+    // shows, and on a cold cache it has nothing to say about anyone. Serving
+    // every key unfiltered is better than serving none at all.
+    if (byKey.size === 0) {
+      console.info(`artist directory: empty, serving ${counted.size} keys unfiltered`);
+      return bare();
+    }
+    if (byKey.size < counted.size) {
+      // the gap is the mis-tagged rows, and it is expected to be large
+      console.info(`artist directory: ${byKey.size} of ${counted.size} keys are known artists`);
+    }
+
+    const cards: ArtistCard[] = [];
+    for (const [key, {name, shows}] of counted) {
+      const row = byKey.get(key);
+      if (!row) continue;
+      cards.push({
+        key,
+        name: row.title?.trim() || name,
+        shows,
+        // the thumbnail is what a list row wants; the full photo is the fallback
+        photo: row.photoThumbUrl ?? row.photoUrl ?? null,
+        genres: row.genre ?? [],
+        homeCity: row.homeCity ?? null,
+        biography: row.biography ?? null,
+      });
+    }
+    return cards;
+  } catch (error) {
+    // the directory is an enrichment, never the reason a tab fails to open
+    console.error("artist directory lookup failed:", error);
+    return bare();
+  }
 };
 
 type EnrichedHandler = (trackIds: string[]) => void;

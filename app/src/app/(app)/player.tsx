@@ -18,7 +18,7 @@ import PlayerTrackListBar from "@/components/PlayerTrackListBar";
 import React from "react";
 import {router} from "expo-router";
 import PlayerEditInfoBar from "@/components/PlayerEditInfoBar";
-import {useIsFavorite, useToggleFavorite} from "@/store/favorites";
+import {useIsFriskyFavorite, useToggleFriskyFavorite} from "@/store/favorites";
 import {SwipeToDismiss} from "@/components/SwipeToDismiss";
 
 const PlayerScreen = () => {
@@ -27,10 +27,15 @@ const PlayerScreen = () => {
 
   const {top, bottom} = useSafeAreaInsets()
 
-  // favourites live on VK (the "Frisky-favorites" playlist); the store keeps the
-  // heart in sync with the list without waiting for a refresh
-  const isFavorite = useIsFavorite(activeTrack)
-  const toggleFavorite = useToggleFavorite()
+  // Favourites live on VK (the "Frisky-favorites" playlist); the store keeps the
+  // heart in sync with the list without waiting for a refresh.
+  //
+  // FRISKY-scoped, not scoped to whatever the Favorites tab last showed. The
+  // player is not inside a list: with the shared scope, opening it after
+  // looking at "All" lit the heart from the VK library and un-hearting a track
+  // DELETED it from that library instead of taking it out of the playlist.
+  const isFavorite = useIsFriskyFavorite(activeTrack)
+  const toggleFavorite = useToggleFriskyFavorite()
 
   const isHidedSong = false
   const toggleHideSong = () => {
