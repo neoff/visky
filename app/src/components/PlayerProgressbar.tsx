@@ -2,7 +2,9 @@ import {useCallback, useEffect, useRef} from "react";
 import {View, Text, ViewProps} from "react-native";
 import TrackPlayer, {useProgress} from "react-native-track-player";
 import {useSharedValue} from "react-native-reanimated";
-import {formatSecondsToMinutes} from "@/helpers/miscellaneous";
+import {formatSecondsToMinutes, trackKey} from "@/helpers/miscellaneous";
+import {runLocalAction} from "@/services/playbackReconciler";
+import {playbackSync} from "@/services/playbackSync";
 import {Slider} from "react-native-awesome-slider";
 import {progressBarStyles, utilsStyles} from "@/styles";
 
@@ -64,7 +66,22 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
       seek.current = {to: target, at: Date.now()}
       progress.value = target / duration
       try {
-        await TrackPlayer.seekTo(target)
+        // Inside the session's lock, like every other deliberate change (see
+        // services/playbackReconciler.runLocalAction). A seek moves the needle
+        // and nothing else, so the frames in flight still carry the position
+        // the track was at a moment ago — and this device is usually the active
+        // one, which means the reconciler believes them and seeks BACK. That
+        // reads as "the bar moved and the sound did not".
+        await runLocalAction(() => TrackPlayer.seekTo(target))
+        // ...and tell the session straight away. Nothing else reports a seek:
+        // play/pause is what the state listener watches, so until the next
+        // five-second heartbeat the account still thought the show was where it
+        // had been, and any other device following along was wrong for that long.
+        playbackSync.sendProgress(
+          target * 1000,
+          await TrackPlayer.getPlayWhenReady(),
+          trackKey((await TrackPlayer.getActiveTrack()) as never) ?? undefined,
+        )
       } catch (error) {
         seek.current = null
         console.warn('==player: could not seek', error)

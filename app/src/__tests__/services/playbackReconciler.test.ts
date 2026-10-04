@@ -391,3 +391,46 @@ describe('⏭ on the device that owns the sound', () => {
     expect(TrackPlayer.pause).toHaveBeenCalled()
   })
 })
+
+/**
+ * Issue #6: "при клике на таймлайн продолжает играть с того места где играло".
+ *
+ * A seek moves the needle and changes nothing else, so no play/pause event
+ * follows it and the session hears about it only at the next five-second
+ * heartbeat. Until then the frames in flight still carry the old second — and
+ * on the device that owns the sound the reconciler applied them and seeked
+ * BACK, which is indistinguishable from a seek that never happened.
+ */
+describe('a seek on the device that owns the sound', () => {
+  it('is not undone by a frame carrying the position it was seeked from', async () => {
+    __load([track(1)], 0, true)
+    __player.position = 60 // one minute in
+    usePlaybackStore.setState({
+      deviceId: THIS_DEVICE,
+      state: sessionState({
+        version: 3,
+        active_device_id: THIS_DEVICE,
+        origin_device_id: THIS_DEVICE,
+        track: {track_id: key(1), owner_id: -42311167, id: 1, duration: 3600},
+        position_ms: 60_000,
+      }),
+    })
+
+    // the user drags to twenty minutes, through the wrapper the bar uses
+    await runLocalAction(() => TrackPlayer.seekTo(1_200))
+    expect(__player.position).toBe(1_200)
+
+    // the frame that was already on its way: same revision, old position
+    await reconcile(
+      sessionState({
+        version: 3,
+        active_device_id: THIS_DEVICE,
+        origin_device_id: THIS_DEVICE,
+        track: {track_id: key(1), owner_id: -42311167, id: 1, duration: 3600},
+        position_ms: 60_000,
+      }),
+    )
+
+    expect(__player.position).toBe(1_200)
+  })
+})

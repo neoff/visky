@@ -170,7 +170,7 @@ export const SkipToPreviousButton = ({ type, iconSize = 40 }: PlayerButtonProps)
         }
         return
       }
-      await TrackPlayer.seekTo(0)
+      await runLocalAction(() => TrackPlayer.seekTo(0))
     } catch (error) {
       console.warn('Unable to go back', error)
     }

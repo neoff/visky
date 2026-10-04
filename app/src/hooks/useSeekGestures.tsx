@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef} from 'react'
 import TrackPlayer from 'react-native-track-player'
+import {runLocalAction} from '@/services/playbackReconciler'
 
 /**
  * Press-and-hold scrubbing for the skip buttons.
@@ -28,7 +29,11 @@ export const useHoldToSeek = (direction: 1 | -1) => {
   const seek = useCallback(() => {
     // seekBy is relative and clamps itself at both ends, so holding past the
     // start or the end of a track is a no-op rather than an error.
-    TrackPlayer.seekBy(direction * SEEK_STEP_SECONDS).catch((error) => {
+    //
+    // Claimed like every other deliberate change: a scrub that the reconciler
+    // undoes, because the frame in flight still names the second the track was
+    // at, is the same defect as a ⏭ that plays the previous show.
+    runLocalAction(() => TrackPlayer.seekBy(direction * SEEK_STEP_SECONDS)).catch((error) => {
       console.warn('==controls: seek failed', error)
       stop()
     })
