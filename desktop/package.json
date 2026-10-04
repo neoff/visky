@@ -1,6 +1,6 @@
 {
   "name": "visky-desktop",
-  "version": "1.5.51",
+  "version": "1.5.53",
   "private": true,
   "description": "visky desktop player — the Expo web bundle in a Tauri shell",
   "scripts": {
