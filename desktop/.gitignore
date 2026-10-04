@@ -10,3 +10,6 @@ web/
 dist/
 shell/target/
 shell/gen/
+
+# the Mac App Store build lands here; artifacts, not sources
+dist-mas/
