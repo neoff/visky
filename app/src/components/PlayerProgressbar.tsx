@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef} from "react";
 import {View, Text, ViewProps} from "react-native";
-import TrackPlayer, {useProgress} from "react-native-track-player";
+import TrackPlayer, {useActiveTrack, useProgress} from "react-native-track-player";
 import {useSharedValue} from "react-native-reanimated";
 import {formatSecondsToMinutes, trackKey} from "@/helpers/miscellaneous";
 import {runLocalAction} from "@/services/playbackReconciler";
@@ -20,8 +20,42 @@ const SEEK_LANDED_S = 1.5
 /** ...and how long to wait for it before giving up on that. */
 const SEEK_TIMEOUT_MS = 4_000
 
+/**
+ * Where a tap on the bar actually lands, in seconds.
+ *
+ * Pure, and exported, because the arithmetic is where a seek quietly dies: with
+ * a duration of `Infinity` — which a media element reports for a stream it
+ * considers unfinished, and WKWebView does exactly that for VK's HLS when it
+ * plays it natively — `fraction * duration` is `Infinity`, and a player handed
+ * `Infinity` ignores the request. The old guard did not catch it either, since
+ * `Infinity > 0` is perfectly true.
+ *
+ * `null` means "there is nothing sensible to seek to", which is a different
+ * answer from second zero.
+ */
+export const seekTarget = (fraction: number, duration: number): number | null => {
+  if (!Number.isFinite(duration) || duration <= 0) return null
+  if (!Number.isFinite(fraction)) return null
+  // Never land ON the end. The player treats reaching the last frame as "track
+  // finished" and moves to the next one — which is how dragging to the
+  // right-hand edge started playing something else.
+  return Math.min(Math.max(fraction, 0) * duration, Math.max(duration - 1, 0))
+}
+
 export const PlayerProgressBar = ({ style }: ViewProps) => {
-  const { duration, position, buffered } = useProgress(250)
+  const { duration: reported, position, buffered } = useProgress(250)
+  const activeTrack = useActiveTrack()
+
+  // The player's own duration, unless it is not a number we can do arithmetic
+  // with. VK tells us how long the show is and the queue carries it, so there
+  // is a second source — and on the desktop it is the only one that works.
+  const trackDuration = Number((activeTrack as {duration?: number} | undefined)?.duration ?? 0)
+  const duration =
+    Number.isFinite(reported) && reported > 0
+      ? reported
+      : Number.isFinite(trackDuration) && trackDuration > 0
+        ? trackDuration
+        : 0
 
   const progress = useSharedValue(0)
   const min = useSharedValue(0)
@@ -54,14 +88,13 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
 
   const seekToFraction = useCallback(
     async (value: number) => {
-      // Nothing is loaded yet: seeking into a zero-length track puts the player
-      // in a state it has to be kicked out of.
-      if (!(duration > 0)) return
-
-      // Never land ON the end. The player treats reaching the last frame as
-      // "track finished" and moves to the next one — which is how dragging to
-      // the right-hand edge started playing something else.
-      const target = Math.min(Math.max(value, 0) * duration, Math.max(duration - 1, 0))
+      // Nothing is loaded yet, or the duration is not a usable number: seeking
+      // into either puts the player in a state it has to be kicked out of.
+      const target = seekTarget(value, duration)
+      if (target === null) {
+        console.warn('==player: no usable duration to seek within', {reported, trackDuration})
+        return
+      }
 
       seek.current = {to: target, at: Date.now()}
       progress.value = target / duration
@@ -87,7 +120,7 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
         console.warn('==player: could not seek', error)
       }
     },
-    [duration, progress],
+    [duration, reported, trackDuration, progress],
   )
 
   return (

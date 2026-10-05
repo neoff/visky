@@ -149,7 +149,22 @@ printf '==> built %s (%s)\n' "$AAB" "$(du -h "$AAB" | cut -f1)"
 
 # Trust the artifact, not the flags: a bundle that silently came out unsigned
 # is rejected by Play at the end of the upload, not at the start.
-if ! unzip -l "$AAB" 2>/dev/null | grep -q "META-INF/.*\.RSA\|META-INF/.*\.EC"; then
+#
+# THE LISTING IS TAKEN FIRST, AND ITS FAILURE IS A DIFFERENT FAILURE. Piping
+# `unzip -l` straight into grep with stderr discarded reports "no signature" for
+# a listing that never happened at all — and a correctly signed 1.5.53 bundle
+# was stopped on its way to Play exactly that way, with the keystore, the alias
+# and the signature all fine. The two outcomes now say different things.
+#
+# The match is on the archive's OWN signature, at the top level: an app's
+# resources carry their own `base/root/META-INF/...` entries, which say nothing
+# about who signed the bundle.
+LISTING="$(unzip -l "$AAB" 2>&1)" || {
+  echo "!! could not read $AAB to check its signature:" >&2
+  printf '%s\n' "$LISTING" | tail -3 >&2
+  exit 1
+}
+if ! printf '%s\n' "$LISTING" | grep -qE "[[:space:]]META-INF/[^/]+\.(RSA|EC|DSA)$"; then
   echo "!! the bundle carries no signature block — check the keystore settings" >&2
   exit 1
 fi
