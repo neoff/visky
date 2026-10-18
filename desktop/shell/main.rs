@@ -22,6 +22,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 #[cfg(target_os = "macos")]
 use std::process::Command;
@@ -89,8 +90,25 @@ fn open_externally_or_allow(url: &tauri::Url) -> bool {
     false
 }
 
+/**
+ * Position and size, and nothing else.
+ *
+ * The window is deliberately fixed in width (min == max above), so there is
+ * nothing to remember there — but WHERE it was left matters: dragged to a
+ * corner of the second display, it used to come back to the middle of the
+ * laptop screen on every launch. Visibility and decorations are left out of the
+ * flags on purpose: the shell draws its own title bar, and a remembered
+ * "hidden" would be a window that never appears.
+ */
+const WINDOW_STATE: StateFlags = StateFlags::POSITION.union(StateFlags::SIZE);
+
 fn main() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(WINDOW_STATE)
+                .build(),
+        )
         .setup(|app| {
             let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("visky")
@@ -114,7 +132,14 @@ fn main() {
                 .hidden_title(true)
                 .traffic_light_position(LogicalPosition::new(13.0, TRAFFIC_LIGHT_Y));
 
-            builder.build()?;
+            let window = builder.build()?;
+            // Restored AFTER the window exists, because this one is created in
+            // code rather than declared in tauri.conf.json — the plugin only
+            // restores declared windows on its own. A saved position on a
+            // display that is no longer there is dropped by the plugin, so a
+            // laptop that comes back without its second screen still opens
+            // somewhere visible.
+            let _ = window.restore_state(WINDOW_STATE);
             Ok(())
         })
         .run(tauri::generate_context!())
