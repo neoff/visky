@@ -5,6 +5,7 @@ import TrackPlayer, {__load, __player, __reset} from '../__mocks__/trackPlayer'
 import {
   __resetReconciler,
   isApplyingRemote,
+  justActedLocally,
   reconcile,
   restoreCached,
   runLocalAction,
@@ -432,5 +433,31 @@ describe('a seek on the device that owns the sound', () => {
     )
 
     expect(__player.position).toBe(1_200)
+  })
+})
+
+/**
+ * "Проиграло 3 секунды и замолчало, даже не пытается восстановиться."
+ *
+ * The sync hook stays quiet when a PASSIVE device loads the track the session
+ * already names — that is the reconciler putting it on screen. A tap on that
+ * same row looks identical from outside, so the takeover was never announced:
+ * the claim lapsed, the next frame still named the other device, and the sound
+ * was paused a few seconds in with nothing to recover from.
+ */
+describe('a deliberate action on a passive device', () => {
+  it('is distinguishable from the reconciler restoring the same track', async () => {
+    expect(justActedLocally()).toBe(false)
+
+    await runLocalAction(async () => undefined)
+
+    expect(justActedLocally()).toBe(true)
+  })
+
+  it('goes quiet again once the window has passed', async () => {
+    await runLocalAction(async () => undefined)
+    // the file runs on fake timers, so this moves Date.now with them
+    jest.advanceTimersByTime(60_000)
+    expect(justActedLocally()).toBe(false)
   })
 })

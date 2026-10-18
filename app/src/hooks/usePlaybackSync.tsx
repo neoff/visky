@@ -6,7 +6,13 @@ import {useSession} from '@/components/SessionProvider'
 import {deviceLabel} from '@/helpers/device'
 import {trackKey} from '@/helpers/miscellaneous'
 import {registerPlaybackDevice} from '@/helpers/network'
-import {isApplyingRemote, reconcile, restoreCached, sessionPositionFor} from '@/services/playbackReconciler'
+import {
+  isApplyingRemote,
+  justActedLocally,
+  reconcile,
+  restoreCached,
+  sessionPositionFor,
+} from '@/services/playbackReconciler'
 import {playbackSync} from '@/services/playbackSync'
 import {listenForWakePush, registerForWakePush} from '@/services/pushWake'
 import {usePlaybackStore} from '@/store/playback'
@@ -126,7 +132,12 @@ export const usePlaybackSync = () => {
     // takes over: it also starts playback, which the state handler below sees.
     const store = usePlaybackStore.getState()
     const passive = store.state?.active_device_id !== store.deviceId
-    if (passive && store.state?.track?.track_id === ref.track_id) return
+    // ...unless the user just asked for it HERE. A tap on the row the session
+    // already names looks exactly like the restore above, and staying quiet
+    // about it left this device playing a track nobody had been told about:
+    // the claim lapsed, the next frame still named the other device, and the
+    // reconciler paused the sound a few seconds in.
+    if (passive && store.state?.track?.track_id === ref.track_id && !justActedLocally()) return
     const {position} = await TrackPlayer.getProgress()
     playbackSync.sendUpdate({
       track: ref,

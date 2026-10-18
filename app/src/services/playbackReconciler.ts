@@ -52,6 +52,7 @@ export const __resetReconciler = (): void => {
   lastAppliedVersion = -1
   lastAppliedPlaying = null
   claim = null
+  lastLocalActionAt = 0
 }
 
 /**
@@ -80,6 +81,9 @@ let claim: {until: number; version: number} | null = null
 
 /** Longest a claim is honoured without the server answering. */
 const CLAIM_TIMEOUT_MS = 5_000
+
+/** When the user last asked this device for something. See justActedLocally. */
+let lastLocalActionAt = 0
 
 /**
  * Run a queue change the USER asked for.
@@ -111,15 +115,32 @@ const CLAIM_TIMEOUT_MS = 5_000
 export const runLocalAction = async <T>(work: () => Promise<T>): Promise<T> => {
   const version = usePlaybackStore.getState().state?.version ?? 0
   claim = {until: Date.now() + CLAIM_TIMEOUT_MS, version}
+  lastLocalActionAt = Date.now()
   let result: T
   await serialize(async () => {
     result = await work()
     // Measured from the END of the work: `reset` + `add` + `play` over a slow
     // network can outlast the deadline all by itself.
     claim = {until: Date.now() + CLAIM_TIMEOUT_MS, version}
+    lastLocalActionAt = Date.now()
   })
   return result!
 }
+
+/**
+ * Did the USER just do something here?
+ *
+ * The sync hook stays quiet when a passive device loads the very track the
+ * session already names, because that is the reconciler putting it on screen
+ * rather than anyone asking for it. A tap on that same row is indistinguishable
+ * from the outside — and swallowing it meant the device played, never announced
+ * the takeover, and was paused by the next frame a few seconds later, with
+ * nothing to recover from because the app believed it was correctly passive.
+ *
+ * So the question is asked of this module instead, which knows the difference.
+ */
+export const justActedLocally = (withinMs: number = CLAIM_TIMEOUT_MS): boolean =>
+  Date.now() - lastLocalActionAt < withinMs
 
 const withApplying = async (work: () => Promise<void>): Promise<void> => {
   applying = true
