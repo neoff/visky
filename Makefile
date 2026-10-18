@@ -97,11 +97,18 @@ INSTALL_CMD = src="$$(ls -dt "$(ROOT)"/desktop/dist/visky.app \
 	  "$(ROOT)"/desktop/dist-mas/visky.app \
 	  "$(ROOT)"/desktop-electron/dist/*/visky.app 2>/dev/null | head -1)"; \
 	if [ -z "$$src" ]; then echo "!! no built visky.app — run make desktop first" >&2; exit 1; fi; \
-	echo "==> installing $$src -> /Applications/visky.app"; \
-	rm -rf /Applications/visky.app; \
-	ditto "$$src" /Applications/visky.app; \
-	xattr -dr com.apple.quarantine /Applications/visky.app 2>/dev/null || true; \
-	echo "==> installed. open -a visky"
+	dest=/Applications/visky.app; \
+	if [ -e "$$dest/Contents/_MASReceipt" ] || { [ -e "$$dest" ] && [ ! -w "$$dest" ]; }; then \
+	  echo "   /Applications holds a Mac App Store copy (root-owned); it cannot be replaced from here"; \
+	  mkdir -p "$$HOME/Applications"; dest="$$HOME/Applications/visky.app"; \
+	fi; \
+	echo "==> installing $$src -> $$dest"; \
+	rm -rf "$$dest" || { echo "!! could not remove $$dest" >&2; exit 1; }; \
+	ditto "$$src" "$$dest" || { echo "!! could not copy the build into $$dest" >&2; exit 1; }; \
+	[ -x "$$dest/Contents/MacOS/visky" ] || { echo "!! $$dest is not a working bundle after the copy" >&2; exit 1; }; \
+	xattr -dr com.apple.quarantine "$$dest" 2>/dev/null || true; \
+	echo "==> installed $$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$$dest/Contents/Info.plist" 2>/dev/null) -> $$dest"; \
+	echo "    open \"$$dest\""
 
 DESKTOP_CMD = $(DESKTOP_SHELL_CMD)$(if $(call on,install), && { $(INSTALL_CMD); },)
 
