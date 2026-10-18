@@ -7,6 +7,7 @@ import FastImage from "react-native-fast-image";
 import TrackPlayer, {Track, TrackType} from 'react-native-track-player';
 import { TrackListItem } from './TrackListItem';
 import {useQueue} from "@/store/queue";
+import {fetchTrackById} from "@/helpers/network";
 import {runLocalAction} from "@/services/playbackReconciler";
 import {beginTrackSwitch, endTrackSwitch} from "@/store/trackSwitch";
 import {FlashList, FlashListProps} from "@shopify/flash-list";
@@ -47,16 +48,35 @@ export const TrackList = ({
     const playableTracks = (tracks.filter((item) => !isSection(item)) as Track[]).filter(
       (track) => typeof track.url === 'string' && track.url.trim().length > 0,
     )
-    const trackIndex = playableTracks.findIndex((track) => isSameTrack(track, selectedTrack))
-    if (trackIndex === -1) {
-      console.warn('Selected track has no playable URL', selectedTrack.id)
-      return
-    }
+    let trackIndex = playableTracks.findIndex((track) => isSameTrack(track, selectedTrack))
 
     // A tap on a row is the same promise as a tap on ⏭ — the sound starts now
     // — and the same wait can sit behind it, so it gets the same spinner.
+    //
+    // STARTED BEFORE ANYTHING CAN FAIL. This used to sit below a `return` taken
+    // when the row carried no stream, so a tap on such a row did nothing at
+    // all: no spinner, no message, one console line nobody can read in a
+    // release build. "Тыкаю и ничего не происходит" is that line.
     beginTrackSwitch()
     try {
+      // No stream on the row is not the end of it. VK signs its urls and they
+      // age out, and a list restored from the cache is full of old ones — so
+      // ask the API for a fresh one before giving up on the track.
+      if (trackIndex === -1) {
+        const raw = selectedTrack as {owner_id?: number | string; id?: number | string}
+        const fresh =
+          raw.owner_id != null && raw.id != null
+            ? ((await fetchTrackById(raw.owner_id, raw.id)) as Track | null)
+            : null
+        if (!fresh?.url) {
+          endTrackSwitch()
+          console.warn('==list: no stream for', trackKey(selectedTrack as never), '— VK has none')
+          return
+        }
+        playableTracks.unshift({...selectedTrack, ...fresh})
+        trackIndex = 0
+      }
+
       // Inside the session's own lock. The reconciler rebuilds the queue from
       // the account's playback state, and on a device that has just connected
       // it does so at an unpredictable moment — right on top of this, which is
