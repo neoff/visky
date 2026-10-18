@@ -502,19 +502,21 @@ index afa6b0f..c417e7b 100644
              ?.emit(event, payload)
      }
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
-index 5953276..6e1f841 100644
+index 5953276..157a19a 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
 +++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
-@@ -7,6 +7,8 @@ export class Player {
+@@ -7,6 +7,10 @@ export class Player {
      _current = undefined;
      _playWhenReady = false;
      _state = { state: State.None };
 +    /** PATCHED. The shaka PreloadManager parked for the next track, if any. */
 +    preloaded;
++    /** PATCHED. Set by TrackPlayerModule; reports a stream that died. */
++    onFatalError;
      // current getter/setter
      get current() {
          return this._current;
-@@ -70,11 +72,27 @@ export class Player {
+@@ -70,11 +74,37 @@ export class Player {
          this.player.addEventListener('buffering', ({ buffering }) => {
              if (buffering === true) {
                  this.onStateUpdate(State.Buffering);
@@ -528,7 +530,17 @@ index 5953276..6e1f841 100644
 +            // element, so `playing` never comes. The state stayed Buffering for
 +            // the rest of the show: every list row kept a spinner on a track
 +            // that was audibly playing (issue #7).
-+            this.onStateUpdate(this.element?.paused ? State.Paused : State.Playing);
++            // The INTENT first, the element second. Buffering ends a beat before
++            // playback resumes — `goToIndex` calls `play()` right after the
++            // load — so asking `element.paused` at this instant answers
++            // "paused" about a track that is about to play, and the app
++            // believes it: the button flips to ▶, the row goes quiet, and the
++            // session is told the sound stopped. `playWhenReady` is what the
++            // player was ASKED to do, and the element's own `playing`/`pause`
++            // events correct the answer either way.
++            this.onStateUpdate(
++                this.playWhenReady || !this.element?.paused ? State.Playing : State.Paused,
++            );
          });
          // Attach player to the window to make it easy to access in the JS console.
          // @ts-ignore
@@ -542,7 +554,23 @@ index 5953276..6e1f841 100644
          this.hasInitialized = true;
      }
      /**
-@@ -99,9 +117,70 @@ export class Player {
+@@ -86,6 +116,15 @@ export class Player {
+     onError(error) {
+         // unload the current track to allow for clean playback on other
+         this.player?.unload();
++        // PATCHED. Tell the APP, not just the console.
++        //
++        // A shaka error is where a stream dies — VK's CDN answers 503 for a
++        // segment and the show stops — and upstream records it as a state and
++        // logs it. Nothing emits PlaybackError, which is the event the app
++        // listens to in order to re-sign the url and pick the track back up
++        // (services/recovery). Without this the desktop simply went quiet and
++        // never tried again, which is exactly what issue #5 describes.
++        this.onFatalError?.(error);
+         this.state = {
+             state: State.Error,
+             error: {
+@@ -99,9 +138,70 @@ export class Player {
      /**
       * player control
       */
@@ -613,7 +641,7 @@ index 5953276..6e1f841 100644
          await this.player.load(track.url);
          this.current = track;
      }
-@@ -113,6 +192,7 @@ export class Player {
+@@ -113,6 +213,7 @@ export class Player {
      async stop() {
          if (!this.player)
              throw new SetupNotCalledError();
@@ -697,10 +725,10 @@ index 67b34a4..772e876 100644
      async removeUpcomingTracks() {
          if (this.currentIndex === undefined)
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js b/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js
-index 08c7d3c..54f8833 100644
+index 08c7d3c..fd11459 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js
 +++ b/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js
-@@ -76,6 +76,20 @@ export class TrackPlayerModule extends PlaylistPlayer {
+@@ -76,6 +76,34 @@ export class TrackPlayerModule extends PlaylistPlayer {
              clearInterval(this.progressUpdateEventInterval);
          }
      }
@@ -712,6 +740,20 @@ index 08c7d3c..54f8833 100644
 +     * the only difference is WHICH queue entry is broken: the one after the
 +     * track that just ended, not the active one.
 +     */
++    /**
++     * PATCHED. The stream this track is playing from has failed.
++     *
++     * Emitted as an ordinary PlaybackError so the app's recovery hears it: it
++     * re-signs the url and restarts the track where it was cut off. The code
++     * carries shaka's own number — 1001 is an HTTP error, which is what a VK
++     * segment answering 503 looks like from in here.
++     */
++    onFatalError = (error) => {
++        this.emitter.emit(Event.PlaybackError, {
++            code: `stream_failed_${error?.code ?? 'unknown'}`,
++            message: error?.message ?? 'the stream failed',
++        });
++    };
 +    onNextTrackFailed = (error) => {
 +        this.emitter.emit(Event.PlaybackError, {
 +            code: 'next_track_load_failed',

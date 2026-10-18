@@ -215,3 +215,24 @@ describe('resetting the queue', () => {
     expect(player.loads).toEqual([track(5).url])
   })
 })
+
+/**
+ * "Проиграло и замолчало, даже не пытается восстановиться."
+ *
+ * A stream dies — VK's CDN answered 503 for a segment, which reaches shaka as
+ * error 1001 — and upstream recorded it as a state and a console line. The app
+ * listens for PlaybackError to re-sign the url and pick the track back up
+ * (services/recovery); nothing emitted it, so the desktop went quiet for good.
+ */
+describe('a stream that fails mid-track', () => {
+  it('is reported to the app, not only to the console', async () => {
+    const player = new Harness([track(1)], 0)
+    const seen: unknown[] = []
+    ;(player as any).onFatalError = (error: unknown) => seen.push(error)
+
+    ;(player as any).onError({code: 1001, message: 'HTTP error'})
+
+    expect(seen).toHaveLength(1)
+    expect((seen[0] as {code: number}).code).toBe(1001)
+  })
+})
