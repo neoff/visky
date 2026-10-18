@@ -622,7 +622,7 @@ index 5953276..6e1f841 100644
          await this.player.unload();
      }
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
-index 67b34a4..d8426c2 100644
+index 67b34a4..772e876 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
 +++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/PlaylistPlayer.js
 @@ -4,6 +4,8 @@ import { State } from '../../src';
@@ -677,6 +677,25 @@ index 67b34a4..d8426c2 100644
          }
          if (initialPosition) {
              this.seekTo(initialPosition);
+@@ -137,6 +163,18 @@ export class PlaylistPlayer extends Player {
+     async reset() {
+         await this.stop();
+         this.playlist = [];
++        // PATCHED. The index has to go with the queue it pointed into.
++        //
++        // Upstream empties the playlist and leaves `_currentIndex` where it
++        // was, and `add()` only loads a track when that index is undefined —
++        // so the reset + add + play that starts a DIFFERENT list added the new
++        // queue, loaded nothing, and `play()` carried on with the track that
++        // was already in the element. Tap "Firmament Part 1", keep hearing
++        // "Seventeen Part 2". Everything that asks the player where it is was
++        // wrong too: the stale index now points into a queue it never belonged
++        // to.
++        this._currentIndex = undefined;
++        this.lastIndex = undefined;
+     }
+     async removeUpcomingTracks() {
+         if (this.currentIndex === undefined)
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js b/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js
 index 08c7d3c..54f8833 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayerModule.js

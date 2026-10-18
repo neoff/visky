@@ -177,3 +177,41 @@ describe('a parked preload', () => {
     expect(player.index).toBe(1)
   })
 })
+
+/**
+ * "Кликаю на Firmament Part 1, а продолжает играть Seventeen Part 2."
+ *
+ * Starting a track from a list the player is not already holding is
+ * reset -> add -> play. Upstream's `reset()` empties the playlist and leaves
+ * the active index where it was, and `add()` loads the first track only when
+ * that index is undefined — so nothing was ever loaded, `play()` carried on
+ * with the track still in the element, and the stale index pointed into a
+ * queue it had never belonged to.
+ */
+describe('resetting the queue', () => {
+  it('forgets which track was active, so the next add loads one', async () => {
+    const player = new Harness([track(1), track(2), track(3)], 2)
+
+    await player.reset()
+
+    expect(player.index).toBeUndefined()
+
+    await player.add([track(7), track(8)])
+
+    expect(player.index).toBe(0)
+    expect(player.loads).toEqual([track(7).url])
+  })
+
+  it('does not resume the old track when a new list is started', async () => {
+    const player = new Harness([track(1), track(2)], 1)
+    player.loads.length = 0
+
+    // what a tap on a row does for a list the player is not holding
+    await player.reset()
+    await player.add([track(5), track(6)])
+
+    // the track that was playing before is not among the loads, and the one
+    // the user asked for is
+    expect(player.loads).toEqual([track(5).url])
+  })
+})

@@ -91,6 +91,12 @@ export const TrackList = ({
 
         await TrackPlayer.reset()
         await TrackPlayer.add(queue)
+        // Said out loud rather than left to `add`, which starts the first
+        // track only when the player holds no active index. The web player
+        // used to keep that index across a reset and quietly load nothing —
+        // the tap added the new queue and the PREVIOUS track kept playing (the
+        // patch fixes that at the source; this does not depend on it).
+        await TrackPlayer.skip(0)
         await TrackPlayer.play()
 
         setActiveQueueId(id)
