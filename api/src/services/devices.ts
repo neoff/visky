@@ -209,6 +209,29 @@ export const revokeDevice = async (userId: string, deviceId: string): Promise<bo
 };
 
 /**
+ * Let an installation back in.
+ *
+ * The one act that lifts a revocation, and it is not an ordinary request:
+ * a pairing is authorised ON an already-signed-in device, whose credentials
+ * were verified before the slot was filled (router/api/pair.ts). Handing the
+ * session to this screen IS the account saying "this one, again".
+ *
+ * Without it a revoked installation is bricked rather than signed out: it pairs,
+ * receives a session, and the first call it makes is refused with
+ * `device_revoked`, which makes the app throw that session away. From the
+ * outside — scan the QR, use the app, reopen it, scan again, for ever.
+ */
+export const clearRevocation = async (userId: string, deviceId: string): Promise<void> => {
+  await hydrate(userId);
+  const row = bucket(userId).get(deviceId);
+  if (!row || row.revoked_at === null) return;
+  row.revoked_at = null;
+  row.checked_at = Date.now();
+  await persist(row);
+  console.log(`==playback: revocation lifted by pairing user=${userId} device=${deviceId}`);
+};
+
+/**
  * May this installation still speak for this account?
  *
  * Answered from the cache, with the negative answer re-read from Postgres every

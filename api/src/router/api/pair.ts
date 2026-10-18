@@ -17,6 +17,7 @@ import {
   peekPairing,
   PAIR_TTL_MS,
 } from "@/services/pairing";
+import {clearRevocation} from "@/services/devices";
 import {verifyCredentials} from "@/services/session";
 import {Request, Response} from "@/types";
 
@@ -136,7 +137,7 @@ pair.post("/:idOrCode/claim", checkAuthAndroid, async (req: Request, res: Respon
  * and an nginx in front of it is more moving parts than a 1.5s poll over three
  * minutes is worth.
  */
-pair.get("/:id", (req: Request, res: Response) => {
+pair.get("/:id", async (req: Request, res: Response) => {
   const result = collectPairing(String(req.params.id));
 
   if (result.kind === "gone") {
@@ -146,6 +147,32 @@ pair.get("/:id", (req: Request, res: Response) => {
   if (result.kind === "pending") {
     res.status(204).end();
     return;
+  }
+
+  // The screen names itself on the way in, and collecting a session lifts any
+  // revocation standing against it.
+  //
+  // A revoked installation was otherwise bricked rather than signed out:
+  // `touchDevice` carries `revoked_at` forward on purpose — a device must not
+  // un-revoke itself by merely asking for something — so the screen paired,
+  // received a session, and had its very first request refused with
+  // `device_revoked`, which makes the app drop the session. Scan the QR, use
+  // the app, reopen it, scan again, for ever. This is the one place where the
+  // account has said otherwise: the phone that filled this slot had its own
+  // credentials verified first (POST /:idOrCode/claim above), and a pairing is
+  // a person at the screen being let in deliberately.
+  // Bounded and shaped, because it is used to look a row up: our own ids are
+  // 16 lowercase alphanumerics, but an id minted by an older build — or by the
+  // backend's own generator — is not something to be strict about beyond this.
+  const device = String(req.header("x-auth-device") ?? "").trim();
+  if (device && /^[A-Za-z0-9._-]{1,64}$/.test(device)) {
+    try {
+      await clearRevocation(String(result.session.user_id), device);
+    } catch (error) {
+      // Never between the user and their session: the worst case is the old
+      // behaviour, and the app says plainly that the device was signed out.
+      console.error("==pair: could not lift the revocation:", (error as Error)?.message ?? error);
+    }
   }
 
   console.log("==pair: delivered a session to", String(req.params.id).slice(0, 8));

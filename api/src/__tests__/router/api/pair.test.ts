@@ -109,3 +109,58 @@ describe('/api/pair', () => {
     await request(app).post('/api/pair/ZZZZZZZZ/claim').send({}).expect(410);
   });
 });
+
+/**
+ * "Логинюсь на маке через QR, закрываю приложение, открываю — опять логиниться."
+ *
+ * `touchDevice` carries a revocation forward on purpose, so a device cannot
+ * un-revoke itself by merely asking for something. A PAIRING is not that: the
+ * phone's own credentials were verified before it filled the slot, and handing
+ * the session to this screen is the account letting that installation back in.
+ * Without this, a revoked device pairs, gets a session, is refused on its very
+ * first request with `device_revoked`, and throws the session away — which
+ * looks exactly like a login that does not stick.
+ */
+describe('a screen that was signed out earlier', () => {
+  it('is let back in by the pairing that hands it a session', async () => {
+    const {touchDevice, revokeDevice, isDeviceRevoked} = require('@/services/devices')
+    // the screen has to be known before it can be signed out
+    await touchDevice('4242', {device_id: 'mac-device', name: 'Mac', platform: 'web'})
+    await revokeDevice('4242', 'mac-device')
+    expect(await isDeviceRevoked('4242', 'mac-device')).toBe(true)
+
+    const ticket = await open()
+    await request(app)
+      .post(`/api/pair/${ticket.pair_id}/claim`)
+      .set('x-auth-user', '4242')
+      .send({})
+      .expect(200)
+
+    await request(app)
+      .get(`/api/pair/${ticket.pair_id}`)
+      .set('x-auth-device', 'mac-device')
+      .expect(200)
+
+    expect(await isDeviceRevoked('4242', 'mac-device')).toBe(false)
+  })
+
+  it('does not lift a revocation for a device that did not collect anything', async () => {
+    const {touchDevice, revokeDevice, isDeviceRevoked} = require('@/services/devices')
+    await touchDevice('4242', {device_id: 'other-device', name: 'Phone', platform: 'ios'})
+    await revokeDevice('4242', 'other-device')
+
+    const ticket = await open()
+    await request(app)
+      .post(`/api/pair/${ticket.pair_id}/claim`)
+      .set('x-auth-user', '4242')
+      .send({})
+      .expect(200)
+
+    await request(app)
+      .get(`/api/pair/${ticket.pair_id}`)
+      .set('x-auth-device', 'mac-device')
+      .expect(200)
+
+    expect(await isDeviceRevoked('4242', 'other-device')).toBe(true)
+  })
+})

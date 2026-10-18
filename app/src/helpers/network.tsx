@@ -599,8 +599,14 @@ export const claimPairing = async (
 export const collectPairing = async (
   pairId: string,
 ): Promise<{state: 'pending'} | {state: 'gone'} | {state: 'session'; session: AuthFragments}> => {
+  // This screen has no session yet, so it carries no credentials — but it does
+  // say WHICH installation is collecting, because the server lifts a standing
+  // revocation for exactly that device when it hands the session over. Without
+  // the header a device that was ever signed out can pair and still be refused
+  // on its first request, which looks like "the QR login does not stick".
+  const deviceId = await ensureDeviceId()
   const response = await axios.get(`${apiUrls.pairUrl}/${encodeURIComponent(pairId)}`, {
-    headers,
+    headers: {...headers, ...(deviceId ? {'x-auth-device': deviceId} : {})},
     validateStatus: (status) => status === 200 || status === 204 || status === 410,
   });
 
