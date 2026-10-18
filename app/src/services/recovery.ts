@@ -62,6 +62,44 @@ const FINISHED_SLACK_SECONDS = 15
 
 const attempts = new Map<string, {count: number; at: number}>()
 
+/**
+ * Giving up on a track is not the same as giving up on the show.
+ *
+ * VK's own player does this: a track that will not start is left behind and the
+ * next one begins. Ours used to stop dead instead — the silence the listener
+ * reports as "I tap and nothing happens". Bounded, because a queue where every
+ * link is dead must not be walked end to end one API call at a time.
+ */
+const MAX_SKIPS = 3
+const SKIP_WINDOW_MS = 30_000
+let skips: number[] = []
+
+const mayMoveOn = (): boolean => {
+  const now = Date.now()
+  skips = skips.filter((at) => now - at < SKIP_WINDOW_MS)
+  if (skips.length >= MAX_SKIPS) return false
+  skips.push(now)
+  return true
+}
+
+/** Leave the track that will not play and start the next one. */
+const moveOn = async (key: string | undefined, why: string): Promise<boolean> => {
+  if (!mayMoveOn()) {
+    console.warn('==recovery: too many dead tracks in a row — stopping here')
+    return false
+  }
+  try {
+    await TrackPlayer.skipToNext()
+    await TrackPlayer.play()
+    console.warn('==recovery: moved past', key ?? 'a track', '—', why)
+    return true
+  } catch (error) {
+    // the end of the queue is not a failure, it is the end of the queue
+    console.warn('==recovery: nothing to move on to', (error as Error)?.message ?? error)
+    return false
+  }
+}
+
 /** Where the show is right now, kept from the progress ticks. */
 let playing: {position: number; duration: number} = {position: 0, duration: 0}
 
@@ -70,6 +108,7 @@ let left: {key: string; position: number; finished: boolean; at: number} | null 
 
 export const __resetRecovery = (): void => {
   attempts.clear()
+  skips = []
   playing = {position: 0, duration: 0}
   left = null
 }
@@ -107,18 +146,27 @@ export const noteActiveTrackChanged = (event: {
   playing = {position: 0, duration: 0}
 }
 
-const mayTry = (key: string): boolean => {
+/**
+ * Three different answers, because they mean three different things.
+ *
+ * `duplicate` is the same failure reported twice — the players do that — and
+ * the right response is to ignore it. `exhausted` is a track that has had its
+ * tries and is not coming back, which is when the show moves on. Collapsing the
+ * two made a double report skip a track that was merely being re-signed.
+ */
+type Verdict = 'ok' | 'duplicate' | 'exhausted'
+
+const mayTry = (key: string): Verdict => {
   const now = Date.now()
   const seen = attempts.get(key)
   if (!seen || now - seen.at > ATTEMPT_WINDOW_MS) {
     attempts.set(key, {count: 1, at: now})
-    return true
+    return 'ok'
   }
-  // the same failure reported twice
-  if (now - seen.at < DEDUPE_MS) return false
-  if (seen.count >= MAX_ATTEMPTS) return false
+  if (now - seen.at < DEDUPE_MS) return 'duplicate'
+  if (seen.count >= MAX_ATTEMPTS) return 'exhausted'
   attempts.set(key, {count: seen.count + 1, at: now})
-  return true
+  return 'ok'
 }
 
 /** The track with a freshly signed url, or null if the API cannot say. */
@@ -164,9 +212,11 @@ export const recoverFromPlaybackError = async (failedAt: FailedAt): Promise<bool
     if (!broken) return false
 
     const key = trackKey(broken as never)
-    if (!key || !mayTry(key)) {
+    const verdict = key ? mayTry(key) : 'duplicate'
+    if (verdict === 'duplicate') return false
+    if (verdict === 'exhausted') {
       console.warn('==recovery: giving up on', key)
-      return false
+      return await moveOn(key, 'it has failed too many times')
     }
 
     // Where to come back to. A hand-over that never happened has nothing to
@@ -182,7 +232,7 @@ export const recoverFromPlaybackError = async (failedAt: FailedAt): Promise<bool
         : 0
 
     const fixed = await resign(broken)
-    if (!fixed) return false
+    if (!fixed) return await moveOn(key, 'VK has no stream for it')
 
     if (failedAt === 'current' && !cutOff) {
       // `load` replaces what the player holds without touching the queue —

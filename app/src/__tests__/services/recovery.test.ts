@@ -82,10 +82,12 @@ describe('picking playback back up after a track would not load', () => {
     fetchTrackById.mockClear()
     __load([track(1), track(2)], 0, true)
 
+    // the fifth report does not re-sign it; the show moves past it instead
     const fifth = await recoverFromPlaybackError('next')
 
-    expect(fifth).toBe(false)
+    expect(fifth).toBe(true)
     expect(fetchTrackById).not.toHaveBeenCalled()
+    expect(__player.index).toBe(1)
     now.mockRestore()
   })
 
@@ -110,11 +112,52 @@ describe('picking playback back up after a track would not load', () => {
     __load([track(1), track(2)], 0, true)
     fetchTrackById.mockResolvedValue({...track(2), url: ''})
 
-    const recovered = await recoverFromPlaybackError('next')
+    await recoverFromPlaybackError('next')
 
-    expect(recovered).toBe(false)
-    expect(__player.index).toBe(0)
+    // the entry is not rewritten; moving on is a separate decision, below
     expect(__player.queue[1].url).toBe('https://cdn.vk.com/2/old.m3u8')
+  })
+
+  /**
+   * VK's own player does this: a track that will not start is left behind and
+   * the next one begins. Ours used to stop dead — the silence a listener
+   * reports as "I tap and nothing plays".
+   */
+  describe('a track that cannot be played at all', () => {
+    it('is left behind for the next one', async () => {
+      __load([track(1), track(2)], 0, true)
+      fetchTrackById.mockResolvedValue({...track(1), url: ''})
+
+      const recovered = await recoverFromPlaybackError('current')
+
+      expect(recovered).toBe(true)
+      expect(__player.index).toBe(1)
+      expect(TrackPlayer.play).toHaveBeenCalled()
+    })
+
+    it('stops rather than walking a queue where everything is dead', async () => {
+      fetchTrackById.mockResolvedValue({url: ''})
+      const now = jest.spyOn(Date, 'now')
+      let clock = 5_000_000
+      now.mockImplementation(() => clock)
+
+      for (let i = 0; i < 3; i += 1) {
+        __load([track(1), track(2), track(3), track(4), track(5)], i, true)
+        expect(await recoverFromPlaybackError('current')).toBe(true)
+        clock += 1_000
+      }
+
+      __load([track(1), track(2), track(3), track(4), track(5)], 3, true)
+      expect(await recoverFromPlaybackError('current')).toBe(false)
+      now.mockRestore()
+    })
+
+    it('says so at the end of the queue instead of pretending', async () => {
+      __load([track(1)], 0, true)
+      fetchTrackById.mockResolvedValue({...track(1), url: ''})
+
+      expect(await recoverFromPlaybackError('current')).toBe(false)
+    })
   })
 
   /**
