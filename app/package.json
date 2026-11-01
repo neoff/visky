@@ -1,6 +1,6 @@
 {
   "name": "visky",
-  "version": "1.5.57",
+  "version": "1.5.59",
   "main": "index.js",
   "scripts": {
     "android": "expo run:android",
