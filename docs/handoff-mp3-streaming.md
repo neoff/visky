@@ -1,55 +1,79 @@
-# Handoff — why our streams break, and the mp3 lead
+# Handoff — why our streams break, and the mp3 lead (closed)
 
 Written 2026-10-19, at the end of a long session, for the one that picks this up
-with a fresh context. The next piece of work is **getting VK's mp3 stream
-instead of its HLS one**; everything below is what is already known, already
-fixed, and already ruled out, so none of it has to be rediscovered.
+with a fresh context. The mp3 lead that gave this file its name was chased down
+on 2026-10-19 and **closed** — the section below says what it turned out to be,
+so it does not get re-opened. Everything after it is what is already known,
+already fixed, and already ruled out.
 
 ---
 
-## The open problem
+## The mp3 lead — closed, and what it actually was
 
-VK hands the same track out in two different shapes, and we are taking the
-fragile one.
+The premise in the first draft of this file was wrong. It said VK's own web
+player streams a progressive `amp2/<hash>.mp3` with byte ranges while we get
+HLS. Measured in the controlled browser on `vk.ru/audios-42311167`, with the
+same account, VK's web player requests exactly what we do:
 
-| | VK's own web player | our app |
-|---|---|---|
-| host | `psv4.vkuseraudio.**ru**` | `psv4.vkuseraudio.**net**` |
-| url | `/s/v1/amp2/<hash>.mp3?siren=1` | `/s/v1/a2/<hash>/index.m3u8?siren=1` |
-| transport | one file, byte ranges — **206 Partial Content** | HLS: manifest, `key.pub`, then `seg-NN-a2.ts` |
-| where it comes from | `POST vk.ru/al_audio.php?act=start_playback` (web client) | `audio.get` / `audio.getById` with the Kate Mobile token |
-| how it fails | once, at the start, visibly | mid-track: `seg-00` 200, `seg-01` 200, `seg-02` **503**, retry **404** |
+```
+psv4.vkuseraudio.ru/s/v1/a2/<hash>/seg-NN-a2.ts?siren=1   → 200
+```
 
-Captured on 2026-10-18 in a browser, from the group page
-`https://vk.ru/audios-42311167`, with the same account that the app uses.
+No `.mp3` request at all, for any track played. `a2` → `amp2` is not a rewrite
+that exists: those paths answer 404 and 418.
 
-The hashes and the path prefixes differ (`amp2` vs `a2`), so **one url cannot be
-rewritten into the other** — they are separately signed objects. Getting the mp3
-means getting it from VK, not deriving it.
+### What the segments really contain
 
-### Why it matters
+A `.ts` segment demuxed by hand (ES on PID 256) begins `FF FB E2 44` —
+**MPEG-1 Layer III, 320 kbps, 44.1 kHz**. VK slices a finished mp3 into a TS
+container; it is not AAC and there is no transcode anywhere in the chain.
+Concatenating the elementary streams of seg-00..02 of one `ac` track yields a
+file `file(1)` calls `MPEG ADTS, layer III, v1, 320 kbps, 44.1 kHz, Stereo`,
+carrying an ID3v2.4 tag and a Xing/Info header, 995 frames, 25.99 s against the
+manifest's 25.97 s.
 
-Every "the music stopped" report in this project traces back to a segment that
-did not arrive. A progressive mp3 with Range requests has one failure point at
-the start; the HLS chain has one per segment, and VK's CDN is currently
-unreliable enough that a show rarely survives an hour.
+So the mp3 exists, but only as the segments themselves. Obtaining it means
+downloading them and stitching them somewhere. That was weighed and
+**declined**: the API hands out links, it does not carry audio. No segment
+proxy, no server-side stitching, no `/stream/*.mp3` endpoint.
 
-### Where to look first
+### The two url families
 
-* `api/src/helper/vk.ts` — `vkMethod`, and the request signature
-  (`sig = md5(url + secret)`, `device_id` is part of it). Whatever call returns
-  the mp3 will have to be signed the same way.
-* `api/src/router/api/playlist.ts` — `getPlaylistData` calls `audio.get`, and
-  `formatPlaylist`/`cleanupData` shape what the app receives. The url the app
-  plays is whatever lands in `TrackItem.url` here.
-* `app/src/services/*` — the app plays it as `TrackType.HLS`. A progressive mp3
-  would be `TrackType.Default`, and the web player (shaka) would stop being
-  involved at all on the desktop, which removes a whole class of the problems
-  fixed this week.
-* Questions worth answering in that order: does `audio.get` return an mp3 url
-  for a different `v=` or a different client token? Is `al_audio.php` reachable
-  with the credentials we hold (it is a web-session endpoint, not an API one)?
-  What does `siren=1` mean — it is present in both forms?
+`audio.get` returns, for the 98 tracks of the group:
+
+| family | host | count | note |
+|---|---|---|---|
+| `/s/v1/ac/` | `cs9-*`, `cs1-*` | 54 | `EXT-X-KEY` AES-128 on **seg-00 only**, then `METHOD=NONE`; key at `.../key.pub?siren=1`, IV = 0 |
+| `/s/v1/a2/` | `psv4` | 39 | no key, clear from the first segment |
+| — | — | 5 | empty `url` — the dead tracks `5f9f528` skips past |
+
+### What was ruled out while closing it
+
+* **`.net` vs `.ru` is nothing.** Both resolve to `ps.userapi.com`
+  (`87.240.190.76`, `87.240.190.89`); the signed hash is host-agnostic — a hash
+  minted for the web on `.ru` serves from `.net` and the other way round. A fair
+  interleaved sweep of cold segments on both hosts: 60/60 × 200, no difference.
+  The earlier asymmetry was a cold cache and a transient.
+* **Stale urls are not the failure.** The urls sitting in the desktop app's
+  mmkv (`mmkv.playlist.songs-window`, 12 h old) still answer 200, manifest and
+  segments alike. The signature outlives a listening session.
+* **The CDN was healthy on 10-19.** A freshly minted `ac` track, swept from the
+  user's own network: 182/182 segments 200, none slower than 2 s. From a
+  different network the same day, single segments stalled past 20 s and then
+  answered 200 — the same shape as the 503s of 10-18, i.e. VK's edge having a
+  bad spell rather than a standing condition.
+* **The API calls need the Android UA.** `VKAndroidApp/4.13.1-1206 (...)`, which
+  `AndroidClient` already sends. The identical signed request with a Kate Mobile
+  UA comes back `error 8 Invalid request` — worth knowing before blaming the
+  signature.
+
+### What is left of the problem
+
+Every "the music stopped" report is still a segment that did not arrive, and
+the remedy left on the table is **client-side**: segment retry and timeout
+policy in shaka (desktop) and in ExoPlayer / AVPlayer (phones), on top of the
+recovery that `20d9ce3` and `5f9f528` already added. Nothing about the url
+shape will help, and the API's part of this is finished.
 
 ---
 
@@ -120,7 +144,7 @@ closed. #6 (seek) is open pending confirmation.
 
 ## Still open
 
-1. The mp3 lead above.
+1. Segment retry/timeout policy on the clients (the mp3 lead above is closed).
 2. Phones are two weeks behind; `6536aa3` and the pairing fix matter to them.
 3. Stores are on 1.5.53.
 4. The api log redaction.
