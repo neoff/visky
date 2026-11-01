@@ -173,12 +173,16 @@ const playlistUrl: string = `${baseUrl}/playlist`
 const playerUrl: string = `${baseUrl}/player`
 // The rendezvous a screen with no session opens so a phone can fill it.
 const pairUrl: string = `${baseUrl}/pair`
+// Which release the server belongs to. Asked for without credentials, because
+// the build most likely to be behind is the one that cannot sign in.
+const versionUrl: string = `${baseUrl}/version`
 export const apiUrls = {
   baseUrl: baseUrl,
   authUrl: authUrl,
   playlistUrl: playlistUrl,
   playerUrl: playerUrl,
   pairUrl: pairUrl,
+  versionUrl: versionUrl,
   oAuthUrl: `${authUrl}/vk-oauth`,
   // Real VK login by default. `baseHost` already points at the local API in dev
   // (10.0.2.2:3000 on Android), so dev exercises the SAME VK login page, grant

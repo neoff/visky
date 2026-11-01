@@ -624,3 +624,24 @@ export const collectPairing = async (
   }
   return {state: 'session', session};
 };
+
+/**
+ * Which release the server belongs to.
+ *
+ * Plain `fetch`, not `apiRequest`: the route takes no credentials and this must
+ * answer on a screen that has none — and a 401 from the interceptor would
+ * otherwise sign the device out over a version check.
+ */
+export const fetchLatestVersion = async (): Promise<string | null> => {
+  try {
+    const response = await fetch(apiUrls.versionUrl)
+    if (!response.ok) return null
+    const body = (await response.json()) as {version?: string}
+    return typeof body?.version === 'string' && body.version ? body.version : null
+  } catch (error) {
+    // A version check is the least important request the app makes; an offline
+    // launch must not spend a warning on it.
+    console.debug('==update: could not ask for the current version', error)
+    return null
+  }
+}

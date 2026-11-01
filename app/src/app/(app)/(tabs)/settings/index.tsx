@@ -2,12 +2,19 @@ import {iconStyles, welcomeStyles} from "@/styles"
 import {ActivityIndicator, Image, Pressable, StyleSheet, Switch, Text, View} from "react-native"
 import React, {useCallback, useEffect, useState} from "react";
 import Icon from "react-native-vector-icons/FontAwesome";
-import {router} from "expo-router";
+import {router, useFocusEffect} from "expo-router";
 import {useSession} from "@/components/SessionProvider";
 import {apiUrls, colors, fonts} from "@/constants";
 import {loadProfile, syncFriskyFavorites, VkProfile} from "@/helpers/network";
 import {usePlaybackStore} from "@/store/playback";
 import {useSettingsStore} from "@/store/settings";
+import {
+  checkForUpdate,
+  currentVersion,
+  openStore,
+  updateAction,
+  useAvailableUpdate,
+} from "@/store/update";
 
 /**
  * The screen used to read `state.user` — a prop that a route component never
@@ -71,6 +78,19 @@ const SettingsScreen = () => {
       setSyncing(false);
     }
   }, [syncing]);
+
+  // ASKED AGAIN EVERY TIME THIS TAB IS OPENED, not once when it mounts.
+  //
+  // The tab stays mounted for the life of the app, so a `useEffect` here would
+  // have run on the morning the app was launched and never again — and this
+  // screen is where somebody goes to find out what they are running. The
+  // launch-time check lives in the tabs layout; this is the second one the
+  // listener can trigger deliberately.
+  useFocusEffect(useCallback(() => {
+    checkForUpdate();
+  }, []));
+
+  const update = useAvailableUpdate();
 
   const logout = () => {
     signOut();
@@ -161,6 +181,33 @@ const SettingsScreen = () => {
           ) : (
             <Icon name="chevron-right" size={14} color={colors.textMutedDarker}/>
           )}
+        </Pressable>
+
+        {/* What this build is, and whether it is the current one. A row rather
+            than a line of small print: when there IS a newer version it has
+            somewhere to go, and the store is one tap away. */}
+        <Pressable
+          onPress={update ? () => void openStore() : undefined}
+          disabled={!update}
+          style={({pressed}) => [styles.menuRow, pressed && update && styles.menuPressed]}
+        >
+          <Icon
+            name={update ? 'arrow-circle-up' : 'check-circle'}
+            size={20}
+            color={update ? colors.primary : colors.icon}
+            style={styles.menuIcon}
+          />
+          <View style={styles.menuText}>
+            <Text style={styles.menuLabel}>
+              {update ? `Version ${update} is available` : `Version ${currentVersion}`}
+            </Text>
+            <Text style={styles.menuHint}>
+              {update
+                ? `${updateAction} — you are on ${currentVersion}`
+                : 'This is the current release'}
+            </Text>
+          </View>
+          {update && <Icon name="chevron-right" size={14} color={colors.textMutedDarker}/>}
         </Pressable>
 
         <View style={styles.logout}>

@@ -4,6 +4,7 @@ import {api} from "@/router/api/playlist";
 import {auth} from "@/router/api/auth";
 import {pair} from "@/router/api/pair";
 import {player} from "@/router/api/player";
+import {version} from "@/router/api/version";
 import {authForm} from "@/router/authForm";
 import {errorHandler} from "@/router/middleware/error.middleware";
 import webRouter from "@/router/web";
@@ -17,6 +18,8 @@ app.use("/api/auth", auth);
 app.use("/api/oauth", auth);
 app.use("/api/playlist", api);
 app.use("/api/player", player);
+// What the current release is, so a client can tell it is behind one.
+app.use("/api/version", version);
 // Handing a phone session to a screen that cannot log in on its own.
 app.use("/api/pair", pair);
 

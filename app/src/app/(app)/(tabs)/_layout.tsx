@@ -1,15 +1,29 @@
 import {colors, fonts, layout} from "@/constants"
 import {Tabs} from "expo-router"
-import React from "react"
-import {ColorValue, StyleSheet, View} from "react-native";
+import React, {useEffect} from "react"
+import {AppState, ColorValue, StyleSheet, View} from "react-native";
 import {FontAwesome, FontAwesome6, Ionicons, MaterialCommunityIcons} from "@expo/vector-icons";
 import {FloatingPlayer} from "@/components/FloatingPlayer";
+import {UpdateBanner} from "@/components/UpdateBanner";
+import {checkForUpdate} from "@/store/update";
 import {useLastActiveTrack} from "@/hooks/useLastActiveTrack";
 import {useActiveTrack} from "react-native-track-player";
 import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 export default function TabsLayout(){
   const {bottom} = useSafeAreaInsets()
+
+  // Asked once on the way in, and again whenever the app comes back to the
+  // front. The second one is the case that matters: a phone that spent a week
+  // in a pocket between shows was launched long before the release it is now
+  // behind, and nothing else would ever ask again.
+  useEffect(() => {
+    checkForUpdate()
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkForUpdate()
+    })
+    return () => subscription.remove()
+  }, [])
 
   // One height for both platforms: a fixed content height plus the real bottom
   // inset. The mini player is pinned to exactly that height, so it always sits
@@ -125,6 +139,17 @@ export default function TabsLayout(){
           left: 0,
           right: 0,
           bottom: tabBarHeight,
+        }}
+      />
+
+      {/* Above the mini player, on the same stack of plates: the notice is
+          furniture, not a dialog, and it must never cover the transport. */}
+      <UpdateBanner
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: tabBarHeight + (hasMiniPlayer ? layout.floatingPlayerHeight : 0),
         }}
       />
     </>
