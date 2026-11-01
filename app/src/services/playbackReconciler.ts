@@ -56,6 +56,39 @@ export const __resetReconciler = (): void => {
 }
 
 /**
+ * Longest a single job may hold the queue.
+ *
+ * A player call that never comes back is not a hypothetical: on the desktop the
+ * webview plays HLS itself, and a VK segment that simply stalls leaves
+ * `load()` pending with no error and no deadline of its own. Everything behind
+ * it in the chain — every later tap on a row — waited for a promise that was
+ * never going to settle, so the app went quietly deaf until it was restarted:
+ * the spinner ran out its own 20 seconds and the track never changed.
+ *
+ * Shorter than that spinner (store/trackSwitch), so the tap is answered with a
+ * failure the caller can report rather than with a timer running out.
+ */
+const JOB_DEADLINE_MS = 15_000
+
+/**
+ * The work, or a rejection — never a promise that hangs forever.
+ *
+ * The job itself is NOT cancelled, because there is nothing here that could
+ * cancel a load already inside the player. It is let go of: the queue stops
+ * waiting for it and the next job gets its turn.
+ */
+const withDeadline = <T>(work: () => Promise<T>): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`a playback job did not settle in ${JOB_DEADLINE_MS}ms`)),
+      JOB_DEADLINE_MS,
+    )
+    work()
+      .then(resolve, reject)
+      .finally(() => clearTimeout(timer))
+  })
+
+/**
  * One job at a time.
  *
  * The cached restore and the first frame from the socket arrive within
@@ -63,11 +96,20 @@ export const __resetReconciler = (): void => {
  * they each reset the queue under the other's feet — the player ends up loading
  * twice and firing `ended` on a track nobody finished. Serialising them means
  * the second one finds the track already loaded and does nothing.
+ *
+ * The chain itself is kept settled: what the CALLER gets may reject (the
+ * deadline above, or the work's own error), what the next job waits on never
+ * does.
  */
 let chain: Promise<void> = Promise.resolve()
 const serialize = (work: () => Promise<void>): Promise<void> => {
-  chain = chain.then(work, work)
-  return chain
+  const run = () => withDeadline(work)
+  const result = chain.then(run, run)
+  chain = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
 }
 
 /**
@@ -334,7 +376,11 @@ export const restoreCached = async (state: PlaybackState): Promise<void> => {
     if (await TrackPlayer.getActiveTrack()) return
     if (!(await ensureTrackLoaded(state))) return
     await TrackPlayer.seekTo(state.position_ms / 1000)
-  }))
+  })).catch((error) => {
+    // The deadline, or the restore's own failure. Neither is worth throwing out
+    // of a cold start: the socket's first frame decides what plays anyway.
+    console.warn('==playback: could not restore the cached track', error)
+  })
 }
 
 /**
@@ -395,5 +441,9 @@ export const reconcile = async (state: PlaybackState): Promise<void> => {
     } catch (error) {
       console.warn('==playback: could not apply the session state', error)
     }
+  }).catch((error) => {
+    // Only the deadline can land here — the work above swallows its own errors.
+    // A frame that could not be applied is history by the next one.
+    console.warn('==playback: gave up on a session frame', error)
   })
 }

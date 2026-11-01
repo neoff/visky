@@ -2,6 +2,8 @@ import TrackPlayer, { Event, State } from "react-native-track-player";
 import { prefetchNextTrack } from "@/services/prefetch";
 import { noteActiveTrackChanged, notePosition, recoverFromPlaybackError } from "@/services/recovery";
 import { runLocalAction } from "@/services/playbackReconciler";
+import { playbackSync } from "@/services/playbackSync";
+import { trackKey } from "@/helpers/miscellaneous";
 import { startCarLink } from "@/services/car";
 import { startWatchLink } from "@/services/watch";
 
@@ -78,6 +80,34 @@ const PlayerRegisterService = async () => {
     // the event and nowhere else by the time an error arrives.
     TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event) => {
       noteActiveTrackChanged(event);
+    });
+
+    // The scrubber on the car's screen, and the one on the lock screen.
+    //
+    // Nothing used to listen for this, and nothing advertised `SeekTo` either
+    // (services/trackPlayer) — so the head unit drew a progress bar that was
+    // inert by design: dragging it changed nothing, in either direction.
+    //
+    // Treated exactly like a drag on the app's own bar: inside the session's
+    // claim, so a frame written before the drag does not seek back on top of
+    // it; remembered, so a failure afterwards does not restart the track at
+    // the position this just left; and announced, so the other devices and the
+    // account follow within a frame instead of at the next heartbeat.
+    TrackPlayer.addEventListener(Event.RemoteSeek, async (event) => {
+      const position = event.position
+      if (!Number.isFinite(position) || position < 0) return
+      try {
+        await runLocalAction(() => TrackPlayer.seekTo(position))
+        const {duration} = await TrackPlayer.getProgress()
+        notePosition(position, duration)
+        playbackSync.sendProgress(
+          position * 1000,
+          await TrackPlayer.getPlayWhenReady(),
+          trackKey((await TrackPlayer.getActiveTrack()) as never) ?? undefined,
+        )
+      } catch (error) {
+        console.warn('==car: could not seek to', position, error)
+      }
     });
 
     TrackPlayer.addEventListener(Event.RemoteStop, () => {

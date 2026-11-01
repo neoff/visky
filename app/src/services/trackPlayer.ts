@@ -35,11 +35,20 @@ const setupPlayer = async () => {
       // false = a short interruption ducks instead of pausing
       alwaysPauseOnInterruption: false,
     },
+    // WHAT THE CAR, THE LOCK SCREEN AND THE WATCH ARE ALLOWED TO ASK FOR.
+    //
+    // These are not decoration: each one is a command the platform ENABLES in
+    // MPRemoteCommandCenter (and in the Android media session), and a control
+    // whose command was never enabled is drawn greyed out and ignores every
+    // touch. `SeekTo` was missing, which is why the scrubber on the CarPlay
+    // Now Playing screen did nothing at all — there is no bug to find in the
+    // head unit, it was never told the position could be changed.
     capabilities: [
       Capability.Play,
       Capability.Pause,
       Capability.SkipToNext,
       Capability.SkipToPrevious,
+      Capability.SeekTo,
       Capability.Stop,
     ],
   })

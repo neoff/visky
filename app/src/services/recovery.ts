@@ -225,11 +225,27 @@ export const recoverFromPlaybackError = async (failedAt: FailedAt): Promise<bool
     // took over. For the ordinary in-place failure the remembered tick is the
     // backstop, because a player that has just errored can report 0.
     const progress = failedAt === 'current' ? (await TrackPlayer.getProgress()).position : 0
-    const position = cutOff
+    const remembered = cutOff
       ? left!.position
       : failedAt === 'current'
         ? Math.max(progress, playing.position)
         : 0
+
+    // A TRACK IS NOT RESUMED INTO ITS OWN ENDING.
+    //
+    // The remembered position is the last progress tick, and ticks stop when
+    // playback does — so a track that ran out leaves one a breath from the
+    // end. Restarting there put the show back at the finish line it had just
+    // crossed: it ended again at once, which failed again, which restarted it
+    // there again. From the outside the player sat on a minute and a half of
+    // the last track and refused to leave it, however the bar was tapped.
+    //
+    // Whatever the listener asked for by then, it was not the last two seconds
+    // of a track that had already finished, so this one starts from the top.
+    const brokenDuration = Number((broken as {duration?: number}).duration ?? 0)
+    const atTheEnd =
+      brokenDuration > 0 && remembered >= brokenDuration - FINISHED_SLACK_SECONDS
+    const position = atTheEnd ? 0 : remembered
 
     const fixed = await resign(broken)
     if (!fixed) return await moveOn(key, 'VK has no stream for it')

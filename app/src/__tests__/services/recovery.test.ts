@@ -222,3 +222,40 @@ describe('picking playback back up after a track would not load', () => {
     expect(fetchTrackById).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * "Куда бы я ни кликнул на полосе перемотки, играет от -01:35."
+ *
+ * The track had run out; the remembered position was its last progress tick, a
+ * breath from the end. Every failure after that restarted the track there, so
+ * the show sat on the last minute and a half and came back to it however the
+ * bar was tapped.
+ */
+describe('a track that had already finished', () => {
+  it('is restarted from the top, not from its own ending', async () => {
+    const show = {...track(1), duration: 3_545}
+    __load([show], 0, true)
+    // the last tick before it ran out
+    __player.position = 3_543
+    notePosition(3_543, 3_545)
+    fetchTrackById.mockResolvedValue({...show, url: 'https://cdn.vk.com/1/fresh.m3u8'})
+
+    const recovered = await recoverFromPlaybackError('current')
+
+    expect(recovered).toBe(true)
+    expect(TrackPlayer.seekTo).not.toHaveBeenCalled()
+  })
+
+  it('still resumes a track that broke in the middle', async () => {
+    const show = {...track(1), duration: 3_545}
+    __load([show], 0, true)
+    __player.position = 1_800
+    notePosition(1_800, 3_545)
+    fetchTrackById.mockResolvedValue({...show, url: 'https://cdn.vk.com/1/fresh.m3u8'})
+
+    const recovered = await recoverFromPlaybackError('current')
+
+    expect(recovered).toBe(true)
+    expect(TrackPlayer.seekTo).toHaveBeenCalledWith(1_800)
+  })
+})

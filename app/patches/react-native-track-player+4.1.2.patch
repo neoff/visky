@@ -502,10 +502,28 @@ index afa6b0f..c417e7b 100644
              ?.emit(event, payload)
      }
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
-index 5953276..157a19a 100644
+index 5953276..451ac58 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
 +++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
-@@ -7,6 +7,10 @@ export class Player {
+@@ -1,5 +1,17 @@
+ import { State } from '../../src/constants/State';
+ import { SetupNotCalledError } from './SetupNotCalledError';
++/**
++ * PATCHED. Longest a load may take before it is treated as a failure.
++ *
++ * shaka's own retry parameters cover the case where it fetches the media
++ * itself. They do NOT cover `src=` mode — which is what the desktop runs,
++ * because the webview plays HLS natively — where the load resolves on the
++ * element's own events and a VK segment that merely stalls produces no event at
++ * all. The promise then stays pending for ever: the track never changes, no
++ * error is reported, and every later call queued behind it in the app waits on
++ * it. Restarting the app was the only way out.
++ */
++const LOAD_DEADLINE_MS = 12000;
+ export class Player {
+     hasInitialized = false;
+     element;
+@@ -7,6 +19,10 @@ export class Player {
      _current = undefined;
      _playWhenReady = false;
      _state = { state: State.None };
@@ -516,7 +534,7 @@ index 5953276..157a19a 100644
      // current getter/setter
      get current() {
          return this._current;
-@@ -70,11 +74,37 @@ export class Player {
+@@ -70,11 +86,37 @@ export class Player {
          this.player.addEventListener('buffering', ({ buffering }) => {
              if (buffering === true) {
                  this.onStateUpdate(State.Buffering);
@@ -554,7 +572,7 @@ index 5953276..157a19a 100644
          this.hasInitialized = true;
      }
      /**
-@@ -86,6 +116,15 @@ export class Player {
+@@ -86,6 +128,15 @@ export class Player {
      onError(error) {
          // unload the current track to allow for clean playback on other
          this.player?.unload();
@@ -570,7 +588,7 @@ index 5953276..157a19a 100644
          this.state = {
              state: State.Error,
              error: {
-@@ -99,9 +138,70 @@ export class Player {
+@@ -99,10 +150,121 @@ export class Player {
      /**
       * player control
       */
@@ -614,9 +632,34 @@ index 5953276..157a19a 100644
 +        this.preloaded = undefined;
 +        held?.manager?.destroy?.().catch(() => undefined);
 +    }
++    /**
++     * PATCHED. Run a load, or fail — but never wait for ever.
++     *
++     * The load is not cancelled on a timeout, there is no way to cancel one
++     * from here; the player is unloaded instead, which is what shaka does for
++     * any other fatal error, and the failure is reported so the app can re-sign
++     * the url and try again (services/recovery).
++     */
++    async loadWithin(start) {
++        let timer;
++        try {
++            await Promise.race([
++                start(),
++                new Promise((_, reject) => {
++                    timer = setTimeout(() => {
++                        reject(new Error(`the stream did not start within ${LOAD_DEADLINE_MS}ms`));
++                    }, LOAD_DEADLINE_MS);
++                }),
++            ]);
++        }
++        finally {
++            clearTimeout(timer);
++        }
++    }
      async load(track) {
          if (!this.player)
              throw new SetupNotCalledError();
+-        await this.player.load(track.url);
 +        // PATCHED. Adopt the parked preload when it is this track, so the
 +        // hand-over is a swap rather than a fetch. Anything else is stale by
 +        // definition — the queue moved somewhere we did not predict — and is
@@ -625,7 +668,7 @@ index 5953276..157a19a 100644
 +        this.preloaded = undefined;
 +        if (held && held.url === track.url) {
 +            try {
-+                await this.player.load(held.manager);
++                await this.loadWithin(() => this.player.load(held.manager));
 +                this.current = track;
 +                return;
 +            }
@@ -638,10 +681,37 @@ index 5953276..157a19a 100644
 +        else {
 +            held?.manager?.destroy?.().catch(() => undefined);
 +        }
-         await this.player.load(track.url);
++        try {
++            await this.loadWithin(() => this.player.load(track.url));
++        }
++        catch (error) {
++            // PATCHED. A stream that never started is a stream that failed.
++            //
++            // Unloaded, so the element is not left half-attached to it — and
++            // then THROWN, with nothing announced from here. Whose failure this
++            // is depends entirely on who asked for the load, and only the
++            // caller knows: at a hand-over it is the NEXT track
++            // (PlaylistPlayer.onTrackEnded reports it as such), on a tap it is
++            // the row the user picked and the list says so itself.
++            //
++            // Reporting it here as an ordinary fatal error — which is what the
++            // first version of this did — told the app the CURRENT stream had
++            // died. At the end of a track that is the track which had just
++            // finished, so the recovery re-signed it, loaded it again, seeked
++            // to its end and let it finish a second time, and the show stopped
++            // instead of moving on.
++            console.warn('==rntp-web: the stream did not start', track.url, error);
++            this.player?.unload().catch(() => undefined);
++            this.state = {
++                state: State.Error,
++                error: { code: 'load_timeout', message: error?.message ?? 'the stream did not start' },
++            };
++            throw error;
++        }
          this.current = track;
      }
-@@ -113,6 +213,7 @@ export class Player {
+     async retry() {
+@@ -113,6 +275,7 @@ export class Player {
      async stop() {
          if (!this.player)
              throw new SetupNotCalledError();

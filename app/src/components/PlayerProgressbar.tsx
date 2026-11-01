@@ -4,6 +4,7 @@ import TrackPlayer, {useActiveTrack, useProgress} from "react-native-track-playe
 import {useSharedValue} from "react-native-reanimated";
 import {formatSecondsToMinutes, trackKey} from "@/helpers/miscellaneous";
 import {runLocalAction} from "@/services/playbackReconciler";
+import {notePosition} from "@/services/recovery";
 import {playbackSync} from "@/services/playbackSync";
 import {Slider} from "react-native-awesome-slider";
 import {progressBarStyles, utilsStyles} from "@/styles";
@@ -106,6 +107,14 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
         // one, which means the reconciler believes them and seeks BACK. That
         // reads as "the bar moved and the sound did not".
         await runLocalAction(() => TrackPlayer.seekTo(target))
+        // The recovery remembers where the show was, and it learns that from
+        // the progress ticks — which stop coming the moment playback does. A
+        // track that has just ended therefore leaves a position frozen at its
+        // last tick, and the next failure restarts the track THERE, undoing
+        // this seek: wherever the bar was tapped, the sound came back a minute
+        // and a half from the end, again and again. A deliberate seek is the
+        // one other thing that moves the needle, so it says so.
+        notePosition(target, duration)
         // ...and tell the session straight away. Nothing else reports a seek:
         // play/pause is what the state listener watches, so until the next
         // five-second heartbeat the account still thought the show was where it

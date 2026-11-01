@@ -461,3 +461,27 @@ describe('a deliberate action on a passive device', () => {
     expect(justActedLocally()).toBe(false)
   })
 })
+
+/**
+ * "Кликаю на другой трек, крутилка крутится на старом, ничего не меняется."
+ *
+ * The desktop plays HLS through the webview itself, and a VK segment that
+ * stalls leaves the player's `load()` pending with no error of its own. That
+ * promise sat at the head of this queue, so every later tap waited behind it
+ * for ever: the app went deaf until it was restarted. A job that does not
+ * settle is now let go of, and the queue moves on without it.
+ */
+describe('a job that never comes back', () => {
+  it('does not take every later tap down with it', async () => {
+    const stuck = runLocalAction(() => new Promise<void>(() => undefined))
+    const outcome = stuck.then(() => 'settled', () => 'given up on')
+
+    await jest.advanceTimersByTimeAsync(20_000)
+    await expect(outcome).resolves.toBe('given up on')
+
+    const afterwards = jest.fn(async () => undefined)
+    await runLocalAction(afterwards)
+
+    expect(afterwards).toHaveBeenCalled()
+  })
+})
