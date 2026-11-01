@@ -9,7 +9,7 @@
  * "promote" button in the console does.
  *
  * Usage:
- *   play-promote.js <versionCode> [track] [--notes-file FILE] [--fraction 0.2]
+ *   play-promote.js <versionCode> [track] [--notes-file FILE] [--fraction 0.2] [--countries all]
  *   play-promote.js 103 production --notes-file release-notes.md
  *   play-promote.js 103 production --dry-run
  *
@@ -18,6 +18,12 @@
  * repo root and are written for the listing's default language — Play rejects a
  * release note over 500 characters, so that is checked here rather than at the
  * end of a commit.
+ *
+ * `--countries all` (or a list: `--countries US,DE`) sets where the release is
+ * available. A testing track that has never been used targets NOWHERE, and Play
+ * refuses the commit with "Release in track targeting no countries" — a 403
+ * that says nothing about which knob it means. On a closed track `all` is not
+ * as broad as it sounds: only the testers on the list ever see it.
  *
  * Auth is the same service-account json in certs/ that play-upload.js uses.
  *
@@ -102,18 +108,20 @@ async function main() {
   let track = null
   let notesFile = null
   let fraction = null
+  let countries = null
   let dryRun = false
 
   while (args.length) {
     const arg = args.shift()
     if (arg === '--notes-file') notesFile = args.shift() ?? die('--notes-file needs a value')
     else if (arg === '--fraction') fraction = Number(args.shift())
+    else if (arg === '--countries') countries = (args.shift() ?? die('--countries needs a value')).trim()
     else if (arg === '--dry-run') dryRun = true
     else if (/^\d+$/.test(arg)) code = arg
     else if (!track) track = arg
     else die(`unknown argument: ${arg}`)
   }
-  if (!code) die('usage: play-promote.js <versionCode> [track] [--notes-file FILE] [--fraction 0.2] [--dry-run]')
+  if (!code) die('usage: play-promote.js <versionCode> [track] [--notes-file FILE] [--fraction 0.2] [--countries all] [--dry-run]')
   track = track || 'internal'
   if (fraction !== null && !(fraction > 0 && fraction < 1)) die('--fraction must be between 0 and 1')
 
@@ -140,15 +148,26 @@ async function main() {
   const details = await call(`${app}/edits/${edit.id}/details`, { headers: auth }, 'details.get')
   const language = details.defaultLanguage || 'en-US'
 
+  const targeting =
+    countries === null
+      ? null
+      : countries.toLowerCase() === 'all'
+        ? { includeRestOfWorld: true }
+        : { countries: countries.split(',').map((c) => c.trim().toUpperCase()).filter(Boolean) }
+
   const release = {
     versionCodes: [code],
     status: fraction === null ? 'completed' : 'inProgress',
     releaseNotes: [{ language, text: notes }],
     ...(fraction === null ? {} : { userFraction: fraction }),
+    ...(targeting === null ? {} : { countryTargeting: targeting }),
   }
 
   console.log(`==> ${track}: version code ${code}, ${release.status}${fraction === null ? '' : ` at ${fraction * 100}%`}`)
   console.log(`    notes[${language}] ${notes.length} chars`)
+  if (targeting) {
+    console.log(`    countries: ${targeting.includeRestOfWorld ? 'rest of world' : targeting.countries.join(', ')}`)
+  }
 
   if (dryRun) {
     await fetch(`${app}/edits/${edit.id}`, { method: 'DELETE', headers: auth })
