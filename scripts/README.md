@@ -178,6 +178,14 @@ on every localization, attaches the build, and submits for review — reusing an
 open submission rather than opening a second one, so the reviewer's message
 thread stays in one place.
 
+**Three notes files, because the stores are not one audience.**
+`release-notes.md` is the default and the iOS text, `release-notes-macos.md`
+adds the window-behaviour lines that mean nothing on a phone, and
+`release-notes-play.md` is the same release inside Play's 500-character limit.
+Pass them with `--notes-file` here and with the same flag on
+`lib/play-promote.js`. What's New stays editable while a version waits for
+review, so a correction does not cost the place in the queue.
+
 **Release notes or nothing.** Apple requires What's New on an update and leaves
 it empty on a new version record — the rest of the metadata is inherited, that
 one field never is. With neither `--notes` nor `--notes-file`, `release-notes.md`
