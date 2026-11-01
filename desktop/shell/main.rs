@@ -21,7 +21,7 @@
 // What is left is the window itself.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{LogicalSize, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 #[cfg(target_os = "macos")]
@@ -140,6 +140,32 @@ fn main() {
             // laptop that comes back without its second screen still opens
             // somewhere visible.
             let _ = window.restore_state(WINDOW_STATE);
+
+            // THE SAVED SIZE IS IN PHYSICAL PIXELS, and the window does not
+            // always come back to the display it was saved on.
+            //
+            // tauri-plugin-window-state writes `inner_size()` straight out and
+            // hands it back to `set_size(PhysicalSize)`. On one display that
+            // round-trips exactly. Moved between the external 1080p screen
+            // (scale 1) and the laptop's Retina one (scale 2), the same numbers
+            // mean half the window: 480x1000 saved outside came back as a
+            // 240x500 slab with the tab bar sitting on top of the list. The
+            // logical minimum width does not stop it — the plugin sets physical
+            // pixels, which no minimum is expressed in.
+            //
+            // So the restored size is read back in LOGICAL units and re-applied
+            // as logical: the width is the fixed one it has always been, and
+            // the height is whatever was restored, kept inside the same bounds
+            // the builder declares. On the display it was left on this changes
+            // nothing.
+            if let (Ok(scale), Ok(size)) = (window.scale_factor(), window.inner_size()) {
+                let height = size
+                    .to_logical::<f64>(scale)
+                    .height
+                    .clamp(WINDOW_MIN_HEIGHT, WINDOW_MAX_HEIGHT);
+                let _ = window.set_size(LogicalSize::new(WINDOW_WIDTH, height));
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())
