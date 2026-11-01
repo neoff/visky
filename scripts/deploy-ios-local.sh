@@ -42,6 +42,29 @@ APP_DIR="$ROOT/app"
 # Override for a build against something else: API_URL=http://192.168.1.5:3000
 export EXPO_PUBLIC_API_URL="${API_URL:-https://frisky.envarg.com}"
 
+# EVERYTHING IS COMPILED HERE, NOTHING IS TAKEN PRECOMPILED.
+#
+# React Native and Expo both ship prebuilt XCFrameworks and use them by
+# default, which is faster — until the local Xcode is newer than the one they
+# were published with. A Swift module interface is not forward compatible, and
+# the error says so in as many words:
+#
+#   failed to build module 'ExpoModulesCore'; this SDK is not supported by the
+#   compiler (the SDK is built with 'Apple Swift version 6.3.1', while this
+#   compiler is 'Apple Swift version 6.4')
+#
+# That is this machine today: Xcode 27.1 carries Swift 6.4, Expo published with
+# 6.3.1, and the archive died in ExpoModulesJSI with nothing wrong in our code.
+# Waiting for Expo to republish is not a plan, and there is no older toolchain
+# installed, so the frameworks are built from source against whatever compiler
+# is here. It costs ten minutes of build time and removes a whole class of
+# failure that looks like a code error and is not.
+#
+# The twin of the JDK pin on the Android side (scripts/build-app-local.sh):
+# the toolchain drifts under us, and the scripts are where that is absorbed.
+export RCT_USE_PREBUILT_RNCORE=0
+export EXPO_USE_PRECOMPILED_MODULES=0
+
 IOS_DIR="$APP_DIR/ios"
 BUILD_DIR="$APP_DIR/build/ios-local"
 

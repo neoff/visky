@@ -156,6 +156,49 @@ bundles it produces, and it has no `.pkg` bundler — the installer would have s
 signed but unnotarised, which Gatekeeper blocks exactly as hard as unsigned. Expect
 three round trips to Apple, a few minutes each.
 
+## App Store Connect (the half that was clicks)
+
+### `submit-store.sh` — version record, What's New, build, review submission
+The build scripts stop the moment Apple has the binary, on purpose: a build in
+TestFlight is not a release, and a script that submits as a side effect of
+building is one that submits by accident. This is the deliberate step after.
+
+```bash
+scripts/submit-store.sh                      # both platforms
+scripts/submit-store.sh ios
+scripts/submit-store.sh macos --notes "..."
+scripts/submit-store.sh --notes-file NOTES.md
+scripts/submit-store.sh --no-submit          # prepare and attach, stop there
+scripts/submit-store.sh --dry-run            # say what it would do
+```
+
+It does, per platform, what the browser did: finds the processed build of the
+current version, creates the version record if there is none, writes What's New
+on every localization, attaches the build, and submits for review — reusing an
+open submission rather than opening a second one, so the reviewer's message
+thread stays in one place.
+
+**Release notes or nothing.** Apple requires What's New on an update and leaves
+it empty on a new version record — the rest of the metadata is inherited, that
+one field never is. With neither `--notes` nor `--notes-file`, `release-notes.md`
+at the repo root is used when it exists; otherwise the run stops before it has
+changed anything.
+
+**Waiting is the default.** Apple takes 5-30 minutes to process an upload and
+the build does not exist to the API until it has, so this polls rather than
+failing. `--no-wait` fails immediately instead.
+
+**Nothing reaches users here.** It submits to review. Whether an approved
+version then goes live is the version's own release type, and whether that
+reaches anyone is App Availability — neither is touched. The one exception is
+`--manual-release`, which sets a NEW version record to be held for a manual
+release click instead of going out on approval.
+
+Auth is the App Store Connect API key `deploy-ios.sh` documents, at
+`$ASC_KEY_PATH`. No browser, no Apple ID, no 2FA. The API itself is wrapped in
+`lib/asc-api.js` (the ES256 token, and errors raised as Apple's own wording
+rather than a bare status code); the flow is `lib/asc-release.js`.
+
 ## API (Node/Express, image `varg/visky-api`)
 
 ### `build-api.sh` — build + push Docker image (+ optional deploy)
@@ -236,3 +279,27 @@ git commit -am "chore: version -> $(node -p "require('./api/package.json').versi
 git commit -am "…"          # EAS builds the last commit
 scripts/build-app.sh
 ```
+
+### A whole update, one command
+
+`make release NOTES="..."` runs the lot in the only order that works: tests,
+then the api (its version is the number every client carries), then the three
+clients, then the store. See `make help`.
+
+```bash
+make release NOTES="The Artists tab lists the station's DJs."
+```
+
+Or the same by hand, which is what it expands to:
+
+```bash
+make test                       # red suite now beats a half-published release
+make api                        # bump, build, push, roll out
+make ios -- --local             # xcodebuild here -> App Store Connect
+make desktop -- --mas --upload  # Mac App Store package -> App Store Connect
+make android -- --local         # gradlew here -> Google Play (internal)
+make submit NOTES="..."         # version record, notes, build, submit for review
+```
+
+The store step is last because it needs the uploads to have finished
+processing, and it waits for exactly that.

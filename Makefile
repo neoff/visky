@@ -47,8 +47,16 @@ ARCH      ?= $(if $(call on,universal),universal,$(if $(call on,x64),x64,arm64))
 TRACK     ?= internal
 API_IMAGE ?= varg/visky-api
 
+# Release notes reach the shell through the ENVIRONMENT, not through the
+# command line make builds. Quoting them into a recipe breaks on the first
+# apostrophe, and release notes are prose — "the DJ's own run of shows" would
+# end the quoting halfway and hand the rest to the shell as syntax.
+NOTES      ?=
+NOTES_FILE ?=
+export NOTES NOTES_FILE
+
 .PHONY: help api deploy-api app ios android desktop web deploy-web install \
-        version version-check test lint deps dev-api dev-app scripts
+        submit release version version-check test lint deps dev-api dev-app scripts
 
 # ---------------------------------------------------------------------------
 # the commands, one per destination
@@ -147,6 +155,52 @@ API_BUILD_CMD = BUMP=$(if $(call on,bump-major),major,$(if $(call on,bump-minor)
 
 API_CMD = $(if $(call on,redeploy),$(API_REDEPLOY_CMD),$(API_BUILD_CMD))
 
+# The store side of a release: the version record, What's New, the build and the
+# review submission. Separate from the build targets above because the builds
+# stop at "Apple has the binary" on purpose — see scripts/submit-store.sh.
+SUBMIT_CMD = "$(S)/submit-store.sh" \
+  $(if $(call on,ios),ios,) \
+  $(if $(or $(call on,macos),$(call on,mac)),macos,) \
+  $(if $(NOTES),--notes "$$NOTES",) \
+  $(if $(NOTES_FILE),--notes-file "$$NOTES_FILE",) \
+  $(if $(call on,no-submit),--no-submit,) \
+  $(if $(call on,no-wait),--no-wait,) \
+  $(if $(call on,dry-run),--dry-run,) \
+  $(if $(call on,manual-release),--manual-release,)
+
+# Everything, in the only order that works: the api first because its version is
+# the number every client then carries, the three clients next, the store last
+# because it needs the uploads to have finished processing.
+#
+# THE LOCAL PIPELINES, not the EAS ones. These are what the release actually
+# runs on now — no expo.dev in the path, the working tree is what ships.
+#
+# The desktop build is NOT given --skip-bundle. Nothing before it exports the
+# Expo bundle for web — the iOS step builds a native bundle, which is a
+# different artifact — so skipping would ship whatever desktop/web happened to
+# hold from a previous version, signed and uploaded as this one.
+#
+# Tests run first and run here rather than in a target of their own, because a
+# recipe may not call $(MAKE) (see the header) and a release that discovers a
+# red suite after the api is deployed has already published half of itself.
+#
+# The notes are checked BEFORE the api is bumped. Without that check the whole
+# forty minutes runs and then stops at the last step, with a version already
+# bumped, deployed and uploaded under a number that cannot be reused.
+RELEASE_CMD = \
+	if [ -z "$$NOTES" ] && [ -z "$$NOTES_FILE" ] && [ ! -f "$(ROOT)/release-notes.md" ]; then \
+	  echo "!! no release notes. NOTES=\"...\", NOTES_FILE=path, or write release-notes.md" >&2; \
+	  exit 1; \
+	fi; \
+	echo "==> release: test, api, ios, macos, android, then the store"; \
+	( cd "$(ROOT)/api" && npx jest --silent ) && \
+	( cd "$(ROOT)/app" && npx jest --silent ) && \
+	$(API_BUILD_CMD) && \
+	"$(S)/deploy-ios-local.sh" && \
+	"$(S)/build-desktop-mas.sh" --upload && \
+	"$(S)/build-app-local.sh" --track $(TRACK) && \
+	$(SUBMIT_CMD)
+
 # ---------------------------------------------------------------------------
 # targets
 # ---------------------------------------------------------------------------
@@ -176,6 +230,12 @@ deploy-web:
 
 install:
 	@$(guard); $(INSTALL_CMD)
+
+submit:
+	@$(guard); $(SUBMIT_CMD)
+
+release:
+	@$(guard); $(RELEASE_CMD)
 
 # api/package.json is the single source of the version: every frontend carries
 # the API's number, so a build records the backend contract it was made against.
@@ -242,6 +302,17 @@ help:
 	echo "      -- --electron             the old Electron shell instead of Tauri"; \
 	echo "  make install                  install the newest already-built .app"; \
 	echo; \
+	echo "  make submit                   App Store Connect: version record, release notes,"; \
+	echo "                                attach the build, submit for review (both platforms)"; \
+	echo "      ios | macos               one platform instead of both"; \
+	echo "      NOTES=\"Fixes ...\"         the release notes (or NOTES_FILE=path,"; \
+	echo "                                or write release-notes.md and pass neither)"; \
+	echo "      -- --no-submit            prepare and attach, stop before submitting"; \
+	echo "      -- --dry-run              say what it would do, change nothing"; \
+	echo "      -- --no-wait              fail if a build is still processing"; \
+	echo "      -- --manual-release       hold the approved version for a manual release"; \
+	echo "  make release NOTES=\"...\"      the whole thing: api, ios, macos, android, submit"; \
+	echo; \
 	echo "  make web                      export the player, build + push the nginx image"; \
 	echo "      -- --deploy               ...and roll it out"; \
 	echo "      -- --local                build the image, do not push"; \
@@ -266,10 +337,12 @@ help:
 FLAG_WORDS := \
   dmg pkg skip-bundle run unsigned upload mas electron local serve deploy redeploy \
   no-submit no-upload no-prebuild no-deploy no-bump bump-minor bump-major submit-last \
+  macos mac both all no-wait dry-run manual-release \
   arm64 x64 universal \
   --dmg --pkg --skip-bundle --run --install --unsigned --upload --mas --electron \
   --local --serve --deploy --redeploy --no-submit --no-upload --no-prebuild \
-  --no-deploy --no-bump --bump-minor --bump-major --submit-last --arch
+  --no-deploy --no-bump --bump-minor --bump-major --submit-last --arch \
+  --no-wait --dry-run --manual-release
 
 .PHONY: $(FLAG_WORDS)
 $(FLAG_WORDS):
