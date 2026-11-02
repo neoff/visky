@@ -166,10 +166,16 @@ nav.links a:hover { color: var(--text); }
   object-fit: cover;
   pointer-events: none;
 }
-/* The footage fades in over the drawn room rather than replacing it on load,
+/* The footage fades in UNDER the lights rather than replacing them on load,
    so there is never a frame of empty black waiting for a network. */
-.hero-media video { opacity: 0; transition: opacity 700ms ease; }
+.hero-media video { z-index: 0; opacity: 0; transition: opacity 700ms ease; }
 .hero-media video.playing { opacity: 1; }
+/* The lights sit on top. While footage is playing the canvas carries only the
+   beams and the flashes, and `screen` is what makes them add to the picture
+   underneath instead of painting over it -- normal compositing would lay flat
+   red rectangles across the room. */
+.hero-media canvas { z-index: 1; }
+.hero-media canvas.overlay { mix-blend-mode: screen; }
 .hero-media::after {
   content: '';
   position: absolute;
@@ -754,13 +760,21 @@ button.linkcard {
   if (!slot) return;
 
   const ACCENT = [252, 60, 68];        // --accent, the app's own red
+  const WARM = [255, 206, 128];
   const BPM = 128;                     // the music this app is for
   const BEAT = 60 / BPM;
+  const BAR = BEAT * 4;
 
+  // alpha: true, because this canvas spends most of its life as a layer of
+  // light OVER the footage rather than as the whole picture.
   const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { alpha: false });
+  const ctx = canvas.getContext('2d');
   if (!ctx) return;                    // no 2d context: the flat ground stays
   slot.appendChild(canvas);
+
+  // 'full'    -- the drawn room is the whole background, footage absent
+  // 'overlay' -- footage is playing underneath and this is only the lights
+  let mode = 'full';
 
   let w = 0, h = 0;
   const resize = () => {
@@ -776,16 +790,25 @@ button.linkcard {
   };
   resize();
 
-  // Beams hang from a truss just above the frame and swing on their own
-  // clocks, so the pattern never repeats on a beat the eye can count.
+  // Beams hang from a truss just above the frame. The sweepers swing on their
+  // own clocks, so the pattern never repeats on a beat the eye can count; the
+  // scanners snap to a new angle on every beat instead, which is what actually
+  // reads as a laser rather than as a spotlight.
   const BEAMS = [
-    { x: 0.08, base: 0.55, swing: 0.42, speed: 0.21, phase: 0.0, warm: 0 },
-    { x: 0.26, base: 0.20, swing: 0.34, speed: 0.17, phase: 1.7, warm: 0 },
-    { x: 0.42, base: -0.10, swing: 0.30, speed: 0.27, phase: 3.1, warm: 1 },
-    { x: 0.58, base: 0.10, swing: 0.36, speed: 0.19, phase: 0.8, warm: 0 },
-    { x: 0.74, base: -0.22, swing: 0.31, speed: 0.24, phase: 2.4, warm: 1 },
-    { x: 0.92, base: -0.52, swing: 0.40, speed: 0.15, phase: 4.2, warm: 0 },
+    { x: 0.06, base: 0.62, swing: 0.46, speed: 0.21, phase: 0.0, warm: 0, kind: 'sweep' },
+    { x: 0.18, base: 0.34, swing: 0.38, speed: 0.17, phase: 1.7, warm: 0, kind: 'scan' },
+    { x: 0.30, base: 0.14, swing: 0.34, speed: 0.27, phase: 3.1, warm: 1, kind: 'sweep' },
+    { x: 0.40, base: -0.06, swing: 0.30, speed: 0.33, phase: 5.0, warm: 0, kind: 'scan' },
+    { x: 0.50, base: 0.00, swing: 0.44, speed: 0.19, phase: 0.8, warm: 0, kind: 'sweep' },
+    { x: 0.60, base: 0.06, swing: 0.30, speed: 0.29, phase: 2.2, warm: 1, kind: 'scan' },
+    { x: 0.70, base: -0.18, swing: 0.36, speed: 0.23, phase: 2.4, warm: 0, kind: 'sweep' },
+    { x: 0.82, base: -0.34, swing: 0.32, speed: 0.31, phase: 4.6, warm: 0, kind: 'scan' },
+    { x: 0.94, base: -0.58, swing: 0.44, speed: 0.15, phase: 4.2, warm: 1, kind: 'sweep' },
   ];
+
+  // A fan of thin beams out of one lamp, turning as a whole. One of these
+  // does more for "there are lasers in here" than three more sweepers.
+  const FAN = { x: 0.52, blades: 11, spread: 1.12, speed: 0.13 };
 
   // Haze for the beams to be visible in. Without it they are lines; with it
   // they are light in a room.
@@ -831,96 +854,153 @@ button.linkcard {
   const rgba = (c, a) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
   // 0 on the beat, 1 just before the next one -- the shape everything pulses to
   const since = (t) => (t % BEAT) / BEAT;
-  const pulse = (t) => Math.pow(1 - since(t), 2.4);
+  const pulse = (t) => Math.pow(1 - since(t), 2.2);
+  // a stable pseudo-random number per beat, so a scanner's next angle is
+  // decided once and held rather than drifting
+  const perBeat = (beat, salt) => {
+    let z = Math.imul(beat + salt * 0x85ebca6b, 0x27d4eb2d);
+    z = (z ^ (z >>> 15)) >>> 0;
+    return z / 4294967296;
+  };
+
+  /**
+   * One beam, apex above the frame, thrown past the bottom of it.
+   */
+  const beam = (apexX, angle, colour, strength, spread, apexY, throwTo) => {
+    const reach = throwTo - apexY;
+    const endX = apexX + Math.tan(angle) * reach;
+
+    const g = ctx.createLinearGradient(apexX, apexY, endX, throwTo);
+    g.addColorStop(0, rgba(colour, strength));
+    g.addColorStop(0.35, rgba(colour, strength * 0.5));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(apexX - w * 0.004, apexY);
+    ctx.lineTo(apexX + w * 0.004, apexY);
+    ctx.lineTo(endX + spread, throwTo);
+    ctx.lineTo(endX - spread, throwTo);
+    ctx.closePath();
+    ctx.fill();
+
+    // the hot core
+    ctx.strokeStyle = rgba(colour, Math.min(1, strength * 1.4));
+    ctx.lineWidth = Math.max(1.5, w * 0.0022);
+    ctx.beginPath();
+    ctx.moveTo(apexX, apexY);
+    ctx.lineTo(endX, throwTo);
+    ctx.stroke();
+  };
 
   const draw = (t) => {
     const hit = pulse(t);
+    const beatNo = Math.floor(t / BEAT);
+    const overlay = mode === 'overlay';
+    const apexY = -h * 0.06;
+    const throwTo = h * 1.12;
 
-    // the room itself
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#050505';
-    ctx.fillRect(0, 0, w, h);
+    if (overlay) {
+      // only the light is ours; the room underneath is the footage
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#050505';
+      ctx.fillRect(0, 0, w, h);
 
-    const wash = ctx.createRadialGradient(w * 0.56, h * 0.46, 0, w * 0.56, h * 0.46, Math.max(w, h) * 0.8);
-    wash.addColorStop(0, rgba(ACCENT, 0.46 + hit * 0.16));
-    wash.addColorStop(0.4, rgba(ACCENT, 0.24));
-    wash.addColorStop(0.75, rgba(ACCENT, 0.07));
-    wash.addColorStop(1, 'rgba(0,0,0,0)');
+      const wash = ctx.createRadialGradient(w * 0.56, h * 0.46, 0, w * 0.56, h * 0.46, Math.max(w, h) * 0.8);
+      wash.addColorStop(0, rgba(ACCENT, 0.46 + hit * 0.16));
+      wash.addColorStop(0.4, rgba(ACCENT, 0.24));
+      wash.addColorStop(0.75, rgba(ACCENT, 0.07));
+      wash.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = wash;
+      ctx.fillRect(0, 0, w, h);
+
+      // The screen behind the booth. It is what the crowd is a silhouette
+      // AGAINST -- without something bright low in the frame they are black
+      // shapes on a black floor, which is what the first pass looked like.
+      const stage = ctx.createRadialGradient(w * 0.6, h * 0.58, 0, w * 0.6, h * 0.58, w * 0.42);
+      stage.addColorStop(0, `rgba(255, 190, 150, ${0.3 + hit * 0.22})`);
+      stage.addColorStop(0.3, rgba(ACCENT, 0.3 + hit * 0.14));
+      stage.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = stage;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // everything from here is light, and light adds
     ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = wash;
-    ctx.fillRect(0, 0, w, h);
 
-    // The screen behind the booth. It is what the crowd is a silhouette
-    // AGAINST -- without something bright low in the frame they are black
-    // shapes on a black floor, which is what the first pass looked like.
-    const stage = ctx.createRadialGradient(w * 0.6, h * 0.58, 0, w * 0.6, h * 0.58, w * 0.42);
-    stage.addColorStop(0, `rgba(255, 190, 150, ${0.3 + hit * 0.22})`);
-    stage.addColorStop(0.3, rgba(ACCENT, 0.3 + hit * 0.14));
-    stage.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = stage;
-    ctx.fillRect(0, 0, w, h);
-
-    // haze, under the beams so the beams light it rather than sit on it
-    ctx.globalCompositeOperation = 'lighter';
     for (const cloud of HAZE) {
       const cx = (cloud.x + Math.sin(t * cloud.speed) * cloud.drift) * w;
       const cy = (cloud.y + Math.cos(t * cloud.speed * 0.8) * cloud.drift) * h;
       const r = cloud.r * Math.max(w, h) * 0.5;
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, rgba(ACCENT, 0.12));
+      g.addColorStop(0, rgba(ACCENT, overlay ? 0.07 : 0.12));
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
     }
 
-    // the beams
-    const apexY = -h * 0.06;
-    const throwTo = h * 1.12;
-    for (const beam of BEAMS) {
-      const apexX = beam.x * w;
-      const angle = beam.base + Math.sin(t * beam.speed * Math.PI + beam.phase) * beam.swing;
-      const reach = throwTo - apexY;
-      const endX = apexX + Math.tan(angle) * reach;
-      const spread = w * 0.085 + w * 0.03 * hit;
-      const colour = beam.warm ? [255, 214, 140] : ACCENT;
+    for (let i = 0; i < BEAMS.length; i++) {
+      const b = BEAMS[i];
+      const apexX = b.x * w;
+      let angle;
+      if (b.kind === 'scan') {
+        // snaps to a new angle on each beat and holds it, with just enough
+        // travel inside the beat that it is not a still frame
+        const here = perBeat(beatNo, i) * 2 - 1;
+        const next = perBeat(beatNo + 1, i) * 2 - 1;
+        angle = b.base + (here + (next - here) * 0.18 * since(t)) * b.swing;
+      } else {
+        angle = b.base + Math.sin(t * b.speed * Math.PI + b.phase) * b.swing;
+      }
+      const colour = b.warm ? WARM : ACCENT;
       // a beam brightens on the beat, but each one on its own share of it
-      const strength = 0.4 + hit * 0.34 * (0.6 + 0.4 * Math.sin(beam.phase * 2));
+      const strength = (overlay ? 0.3 : 0.4) + hit * 0.36 * (0.6 + 0.4 * Math.sin(b.phase * 2));
+      beam(apexX, angle, colour, strength, w * 0.075 + w * 0.03 * hit, apexY, throwTo);
 
-      const g = ctx.createLinearGradient(apexX, apexY, endX, throwTo);
-      g.addColorStop(0, rgba(colour, strength));
-      g.addColorStop(0.35, rgba(colour, strength * 0.5));
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.moveTo(apexX - w * 0.004, apexY);
-      ctx.lineTo(apexX + w * 0.004, apexY);
-      ctx.lineTo(endX + spread, throwTo);
-      ctx.lineTo(endX - spread, throwTo);
-      ctx.closePath();
-      ctx.fill();
-
-      // the hot core, and the lamp it comes out of
-      ctx.strokeStyle = rgba(colour, Math.min(1, strength * 1.2));
-      ctx.lineWidth = Math.max(1.5, w * 0.0022);
-      ctx.beginPath();
-      ctx.moveTo(apexX, apexY);
-      ctx.lineTo(endX, throwTo);
-      ctx.stroke();
-
+      // the lamp it comes out of
       const lamp = ctx.createRadialGradient(apexX, apexY + h * 0.05, 0, apexX, apexY + h * 0.05, w * 0.05);
-      lamp.addColorStop(0, rgba(colour, 0.5 + hit * 0.3));
+      lamp.addColorStop(0, rgba(colour, 0.45 + hit * 0.35));
       lamp.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = lamp;
       ctx.fillRect(apexX - w * 0.05, apexY, w * 0.1, h * 0.12);
     }
 
-    // a strobe, every eighth bar rather than every beat: the point of one is
-    // that it is not expected
-    const bar = Math.floor(t / (BEAT * 4));
-    if (bar % 8 === 7 && since(t) < 0.07) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.16 * (1 - since(t) / 0.07)})`;
-      ctx.fillRect(0, 0, w, h);
+    // the fan, turning as one piece
+    const turn = Math.sin(t * FAN.speed * Math.PI) * 0.5;
+    for (let i = 0; i < FAN.blades; i++) {
+      const offset = (i / (FAN.blades - 1) - 0.5) * FAN.spread;
+      beam(
+        FAN.x * w,
+        turn + offset,
+        i % 3 === 1 ? WARM : ACCENT,
+        (overlay ? 0.16 : 0.2) + hit * 0.2,
+        w * 0.012,
+        apexY,
+        throwTo,
+      );
     }
+
+    // Flashes. On the downbeat of every bar, and a second one straight after
+    // it every fourth bar -- which is a little over one flash a second at the
+    // busiest, well inside what is safe to put on a screen, and nothing at all
+    // for somebody who asked for reduced motion.
+    const intoBar = t % BAR;
+    const barNo = Math.floor(t / BAR);
+    const flash = (age, peak) => {
+      if (age < 0 || age > 0.11) return;
+      ctx.fillStyle = `rgba(255, 246, 240, ${peak * (1 - age / 0.11)})`;
+      ctx.fillRect(0, 0, w, h);
+    };
+    flash(intoBar, overlay ? 0.2 : 0.16);
+    if (barNo % 4 === 3) flash(intoBar - 0.17, overlay ? 0.17 : 0.13);
+    if (barNo % 8 === 7) flash(intoBar - BEAT * 2, overlay ? 0.22 : 0.18);
+
+    if (overlay) return;                 // the footage brought its own crowd
 
     // the crowd, in front of the light
     //
@@ -987,25 +1067,19 @@ button.linkcard {
     frame = requestAnimationFrame(tick);
   };
 
-  const settle = () => {
-    stop();
-    resize();
-    if (reduced.matches) {
-      if (film) { film.pause(); film.remove(); film = null; }
-      draw(BEAT * 0.12);
-    } else if (!film || !film.classList.contains('playing')) {
-      start();
-    }
+  const setMode = (next) => {
+    mode = next;
+    // In overlay the canvas is light laid on top of a picture, so it screens
+    // rather than covers. In full it IS the picture and must not blend with
+    // the black behind it.
+    canvas.classList.toggle('overlay', next === 'overlay');
   };
 
-  // The footage, over the drawn room.
+  // The footage, under the lights.
   //
   // Built here rather than written into the markup so that it is never even
   // requested when somebody has asked for less motion -- an `autoplay` in the
   // HTML fetches and plays whatever their settings say.
-  //
-  // Once it is actually playing the drawn room stops: it is completely covered
-  // at that point, and there is no reason to keep painting it.
   const FOOTAGE = 'https://s3.envarg.com/visky/web/hero-club.mp4';
   // Data Saver on, or a connection that reports itself as slow, and the
   // footage is simply not fetched. It is 1.3 MB of decoration, and the drawn
@@ -1013,6 +1087,14 @@ button.linkcard {
   const link = navigator.connection || {};
   const thrifty = link.saveData === true || /^(slow-)?2g$/.test(link.effectiveType || '');
   let film = null;
+  const dropFilm = () => {
+    if (!film) return;
+    film.remove();
+    film = null;
+    setMode('full');
+    start();
+  };
+
   if (!reduced.matches && !thrifty) {
     film = document.createElement('video');
     film.muted = true;                 // set before src: an unmuted video is
@@ -1022,32 +1104,45 @@ button.linkcard {
     film.preload = 'auto';
     film.setAttribute('aria-hidden', 'true');
     film.src = FOOTAGE;
+    // Once it is really playing the drawn room stops being the room and
+    // becomes the lighting rig over it.
     film.addEventListener('playing', () => {
       film.classList.add('playing');
-      stop();
+      setMode('overlay');
+      start();
     });
     // Autoplay can be refused, the file can fail, the network can be a train.
     // Any of those and the drawn room simply keeps going -- which is why it
     // exists.
-    film.addEventListener('error', () => film.remove());
+    film.addEventListener('error', dropFilm);
     slot.appendChild(film);
     const played = film.play();
-    if (played && typeof played.catch === 'function') played.catch(() => film.remove());
+    if (played && typeof played.catch === 'function') played.catch(dropFilm);
   }
 
-  // Nothing is drawn while the hero is off screen or the tab is in the
-  // background: this is decoration, and decoration does not get to keep a
-  // laptop's fan on.
-  // Whichever layer is actually showing is the one that gets paused.
+  const settle = () => {
+    stop();
+    resize();
+    if (reduced.matches) {
+      if (film) { film.pause(); film.remove(); film = null; }
+      setMode('full');
+      draw(BEAT * 0.12);
+      return;
+    }
+    start();
+  };
+
+  // Whichever layer is showing is the one that gets paused. Both of them get
+  // paused together, because this is decoration and decoration does not get
+  // to keep a laptop's fan on.
   const idle = () => {
     stop();
     if (film) film.pause();
   };
   const resume = () => {
     if (reduced.matches) return;
-    if (!film) { start(); return; }
-    if (film && film.isConnected) film.play().catch(() => film.remove());
-    if (!film || !film.classList.contains('playing')) start();
+    if (film && film.isConnected) film.play().catch(dropFilm);
+    start();
   };
 
   if ('IntersectionObserver' in window) {
