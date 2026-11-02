@@ -76,14 +76,16 @@ describe('the download redirects', () => {
 });
 
 describe('the QR codes', () => {
-  it('renders one for each store door', async () => {
-    for (const door of ['ios', 'android', 'test']) {
-      const res = await request(app).get(`/qr/${door}`);
+  // One case per door rather than a loop inside one case. Each png is a 512px
+  // render at the highest error correction, and three of them in a row went
+  // over jest's five second budget on a cold container -- which failed the
+  // image build rather than the code.
+  it.each(['ios', 'android', 'test'])('renders the %s code', async (door) => {
+    const res = await request(app).get(`/qr/${door}`);
 
-      expect(res.status).toBe(200);
-      expect(res.headers['content-type']).toMatch(/image\/png/);
-    }
-  });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/image\/png/);
+  }, 20_000);
 
   it('renders none for the files', async () => {
     // nobody installs an apk by pointing a phone at a laptop
