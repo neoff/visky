@@ -247,56 +247,29 @@ section { padding: 88px 0; border-bottom: 1px solid var(--line); }
 .card-actions { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .hint { font-size: 0.78rem; color: var(--muted); }
 
-/* ------------------------------------------------------------- the sessions */
-
-.sessions { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px; }
-.session {
+/* The two files, under the two stores. No codes beside them on purpose: an
+   apk is not installed by pointing a phone at a laptop, and a dmg less so. */
+.direct { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-top: 20px; }
+.direct .file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--bg-raised);
-  display: flex;
-  flex-direction: column;
+  padding: 18px 22px;
 }
-.facade {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  border: 0;
-  padding: 0;
-  width: 100%;
-  background: #000 center/cover no-repeat;
-  cursor: pointer;
-  display: block;
-}
-.facade::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,0.65) 100%);
-  transition: opacity 0.2s ease;
-}
-.facade:hover::after { opacity: 0.55; }
-.facade .play {
-  position: absolute;
-  z-index: 1;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 62px;
-  height: 62px;
-  border-radius: 50%;
-  background: rgba(252, 60, 68, 0.92);
-  display: grid;
-  place-items: center;
-  transition: transform 0.18s ease;
-}
-.facade:hover .play { transform: translate(-50%, -50%) scale(1.08); }
-.facade .play svg { width: 22px; height: 22px; margin-left: 3px; fill: #fff; }
-.session .meta { padding: 18px 20px 22px; }
-.session .meta h3 { font-size: 1.12rem; letter-spacing: -0.01em; }
-.session .meta .where { color: var(--muted); font-size: 0.88rem; margin-top: 7px; }
-.session .meta .via { color: rgba(255,255,255,0.38); font-size: 0.74rem; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.1em; }
-.session iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; display: block; }
+.direct .file strong { font-family: 'Archivo Black', sans-serif; text-transform: uppercase; font-size: 0.95rem; letter-spacing: 0.02em; }
+.direct .file .hint { display: block; margin-top: 4px; }
+
+.beta { margin-top: 20px; padding: 26px; background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--radius); }
+.beta h3 { font-size: 1.5rem; margin-bottom: 6px; }
+.beta > p { color: var(--muted); font-size: 0.92rem; max-width: 70ch; }
+.beta ol { color: var(--muted); font-size: 0.92rem; margin: 14px 0 18px; padding-left: 22px; }
+.beta ol li { margin-bottom: 7px; }
+.beta ol li strong { color: var(--text); font-weight: 600; }
 
 /* --------------------------------------------------------------- the radio */
 
@@ -373,36 +346,6 @@ section { padding: 88px 0; border-bottom: 1px solid var(--line); }
 .linkcard strong { font-family: 'Archivo Black', sans-serif; text-transform: uppercase; font-size: 0.98rem; letter-spacing: 0.02em; }
 .linkcard span { color: var(--muted); font-size: 0.86rem; }
 
-/* --------------------------------------------------------------- lightbox */
-
-dialog#player {
-  /* `* { margin: 0 }` above kills the centring a modal dialog relies on */
-  margin: auto;
-  width: min(1100px, 94vw);
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #000;
-  color: var(--text);
-  overflow: visible;
-}
-dialog#player::backdrop { background: rgba(0, 0, 0, 0.86); }
-dialog#player iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; display: block; }
-dialog#player p { padding: 14px 18px; font-size: 0.85rem; color: var(--muted); }
-#playerClose {
-  position: absolute;
-  top: -16px;
-  right: -16px;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: #141416;
-  color: var(--text);
-  font-size: 1rem;
-  cursor: pointer;
-}
-
 /* ----------------------------------------------------------------- footer */
 
 footer { padding: 54px 0 64px; color: var(--muted); font-size: 0.86rem; }
@@ -411,6 +354,82 @@ footer { padding: 54px 0 64px; color: var(--muted); font-size: 0.86rem; }
 .footer-top a:hover { color: var(--text); }
 .disclaimer { margin-top: 26px; max-width: 70ch; font-size: 0.8rem; line-height: 1.6; color: #77777c; }
 #version { font-variant-numeric: tabular-nums; }
+
+/* --- contact and bug report ------------------------------------------- */
+/* The two linkcards and the footer entries are BUTTONS now, not links: the
+   page no longer carries an address for a harvester to read. */
+button.linkcard {
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  color: inherit;
+}
+.footerlink {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+#contactDialog {
+  /* The reset at the top sets `margin: 0` on everything, and a modal dialog
+     centres itself with `margin: auto` -- so without this the form opens
+     pinned to the top-left corner of the screen. */
+  margin: auto;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  padding: 24px;
+}
+#contactDialog::backdrop { background: rgba(0, 0, 0, 0.72); }
+#contactDialog h3 { font-size: 20px; margin-bottom: 6px; }
+#contactDialog .lead { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+#contactDialog label { display: block; margin-bottom: 14px; font-size: 14px; }
+#contactDialog label .sub { color: var(--muted); font-weight: 400; }
+#contactDialog input,
+#contactDialog textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  resize: vertical;
+}
+#contactDialog input:focus-visible,
+#contactDialog textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The rule above makes every input a full-width block, which is right for a
+   text field and wrong for a tickbox. */
+#contactDialog label.agree { display: flex; gap: 10px; align-items: flex-start; color: var(--muted); line-height: 1.45; }
+#contactDialog label.agree input {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.formrow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+.formnote { font-size: 13px; min-height: 18px; margin-top: 10px; }
+.formnote.bad { color: var(--accent); }
+#contactDone { text-align: center; padding: 10px 0; }
+#contactDone .ticket {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 10px 0 4px;
+}
 </style>
 </head>
 <body>
@@ -442,16 +461,8 @@ footer { padding: 54px 0 64px; color: var(--muted); font-size: 0.86rem; }
     <div class="hero-actions">
       <a class="btn solid" href="#install">Install Visky</a>
       <a class="btn" href="#listen">Play FRISKY live</a>
-      <button class="btn" type="button" data-play="rM-rWGmCQ4U"
-              data-title="Nicole Moudaber — Culture Club Revelin, Dubrovnik (We Rave You)">
-        ▶ Watch the set
-      </button>
     </div>
-    <p class="hero-credit">
-      Nicole Moudaber at Culture Club Revelin, Dubrovnik —
-      <a href="https://www.youtube.com/watch?v=rM-rWGmCQ4U" target="_blank" rel="noopener">broadcast by We Rave You</a>
-    </p>
-  </div>
+      </div>
 </div>
 
 <div class="ticker" aria-hidden="true">
@@ -470,7 +481,7 @@ footer { padding: 54px 0 64px; color: var(--muted); font-size: 0.86rem; }
   <div class="wrap">
     <div class="section-head">
       <h2>Install it</h2>
-      <p>Point a camera at the code. iOS is on the App Store; Android installs from here while the Play listing is still in review.</p>
+      <p>Point a camera at the code. iOS is on the App Store; the Play listing is still in closed testing, so the Android file is here too.</p>
     </div>
 
     <div class="install-grid">
@@ -488,55 +499,59 @@ footer { padding: 54px 0 64px; color: var(--muted); font-size: 0.86rem; }
 
       <div class="card">
         <h3>Android</h3>
-        <p class="platform-note">The signed APK, straight from the project's GitHub release. Android asks once for permission to install it.</p>
+        <p class="platform-note">Google Play, where the app updates itself like any other. The listing is in closed testing — join the test below, or install the file directly.</p>
         <div class="qr-row">
-          <div class="qr"><img src="/qr/android" alt="QR code to the Android download" width="128" height="128" loading="lazy"></div>
+          <div class="qr"><img src="/qr/android" alt="QR code to the Google Play listing" width="128" height="128" loading="lazy"></div>
           <div class="card-actions">
-            <a class="btn solid" href="/download/android">Download APK</a>
-            <span class="hint">com.envarg.visky · universal, ~130&nbsp;MB</span>
+            <a class="btn solid" href="/download/android">Google Play</a>
+            <span class="hint">com.envarg.visky</span>
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="card">
-        <h3>Android, via Google Play</h3>
-        <p class="platform-note">The Play listing is in closed testing. Join the test and the app updates itself from Play like any other.</p>
-        <div class="qr-row">
-          <div class="qr"><img src="/qr/test" alt="QR code to the Google Play closed test" width="128" height="128" loading="lazy"></div>
-          <div class="card-actions">
-            <a class="btn" href="/testing/android">Join the test</a>
-            <span class="hint">Needs an invited Google account</span>
-          </div>
+    <!-- The files themselves, served from this project's own storage rather
+         than from a GitHub release: the repository is private, so every
+         release asset answered 404 for everyone but its owner. -->
+    <div class="direct">
+      <div class="file">
+        <div>
+          <strong>Android APK</strong>
+          <span class="hint">Signed, universal, ~127&nbsp;MB. Android asks once for permission to install it.</span>
         </div>
+        <a class="btn" href="/download/apk">Download .apk</a>
       </div>
-
-      <div class="card">
-        <h3>Desktop</h3>
-        <p class="platform-note">A 16&nbsp;MB native shell for macOS — the same player, the same hand-over, on a window you can leave open all day.</p>
-        <div class="qr-row">
-          <div class="card-actions">
-            <a class="btn" href="/download/ios">Mac App Store</a>
-            <span class="hint">Universal, Apple silicon and Intel</span>
-          </div>
+      <div class="file">
+        <div>
+          <strong>macOS disk image</strong>
+          <span class="hint">Notarised, Apple&nbsp;silicon, ~8&nbsp;MB. The desktop shell — same player, same hand-over.</span>
         </div>
+        <a class="btn" href="/download/dmg">Download .dmg</a>
+      </div>
+    </div>
+
+    <!-- The closed test. The terms are stated here rather than in the dialog
+         alone, so nobody agrees to something they first read inside a form. -->
+    <div class="beta">
+      <h3>Join the beta test</h3>
+      <p>
+        Google gates a production listing behind twelve testers who stay on the closed track for
+        fourteen days. That is what this is for — and it is a mutual deal, not a mailing list.
+      </p>
+      <ol>
+        <li><strong>You need a VK account.</strong> The archive the app plays lives on VK, and the app signs in there. Without one there is nothing to play.</li>
+        <li><strong>You send the email address of your Google account.</strong> Play adds testers by address and by nothing else, so this is the one thing that cannot be skipped. It goes to one inbox and is never published.</li>
+        <li><strong>You send back at least one report.</strong> Whether everything works, or that some feature does not — and the number of the report you filed, so there is something to look up. One report, from the form on this page.</li>
+      </ol>
+      <div class="card-actions">
+        <button class="btn solid" type="button" data-contact="beta">Join the beta test</button>
+        <span class="hint">Needs a Google account · you are added by hand, so give it a day</span>
       </div>
     </div>
   </div>
 </section>
 
 <!-- ------------------------------------------------------------ sessions -->
-<section id="sessions">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Live sessions</h2>
-      <p>The rooms this music is made for. Every clip is the artist's or the venue's own broadcast, embedded from their channel — nothing here is hosted by us.</p>
-    </div>
-
-    <div class="sessions" id="sessionGrid">
-      <!-- filled from SESSIONS below, so the markup stays one source of truth -->
-    </div>
-  </div>
-</section>
 
 <!-- -------------------------------------------------------------- listen -->
 <section id="listen">
@@ -597,61 +612,109 @@ footer { padding: 54px 0 64px; color: var(--muted); font-size: 0.86rem; }
   <div class="wrap">
     <div class="section-head">
       <h2>Where it<br>all comes from</h2>
-      <p>Visky plays what the station and its community have published. These are the people doing the work.</p>
+      <p>Visky plays what the station's community has published — the app hosts nothing of its own. Found something broken, or need to reach us?</p>
     </div>
 
     <div class="linkgrid">
-      <a class="linkcard" href="https://frisky.fm/" target="_blank" rel="noopener">
-        <strong>FRISKY Radio</strong>
-        <span>The station itself — three channels, shows, artists, schedule.</span>
-      </a>
       <a class="linkcard" href="https://vk.com/feelin_frisky" target="_blank" rel="noopener">
         <strong>Feelin' Frisky · VK</strong>
         <span>The community group whose archive the app reads.</span>
       </a>
-      <a class="linkcard" href="https://www.youtube.com/@CultureClubRevelin" target="_blank" rel="noopener">
-        <strong>Culture Club Revelin</strong>
-        <span>Dubrovnik. The club behind most of the sets above.</span>
-      </a>
-      <a class="linkcard" href="https://www.youtube.com/@Cercle" target="_blank" rel="noopener">
-        <strong>Cercle</strong>
-        <span>Sets filmed in places that have no business holding a party.</span>
-      </a>
-      <a class="linkcard" href="https://github.com/neoff/visky" target="_blank" rel="noopener">
-        <strong>Source code</strong>
-        <span>The app, the api and the scripts that ship them.</span>
-      </a>
-      <a class="linkcard" href="mailto:en.varg@gmail.com">
+      <!-- Both of these open the form below rather than carrying an address.
+           A mailto in the markup is a published address, and address harvesters
+           read markup for a living. -->
+      <button class="linkcard" type="button" data-contact="bug">
+        <strong>Report a bug</strong>
+        <span>Something the app got wrong. Goes straight to the tracker.</span>
+      </button>
+      <button class="linkcard" type="button" data-contact="contact">
         <strong>Contact</strong>
-        <span>Bugs, requests, anything the app got wrong.</span>
-      </a>
+        <span>Requests, questions, anything else.</span>
+      </button>
     </div>
   </div>
 </section>
 
-<dialog id="player" aria-label="Video player">
-  <button id="playerClose" type="button" aria-label="Close the video">✕</button>
-  <iframe id="playerFrame" title="Video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-  <p id="playerCaption"></p>
-</dialog>
 
 <footer>
   <div class="wrap">
     <div class="footer-top">
       <a href="/eula">EULA</a>
       <a href="/privacy">Privacy</a>
-      <a href="https://github.com/neoff/visky" target="_blank" rel="noopener">GitHub</a>
-      <a href="mailto:en.varg@gmail.com">en.varg@gmail.com</a>
-      <span style="margin-left:auto">Visky <span id="version">—</span></span>
+      <button type="button" class="footerlink" data-contact="contact">Contact</button>
+      <button type="button" class="footerlink" data-contact="bug">Report a bug</button>
+      <span style="margin-left:auto">
+        &copy; 2024&ndash;<span id="year">2026</span> Evgeny Nesterov
+        &middot; Visky <span id="version">&mdash;</span>
+      </span>
     </div>
     <p class="disclaimer">
       Visky is an independent player and is not affiliated with, endorsed by or operated by FRISKY Radio,
-      VK or any club or artist named on this page. Audio is streamed from the services that host it;
-      videos are embedded from their own channels. Signing in with a VK account is required because the
-      archive lives there.
+      VK or any artist whose work it plays. Audio is streamed from the services that host it and nothing
+      is hosted here. Signing in with a VK account is required because the archive lives there.
     </p>
   </div>
 </footer>
+
+<dialog id="contactDialog" aria-labelledby="contactTitle">
+  <form id="contactForm">
+    <h3 id="contactTitle">Report a bug</h3>
+    <p class="lead" id="contactLead"></p>
+
+    <!-- Two field sets, one form. The hidden set is DISABLED rather than just
+         hidden: a hidden input still counts as required and still lands in the
+         FormData, so leaving it enabled would both block the submit and post
+         fields the endpoint never asked for. -->
+    <div id="fieldsReport">
+      <label>Email <span class="sub">— optional, only if you want an answer</span>
+        <input type="email" name="email" autocomplete="email" maxlength="254">
+      </label>
+      <label>Subject
+        <input type="text" name="title" maxlength="120" required>
+      </label>
+      <label>Details
+        <textarea name="body" rows="7" maxlength="4000" required></textarea>
+      </label>
+    </div>
+
+    <div id="fieldsBeta" hidden>
+      <label>Email of your Google account <span class="sub">— Play adds testers by address</span>
+        <input type="email" name="email" autocomplete="email" maxlength="254" required>
+      </label>
+      <label>Your VK profile <span class="sub">— a link, or your id</span>
+        <input type="text" name="vk" maxlength="200" placeholder="vk.com/yourname" required>
+      </label>
+      <label>Anything else <span class="sub">— optional: your device, or what you want to test</span>
+        <textarea name="note" rows="4" maxlength="4000"></textarea>
+      </label>
+
+      <label class="agree">
+        <input type="checkbox" name="agreeVk" required>
+        <span>I have a VK account. I understand the app signs in there, because the archive it plays lives on VK.</span>
+      </label>
+      <label class="agree">
+        <input type="checkbox" name="agreeReport" required>
+        <span>I will send back at least one report — that everything works, or that some feature does not — with the number of the report I filed.</span>
+      </label>
+    </div>
+
+    <p class="formnote" id="contactNote" role="status"></p>
+    <div class="formrow">
+      <button class="btn" type="button" id="contactCancel">Cancel</button>
+      <button class="btn solid" type="submit" id="contactSend">Send</button>
+    </div>
+  </form>
+
+  <div id="contactDone" hidden>
+    <h3>Thanks — it is in.</h3>
+    <p class="ticket" id="contactTicket"></p>
+    <p class="lead" id="contactDoneLead"></p>
+    <p class="lead" id="contactDoneList">It shows up on <a href="/reports" target="_blank" rel="noopener">the report list</a>.</p>
+    <div class="formrow">
+      <button class="btn solid" type="button" id="contactClose">Close</button>
+    </div>
+  </div>
+</dialog>
 
 <script>
 /*
@@ -662,91 +725,16 @@ footer { padding: 54px 0 64px; color: var(--muted); font-size: 0.86rem; }
 */
 
 // ---------------------------------------------------------------- sessions
-// Every entry is somebody else's broadcast. `by` is the channel it is
-// embedded from and is shown on the card — attribution is not optional.
-//
-// Two rules decided this list: the frame has to be the ROOM (lasers, smoke,
-// a crowd) rather than a skyline or a poster with the date printed on it, and
-// the video has to allow embedding. "REVELIN LOCO DICE 2026" fails the second
-// — the YouTube player answers error 150 for it — so it is not here.
-const SESSIONS = [
-  { id: 'rM-rWGmCQ4U', artist: 'Nicole Moudaber', where: 'Culture Club Revelin, Dubrovnik', by: 'We Rave You' },
-  { id: 'lIdrRRofKm0', artist: 'Anyma & Rebūke', where: 'Afterlife, Tomorrowland', by: 'Afterlife' },
-  { id: '5jj19uk-4R4', artist: 'Nic Fanciulli',   where: 'Culture Club Revelin, Dubrovnik', by: 'We Rave You' },
-  { id: 'tgovHpQMVsE', artist: 'Claptone',        where: 'Culture Club Revelin, Dubrovnik', by: 'Culture Club Revelin' },
-  { id: 'oKkBwtQc1dI', artist: 'Kasablanca',      where: 'Culture Club Revelin, Dubrovnik · 2026', by: 'We Rave You' },
-];
-
-const grid = document.getElementById('sessionGrid');
-for (const set of SESSIONS) {
-  const card = document.createElement('article');
-  card.className = 'session';
-
-  const facade = document.createElement('button');
-  facade.className = 'facade';
-  facade.type = 'button';
-  facade.setAttribute('aria-label', `Play ${set.artist} — ${set.where}`);
-  // hqdefault exists for every video; maxres does not, and a missing maxres
-  // renders as a grey 120x90 placeholder stretched across the card
-  facade.style.backgroundImage = `url('https://i.ytimg.com/vi/${set.id}/hqdefault.jpg')`;
-  facade.innerHTML = '<span class="play"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>';
-  facade.addEventListener('click', () => {
-    const frame = document.createElement('iframe');
-    frame.src = `https://www.youtube-nocookie.com/embed/${set.id}?autoplay=1&rel=0`;
-    frame.title = `${set.artist} — ${set.where}`;
-    frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-    frame.allowFullscreen = true;
-    facade.replaceWith(frame);
-  }, { once: true });
-
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  meta.innerHTML =
-    `<h3>${set.artist}</h3>` +
-    `<div class="where">${set.where}</div>` +
-    `<div class="via">via ${set.by}</div>`;
-
-  card.append(facade, meta);
-  grid.append(card);
-}
 
 // ------------------------------------------------------------------- hero
-// The hero used to autoplay the Cercle set muted, behind the type. YouTube
-// serves that embed a black frame as often as not — a background player gets
-// no user gesture, and `controls=0` means a blocked autoplay has nothing to
-// show — so the poster frame IS the hero now, and the set opens in a lightbox
-// on a click, where autoplay is allowed and nobody pays for 40 MB they did not
-// ask for.
+// The hero image is a still, not a player. The clip that used to sit here was
+// somebody else's broadcast and is gone with the rest of the third-party
+// links; what is left is the zoom, and only when motion is welcome.
 (function heroPoster() {
   const slot = document.getElementById('heroMedia');
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) slot.classList.add('zoom');
 })();
 
-// ---------------------------------------------------------------- lightbox
-(function lightbox() {
-  const dialog = document.getElementById('player');
-  const frame = document.getElementById('playerFrame');
-  const caption = document.getElementById('playerCaption');
-
-  document.querySelectorAll('[data-play]').forEach((trigger) => {
-    trigger.addEventListener('click', () => {
-      const id = trigger.dataset.play;
-      frame.src = `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`;
-      caption.textContent = trigger.dataset.title || '';
-      if (typeof dialog.showModal === 'function') dialog.showModal();
-      else dialog.setAttribute('open', '');
-    });
-  });
-
-  const shut = () => {
-    frame.src = '';                 // stops the audio; removing the node is overkill
-    if (dialog.open && typeof dialog.close === 'function') dialog.close();
-    else dialog.removeAttribute('open');
-  };
-  dialog.addEventListener('close', () => { frame.src = ''; });
-  document.getElementById('playerClose').addEventListener('click', shut);
-  dialog.addEventListener('click', (event) => { if (event.target === dialog) shut(); });
-})();
 
 // ------------------------------------------------------------------ radio
 (function radio() {
@@ -811,10 +799,122 @@ for (const set of SESSIONS) {
 // ---------------------------------------------------------------- version
 // The api says what the current release is; the footer repeats it rather than
 // carrying a number that goes stale the next time anything ships.
+// Hardcoded in the markup as a fallback and corrected here: a copyright range
+// that stops at the year the file was written reads as an abandoned site.
+document.getElementById('year').textContent = String(new Date().getFullYear());
+
 fetch('/api/version')
   .then((response) => response.json())
   .then((data) => { if (data && data.version) document.getElementById('version').textContent = data.version; })
   .catch(() => undefined);
+
+// ---------------------------------------------------------------- contact
+// Two forms behind one dialog. Neither the markup nor the page carries an
+// address any more: a mailto IS a published address, and harvesters read
+// markup for a living. The buttons post instead.
+(function contact() {
+  const dialog = document.getElementById('contactDialog');
+  if (!dialog) return;
+
+  const MODES = {
+    bug: {
+      title: 'Report a bug',
+      lead: 'What happened, and what you expected instead. The version at the bottom of this page and your device help.',
+      endpoint: '/api/bugreport',
+      done: 'Quote this number if you write again about it.',
+    },
+    contact: {
+      title: 'Contact',
+      lead: 'Requests, questions, anything else. This reaches a person.',
+      endpoint: '/api/feedback',
+      done: 'We read everything. A reply comes only if you left an address.',
+    },
+    beta: {
+      title: 'Join the beta test',
+      lead: 'The terms are the three on the page: a VK account, the address Play adds you by, and one report back.',
+      endpoint: '/api/betatest',
+      fields: 'beta',
+      done: 'You are added by hand, so give it a day. The invite arrives from Google Play.',
+      // a signup is not a report and never appears on the public list
+      list: false,
+    },
+  };
+
+  const form = document.getElementById('contactForm');
+  const done = document.getElementById('contactDone');
+  const note = document.getElementById('contactNote');
+  const send = document.getElementById('contactSend');
+  const doneList = document.getElementById('contactDoneList');
+  const SETS = { report: document.getElementById('fieldsReport'), beta: document.getElementById('fieldsBeta') };
+  let mode = MODES.bug;
+
+  // Hidden fields stay in the form for validation and for FormData, so the set
+  // that is not in use is disabled as well as hidden.
+  const showFields = (which) => {
+    Object.entries(SETS).forEach(([name, set]) => {
+      const on = name === which;
+      set.hidden = !on;
+      set.querySelectorAll('input, textarea').forEach((field) => { field.disabled = !on; });
+    });
+  };
+
+  const open = (which) => {
+    mode = MODES[which] || MODES.bug;
+    document.getElementById('contactTitle').textContent = mode.title;
+    document.getElementById('contactLead').textContent = mode.lead;
+    note.textContent = '';
+    note.className = 'formnote';
+    form.reset();
+    showFields(mode.fields || 'report');
+    doneList.hidden = mode.list === false;
+    form.hidden = false;
+    done.hidden = true;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+  };
+
+  const shut = () => {
+    if (dialog.open && typeof dialog.close === 'function') dialog.close();
+    else dialog.removeAttribute('open');
+  };
+
+  document.querySelectorAll('[data-contact]').forEach((trigger) => {
+    trigger.addEventListener('click', () => open(trigger.dataset.contact));
+  });
+  document.getElementById('contactCancel').addEventListener('click', shut);
+  document.getElementById('contactClose').addEventListener('click', shut);
+  dialog.addEventListener('click', (event) => { if (event.target === dialog) shut(); });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    send.disabled = true;
+    note.className = 'formnote';
+    note.textContent = 'Sending…';
+    try {
+      const response = await fetch(mode.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // FormData leaves an unticked box out altogether, which the endpoint
+        // reads as not accepted; a ticked one arrives as "on", which it takes.
+        body: JSON.stringify(Object.fromEntries(new FormData(form).entries())),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `the server answered ${response.status}`);
+      document.getElementById('contactTicket').textContent = payload.ref || '';
+      document.getElementById('contactDoneLead').textContent = mode.done;
+      form.hidden = true;
+      done.hidden = false;
+    } catch (error) {
+      // Says NOTHING WAS SENT on purpose: a form that fails quietly gets the
+      // same report typed three times.
+      note.className = 'formnote bad';
+      note.textContent = `Could not send — ${error.message}. Nothing was sent; try again in a minute.`;
+    } finally {
+      send.disabled = false;
+    }
+  });
+})();
 </script>
+
 </body>
 </html>
