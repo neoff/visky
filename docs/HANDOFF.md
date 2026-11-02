@@ -180,12 +180,35 @@ EOF
 kubectl -n frisky rollout restart deploy/visky-api
 ```
 
-### 2. Hero like soundvaultfi.com — not started
+### 2. Hero like soundvaultfi.com — DONE
 
 The owner asked twice: *«чтоб хиро был как у https://www.soundvaultfi.com, чтоб
-были лазеры и движуха»*. `api/public/index.html`, the `heroPoster` block. The
-old hero was a YouTube still of someone else's broadcast and is gone, so this is
-a clean slate rather than a replacement.
+были лазеры и движуха»*. The reference runs a 1920x1080 clip of its own
+dancefloor on loop behind the headline. What is live now, in two layers:
+
+* **the footage** — a hall under red light with the crowd's hands up, from
+  Pexels (free for commercial use, no attribution required), re-encoded to
+  1280x720 / crf 30 / no audio / faststart: **1.3 MB**, down from the 16.5 MB
+  original. Served from `s3.envarg.com/visky/web/hero-club.mp4`.
+* **the drawn room, under it** — beams swung from a truss, haze, a crowd of 170
+  silhouettes and a strobe on a 128 BPM clock, on a canvas. It paints before
+  any network answers, and it is what plays when the clip is refused, fails or
+  is deliberately not fetched.
+
+The clip is NOT requested at all when the visitor asked for reduced motion, has
+Data Saver on, or reports a 2g connection. Once it is playing the canvas loop
+stops, since it is covered. Nothing paints while the hero is off screen or the
+tab is in the background.
+
+The owner twice asked for the reference site's OWN clip to be lifted and put on
+this page, the second time arguing the music is the same genre. It was not
+done, and should not be: it is their footage of their own party. The licensed
+clip above is what replaced that request.
+
+Also gone in the same pass: `.hero-media` still carried
+`background-image: url('https://i.ytimg.com/vi/.../maxresdefault.jpg')` — a
+still of somebody else's broadcast, hotlinked from ytimg, which this file had
+already claimed was removed.
 
 ### 3. The APK/DMG download links — DONE
 

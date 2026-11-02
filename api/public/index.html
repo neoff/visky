@@ -143,34 +143,42 @@ nav.links a:hover { color: var(--text); }
   overflow: hidden;
   border-bottom: 1px solid var(--line);
 }
-/* The background is one official set, muted and looping. It is an EMBED, not
-   a copy: the frame is YouTube's, the view counts are the channel's. */
+/* The background is a room, in two layers.
+   On top, a licensed clip of a hall under red light (Pexels, free for
+   commercial use) served from our own storage -- not hotlinked, and not the
+   reference site's own footage of its own party, which is theirs. Under it, a
+   room drawn frame by frame: it paints before any network answers, it is what
+   plays when autoplay is refused or the file never arrives, and it is what
+   somebody who asked for less motion sees instead of a clip. */
 .hero-media {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: #000 center/cover no-repeat;
-  background-image: url('https://i.ytimg.com/vi/rM-rWGmCQ4U/maxresdefault.jpg');
+  background: #050505;
 }
-.hero-media iframe {
+.hero-media canvas,
+.hero-media video {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100vw;
-  height: 56.25vw;            /* 16:9 — cover the box by the longer side */
-  min-height: 100%;
-  min-width: 177.77vh;
-  transform: translate(-50%, -50%);
-  border: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
   pointer-events: none;
 }
+/* The footage fades in over the drawn room rather than replacing it on load,
+   so there is never a frame of empty black waiting for a network. */
+.hero-media video { opacity: 0; transition: opacity 700ms ease; }
+.hero-media video.playing { opacity: 1; }
 .hero-media::after {
   content: '';
   position: absolute;
   inset: 0;
+  /* Enough to keep the headline legible and no more. The numbers that were
+     here were set for a photographic still and swallowed the drawn room. */
   background:
-    linear-gradient(180deg, rgba(5,5,5,0.72) 0%, rgba(5,5,5,0.25) 38%, rgba(5,5,5,0.94) 100%),
-    radial-gradient(70% 60% at 50% 40%, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 100%);
+    linear-gradient(180deg, rgba(5,5,5,0.62) 0%, rgba(5,5,5,0.06) 34%, rgba(5,5,5,0.55) 100%),
+    linear-gradient(90deg, rgba(5,5,5,0.72) 0%, rgba(5,5,5,0.30) 42%, rgba(5,5,5,0) 72%);
 }
 /* the padding has to be repeated: this rule comes after .wrap and would
    otherwise flatten its gutter, which put the headline against the edge */
@@ -727,12 +735,342 @@ button.linkcard {
 // ---------------------------------------------------------------- sessions
 
 // ------------------------------------------------------------------- hero
-// The hero image is a still, not a player. The clip that used to sit here was
-// somebody else's broadcast and is gone with the rest of the third-party
-// links; what is left is the zoom, and only when motion is welcome.
-(function heroPoster() {
+//
+// A room with the lights on, drawn frame by frame.
+//
+// The reference (soundvaultfi.com) loops a clip of its own dancefloor. We have
+// no such clip, and the thing standing here before was a still of somebody
+// else's broadcast hotlinked straight from ytimg -- borrowed footage of a room
+// that is not ours. So the room is synthesised: beams swung from a truss,
+// haze for them to cut through, a crowd under them, and a strobe on the beat.
+//
+// It is also the cheaper answer. A 1080p loop long enough not to read as a
+// loop is several megabytes on the first paint of a landing page; this is a
+// couple of kilobytes of script that stays sharp at any size and on any
+// screen. If real footage ever exists, `.hero-media` already styles a <video>
+// the same way, and this becomes the fallback rather than the whole show.
+(function heroLights() {
   const slot = document.getElementById('heroMedia');
-  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) slot.classList.add('zoom');
+  if (!slot) return;
+
+  const ACCENT = [252, 60, 68];        // --accent, the app's own red
+  const BPM = 128;                     // the music this app is for
+  const BEAT = 60 / BPM;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) return;                    // no 2d context: the flat ground stays
+  slot.appendChild(canvas);
+
+  let w = 0, h = 0;
+  const resize = () => {
+    // Capped at 2: beyond that the fill rate costs more than the sharpness
+    // is worth, and this is a background.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const box = slot.getBoundingClientRect();
+    w = Math.max(1, Math.round(box.width));
+    h = Math.max(1, Math.round(box.height));
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  resize();
+
+  // Beams hang from a truss just above the frame and swing on their own
+  // clocks, so the pattern never repeats on a beat the eye can count.
+  const BEAMS = [
+    { x: 0.08, base: 0.55, swing: 0.42, speed: 0.21, phase: 0.0, warm: 0 },
+    { x: 0.26, base: 0.20, swing: 0.34, speed: 0.17, phase: 1.7, warm: 0 },
+    { x: 0.42, base: -0.10, swing: 0.30, speed: 0.27, phase: 3.1, warm: 1 },
+    { x: 0.58, base: 0.10, swing: 0.36, speed: 0.19, phase: 0.8, warm: 0 },
+    { x: 0.74, base: -0.22, swing: 0.31, speed: 0.24, phase: 2.4, warm: 1 },
+    { x: 0.92, base: -0.52, swing: 0.40, speed: 0.15, phase: 4.2, warm: 0 },
+  ];
+
+  // Haze for the beams to be visible in. Without it they are lines; with it
+  // they are light in a room.
+  const HAZE = [
+    { x: 0.22, y: 0.62, r: 0.55, drift: 0.013, speed: 0.07 },
+    { x: 0.63, y: 0.48, r: 0.70, drift: 0.021, speed: 0.05 },
+    { x: 0.86, y: 0.70, r: 0.48, drift: 0.017, speed: 0.09 },
+  ];
+
+  // One silhouette per head, generated once so the crowd is the same crowd on
+  // every frame and only its bob changes. Heads are small on purpose: a first
+  // pass with large ones made the back of the room read as a row of hills.
+  //
+  // The scatter comes from a seeded generator rather than from sin(i * k).
+  // sin of a stepping integer is very nearly periodic, and at this count it
+  // aliased into visible rows and columns -- a hundred and seventy identical
+  // figures standing in a grid, which is a terracotta army and not a floor.
+  const HEADS = 170;
+  let seed = 0x9e3779b9;
+  const rnd = () => {
+    // mulberry32: four lines, and the same crowd on every load
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let z = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
+  const CROWD = Array.from({ length: HEADS }, () => {
+    const depth = Math.pow(rnd(), 0.8);
+    return {
+      x: rnd(),
+      depth,
+      size: 0.0072 + rnd() * 0.0055,
+      wide: 1.7 + rnd() * 0.7,            // shoulders, which are not all one width
+      tall: 2.5 + rnd() * 0.9,
+      bob: rnd() * Math.PI * 2,
+      arm: rnd() > 0.88,                  // a few hands up, not a stadium wave
+    };
+  // drawn back to front, so the near rows overlap the far ones and not the
+  // other way round
+  }).sort((a, b) => a.depth - b.depth);
+
+  const rgba = (c, a) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+  // 0 on the beat, 1 just before the next one -- the shape everything pulses to
+  const since = (t) => (t % BEAT) / BEAT;
+  const pulse = (t) => Math.pow(1 - since(t), 2.4);
+
+  const draw = (t) => {
+    const hit = pulse(t);
+
+    // the room itself
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0, 0, w, h);
+
+    const wash = ctx.createRadialGradient(w * 0.56, h * 0.46, 0, w * 0.56, h * 0.46, Math.max(w, h) * 0.8);
+    wash.addColorStop(0, rgba(ACCENT, 0.46 + hit * 0.16));
+    wash.addColorStop(0.4, rgba(ACCENT, 0.24));
+    wash.addColorStop(0.75, rgba(ACCENT, 0.07));
+    wash.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
+
+    // The screen behind the booth. It is what the crowd is a silhouette
+    // AGAINST -- without something bright low in the frame they are black
+    // shapes on a black floor, which is what the first pass looked like.
+    const stage = ctx.createRadialGradient(w * 0.6, h * 0.58, 0, w * 0.6, h * 0.58, w * 0.42);
+    stage.addColorStop(0, `rgba(255, 190, 150, ${0.3 + hit * 0.22})`);
+    stage.addColorStop(0.3, rgba(ACCENT, 0.3 + hit * 0.14));
+    stage.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = stage;
+    ctx.fillRect(0, 0, w, h);
+
+    // haze, under the beams so the beams light it rather than sit on it
+    ctx.globalCompositeOperation = 'lighter';
+    for (const cloud of HAZE) {
+      const cx = (cloud.x + Math.sin(t * cloud.speed) * cloud.drift) * w;
+      const cy = (cloud.y + Math.cos(t * cloud.speed * 0.8) * cloud.drift) * h;
+      const r = cloud.r * Math.max(w, h) * 0.5;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, rgba(ACCENT, 0.12));
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+
+    // the beams
+    const apexY = -h * 0.06;
+    const throwTo = h * 1.12;
+    for (const beam of BEAMS) {
+      const apexX = beam.x * w;
+      const angle = beam.base + Math.sin(t * beam.speed * Math.PI + beam.phase) * beam.swing;
+      const reach = throwTo - apexY;
+      const endX = apexX + Math.tan(angle) * reach;
+      const spread = w * 0.085 + w * 0.03 * hit;
+      const colour = beam.warm ? [255, 214, 140] : ACCENT;
+      // a beam brightens on the beat, but each one on its own share of it
+      const strength = 0.4 + hit * 0.34 * (0.6 + 0.4 * Math.sin(beam.phase * 2));
+
+      const g = ctx.createLinearGradient(apexX, apexY, endX, throwTo);
+      g.addColorStop(0, rgba(colour, strength));
+      g.addColorStop(0.35, rgba(colour, strength * 0.5));
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(apexX - w * 0.004, apexY);
+      ctx.lineTo(apexX + w * 0.004, apexY);
+      ctx.lineTo(endX + spread, throwTo);
+      ctx.lineTo(endX - spread, throwTo);
+      ctx.closePath();
+      ctx.fill();
+
+      // the hot core, and the lamp it comes out of
+      ctx.strokeStyle = rgba(colour, Math.min(1, strength * 1.2));
+      ctx.lineWidth = Math.max(1.5, w * 0.0022);
+      ctx.beginPath();
+      ctx.moveTo(apexX, apexY);
+      ctx.lineTo(endX, throwTo);
+      ctx.stroke();
+
+      const lamp = ctx.createRadialGradient(apexX, apexY + h * 0.05, 0, apexX, apexY + h * 0.05, w * 0.05);
+      lamp.addColorStop(0, rgba(colour, 0.5 + hit * 0.3));
+      lamp.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = lamp;
+      ctx.fillRect(apexX - w * 0.05, apexY, w * 0.1, h * 0.12);
+    }
+
+    // a strobe, every eighth bar rather than every beat: the point of one is
+    // that it is not expected
+    const bar = Math.floor(t / (BEAT * 4));
+    if (bar % 8 === 7 && since(t) < 0.07) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.16 * (1 - since(t) / 0.07)})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    // the crowd, in front of the light
+    //
+    // Depth sets BOTH how big a head is and how high it sits, and the two
+    // pull in opposite directions: somebody at the back is small and near the
+    // horizon, somebody at the front is large and near the bottom edge. The
+    // first pass derived height from head size alone, which put the small
+    // distant heads LOWER than the large near ones -- the room read inside out.
+    ctx.globalCompositeOperation = 'source-over';
+    const HORIZON = h * 0.6;
+    const FRONT = h * 0.93;
+    for (const person of CROWD) {
+      const scale = 0.5 + person.depth * 1.5;
+      const head = person.size * h * scale;
+      const bob = Math.sin(t * 2.2 + person.bob) * head * 0.22 * (0.4 + hit);
+      const x = person.x * w;
+      const y = HORIZON + (FRONT - HORIZON) * person.depth + bob;
+
+      ctx.fillStyle = `rgba(6, 3, 4, ${0.82 + person.depth * 0.17})`;
+      ctx.beginPath();
+      ctx.arc(x, y, head, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(x, y + head * (person.tall + 0.4), head * person.wide, head * person.tall, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (person.arm) {
+        ctx.strokeStyle = `rgba(6, 3, 4, ${0.82 + person.depth * 0.17})`;
+        ctx.lineWidth = head * 0.38;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x + head * 0.8, y + head * 2.2);
+        ctx.lineTo(x + head * 1.2, y - head * 2.2 - Math.sin(t * 2.2 + person.bob) * head * 0.8);
+        ctx.stroke();
+      }
+    }
+
+    // The front rows sink into the dark instead of ending on a line of
+    // shoulders, which is what the bottom of a lit room actually looks like.
+    const sink = ctx.createLinearGradient(0, h * 0.82, 0, h);
+    sink.addColorStop(0, 'rgba(5, 3, 4, 0)');
+    sink.addColorStop(1, 'rgba(5, 3, 4, 0.92)');
+    ctx.fillStyle = sink;
+    ctx.fillRect(0, h * 0.82, w, h * 0.18);
+  };
+
+  // Reduced motion gets the same room, held still on a beat rather than
+  // pulsing through them.
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let frame = null;
+  let started = 0;
+
+  const stop = () => {
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+  };
+  const tick = (now) => {
+    if (!started) started = now;
+    draw((now - started) / 1000);
+    frame = requestAnimationFrame(tick);
+  };
+  const start = () => {
+    if (frame !== null) return;
+    frame = requestAnimationFrame(tick);
+  };
+
+  const settle = () => {
+    stop();
+    resize();
+    if (reduced.matches) {
+      if (film) { film.pause(); film.remove(); film = null; }
+      draw(BEAT * 0.12);
+    } else if (!film || !film.classList.contains('playing')) {
+      start();
+    }
+  };
+
+  // The footage, over the drawn room.
+  //
+  // Built here rather than written into the markup so that it is never even
+  // requested when somebody has asked for less motion -- an `autoplay` in the
+  // HTML fetches and plays whatever their settings say.
+  //
+  // Once it is actually playing the drawn room stops: it is completely covered
+  // at that point, and there is no reason to keep painting it.
+  const FOOTAGE = 'https://s3.envarg.com/visky/web/hero-club.mp4';
+  // Data Saver on, or a connection that reports itself as slow, and the
+  // footage is simply not fetched. It is 1.3 MB of decoration, and the drawn
+  // room says the same thing for nothing.
+  const link = navigator.connection || {};
+  const thrifty = link.saveData === true || /^(slow-)?2g$/.test(link.effectiveType || '');
+  let film = null;
+  if (!reduced.matches && !thrifty) {
+    film = document.createElement('video');
+    film.muted = true;                 // set before src: an unmuted video is
+    film.defaultMuted = true;          // refused autoplay everywhere
+    film.loop = true;
+    film.playsInline = true;
+    film.preload = 'auto';
+    film.setAttribute('aria-hidden', 'true');
+    film.src = FOOTAGE;
+    film.addEventListener('playing', () => {
+      film.classList.add('playing');
+      stop();
+    });
+    // Autoplay can be refused, the file can fail, the network can be a train.
+    // Any of those and the drawn room simply keeps going -- which is why it
+    // exists.
+    film.addEventListener('error', () => film.remove());
+    slot.appendChild(film);
+    const played = film.play();
+    if (played && typeof played.catch === 'function') played.catch(() => film.remove());
+  }
+
+  // Nothing is drawn while the hero is off screen or the tab is in the
+  // background: this is decoration, and decoration does not get to keep a
+  // laptop's fan on.
+  // Whichever layer is actually showing is the one that gets paused.
+  const idle = () => {
+    stop();
+    if (film) film.pause();
+  };
+  const resume = () => {
+    if (reduced.matches) return;
+    if (!film) { start(); return; }
+    if (film && film.isConnected) film.play().catch(() => film.remove());
+    if (!film || !film.classList.contains('playing')) start();
+  };
+
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) resume();
+        else idle();
+      }
+    }, { threshold: 0 }).observe(slot);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) idle();
+    else resume();
+  });
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(settle, 150);
+  });
+  if (typeof reduced.addEventListener === 'function') reduced.addEventListener('change', settle);
+
+  settle();
 })();
 
 
