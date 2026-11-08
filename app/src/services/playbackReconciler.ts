@@ -1,6 +1,7 @@
 import TrackPlayer, {Track, TrackType} from 'react-native-track-player'
 import {fetchFavoritesPage, fetchFriskyPage, fetchTrackById} from '@/helpers/network'
 import {trackKey} from '@/helpers/miscellaneous'
+import {expandTracks} from '@/helpers/parts'
 import {FAVORITES_CACHE_KEY, SONGS_CACHE_KEY, cachedTracks} from '@/store/library'
 import {projectPosition, usePlaybackStore} from '@/store/playback'
 import {PlaybackState} from '@/types/playback'
@@ -235,7 +236,11 @@ const contextQueue = async (state: PlaybackState, trackId: string): Promise<Trac
     }
   }
 
-  const playable = list.filter(
+  // Expand v2 multipart rows into their per-part entries BEFORE locating the
+  // wanted track: the cache holds one merged row per show (keyed by Part 1),
+  // but the session's track_id can be any part. Expanded, every part is findable
+  // and carries the show metadata the player needs. A no-op on v1.
+  const playable = expandTracks(list).filter(
     (item) => typeof item.url === 'string' && item.url.trim().length > 0,
   )
   const at = playable.findIndex((item) => trackKey(item as never) === trackId)

@@ -1,12 +1,15 @@
 import {useCallback, useEffect, useRef} from "react";
-import {View, Text, ViewProps} from "react-native";
+import {View, Text, ViewProps, Pressable, StyleSheet} from "react-native";
 import TrackPlayer, {useActiveTrack, useProgress} from "react-native-track-player";
 import {useSharedValue} from "react-native-reanimated";
+import {MaterialCommunityIcons} from "@expo/vector-icons";
 import {formatSecondsToMinutes, trackKey} from "@/helpers/miscellaneous";
+import {hasNextPart, seekWithinShow, showProgress, type PartedTrack} from "@/helpers/parts";
 import {runLocalAction} from "@/services/playbackReconciler";
 import {notePosition} from "@/services/recovery";
 import {playbackSync} from "@/services/playbackSync";
 import {Slider} from "react-native-awesome-slider";
+import {colors} from "@/constants";
 import {progressBarStyles, utilsStyles} from "@/styles";
 
 /**
@@ -45,18 +48,31 @@ export const seekTarget = (fraction: number, duration: number): number | null =>
 
 export const PlayerProgressBar = ({ style }: ViewProps) => {
   const { duration: reported, position, buffered } = useProgress(250)
-  const activeTrack = useActiveTrack()
+  const activeTrack = useActiveTrack() as PartedTrack | undefined
+
+  // Where we are across the WHOLE show. For a single track this is just the
+  // track itself with no part boundaries, so everything below works unchanged.
+  const sp = showProgress(activeTrack, position)
+  const multipart = sp.boundaries.length > 0
 
   // The player's own duration, unless it is not a number we can do arithmetic
   // with. VK tells us how long the show is and the queue carries it, so there
   // is a second source — and on the desktop it is the only one that works.
-  const trackDuration = Number((activeTrack as {duration?: number} | undefined)?.duration ?? 0)
-  const duration =
+  const trackDuration = Number(activeTrack?.duration ?? 0)
+  const localDuration =
     Number.isFinite(reported) && reported > 0
       ? reported
       : Number.isFinite(trackDuration) && trackDuration > 0
         ? trackDuration
         : 0
+
+  // The bar spans the whole show when it is multipart (the sum of its parts,
+  // which the API gives us outright), the single track otherwise.
+  const barPosition = multipart ? sp.showPosition : position
+  const duration = multipart ? sp.total : localDuration
+  // the buffer, carried into show-space: everything before the active part is
+  // already played, plus what the part has buffered locally
+  const barBuffered = multipart ? sp.showPosition - position + buffered : buffered
 
   const progress = useSharedValue(0)
   const min = useSharedValue(0)
@@ -83,12 +99,52 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
       seek.current = null
     }
 
-    progress.value = duration > 0 ? position / duration : 0
-    cache.value = duration > 0 ? buffered / duration : 0
-  }, [position, duration, buffered, cache, progress])
+    progress.value = duration > 0 ? barPosition / duration : 0
+    cache.value = duration > 0 ? barBuffered / duration : 0
+  }, [barPosition, duration, barBuffered, cache, progress])
+
+  /** Jump to the next part of the same show (drives the ▸ arrow). */
+  const jumpToNextPart = useCallback(async () => {
+    try {
+      await runLocalAction(() => TrackPlayer.skipToNext())
+    } catch (error) {
+      console.warn('==player: could not jump to the next part', error)
+    }
+  }, [])
 
   const seekToFraction = useCallback(
     async (value: number) => {
+      // Multipart: the bar spans the whole show, so a tap maps to a part and an
+      // offset inside it. Changing part is a queue skip; the seek lands in the
+      // destination part, so the landed-guard below stays in LOCAL seconds.
+      if (multipart && activeTrack) {
+        const dest = seekWithinShow(value, activeTrack)
+        if (!dest) return
+        const activeIndex = (await TrackPlayer.getActiveTrackIndex()) ?? 0
+        const base = activeIndex - (activeTrack.partIndex ?? 0)
+        seek.current = {to: dest.offset, at: Date.now()}
+        progress.value = value
+        try {
+          await runLocalAction(async () => {
+            if (dest.partIndex !== (activeTrack.partIndex ?? 0)) {
+              await TrackPlayer.skip(base + dest.partIndex)
+            }
+            await TrackPlayer.seekTo(dest.offset)
+          })
+          const destDuration = Number(activeTrack.parts?.[dest.partIndex]?.duration) || 0
+          notePosition(dest.offset, destDuration)
+          playbackSync.sendProgress(
+            dest.offset * 1000,
+            await TrackPlayer.getPlayWhenReady(),
+            trackKey((await TrackPlayer.getActiveTrack()) as never) ?? undefined,
+          )
+        } catch (error) {
+          seek.current = null
+          console.warn('==player: could not seek within the show', error)
+        }
+        return
+      }
+
       // Nothing is loaded yet, or the duration is not a usable number: seeking
       // into either puts the player in a state it has to be kicked out of.
       const target = seekTarget(value, duration)
@@ -129,11 +185,12 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
         console.warn('==player: could not seek', error)
       }
     },
-    [duration, reported, trackDuration, progress],
+    [multipart, activeTrack, duration, reported, trackDuration, progress],
   )
 
   return (
     <View style={style}>
+      <View>
       <Slider
         progress={progress}
         cache={cache}
@@ -177,13 +234,73 @@ export const PlayerProgressBar = ({ style }: ViewProps) => {
         }}
       />
 
+      {/* Where one part ends and the next begins, drawn over the bar. Only in a
+          multipart show — a single track has no seam. pointerEvents none so the
+          slider still owns every touch. */}
+      {multipart && (
+        <View style={localStyles.ticks} pointerEvents="none">
+          {sp.boundaries.map((fraction, index) => (
+            <View key={index} style={[localStyles.tick, {left: `${fraction * 100}%`}]}/>
+          ))}
+        </View>
+      )}
+      </View>
+
       <View style={progressBarStyles.timeRow}>
-        <Text style={progressBarStyles.timeText}>{formatSecondsToMinutes(position)}</Text>
+        <Text style={progressBarStyles.timeText}>{formatSecondsToMinutes(barPosition)}</Text>
+
+        {/* which part is playing, and a jump to the next one */}
+        {multipart && (
+          <Pressable
+            onPress={hasNextPart(activeTrack) ? jumpToNextPart : undefined}
+            disabled={!hasNextPart(activeTrack)}
+            hitSlop={10}
+            style={localStyles.partLabel}
+            accessibilityRole="button"
+            accessibilityLabel={`Part ${sp.partIndex + 1} of ${sp.partCount}`}
+          >
+            <Text style={localStyles.partText}>
+              Part {sp.partIndex + 1}/{sp.partCount}
+            </Text>
+            {hasNextPart(activeTrack) && (
+              <MaterialCommunityIcons name="skip-next" size={16} color={colors.primary}/>
+            )}
+          </Pressable>
+        )}
 
         <Text style={progressBarStyles.timeText}>
-          {'-'} {formatSecondsToMinutes(Math.max(duration - position, 0))}
+          {'-'} {formatSecondsToMinutes(Math.max(duration - barPosition, 0))}
         </Text>
       </View>
     </View>
   )
 }
+
+const localStyles = StyleSheet.create({
+  // the same 7pt band the slider draws, so ticks sit on the track
+  ticks: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 7,
+  },
+  tick: {
+    position: 'absolute',
+    top: 0,
+    width: 2,
+    height: 7,
+    marginLeft: -1,
+    backgroundColor: colors.background,
+  },
+  partLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  partText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+})

@@ -8,7 +8,7 @@ import ReanimatedSwipeable, {type SwipeableMethods} from "react-native-gesture-h
 import {Entypo, FontAwesome, Ionicons} from "@expo/vector-icons";
 import dayjs from "dayjs";
 import {useCallback, useRef, useState} from "react";
-import {isSameTrack} from "@/helpers/miscellaneous";
+import {showKeyOf} from "@/helpers/parts";
 import {useIsFavorite, useToggleFavorite} from "@/store/favorites";
 import {useIsPlayed} from "@/store/played";
 
@@ -50,8 +50,11 @@ export const TrackListItem = ({
                                 showFavorite = true,
                               }: TracksListItemProps) => {
   const {playing, bufferingDuringPlay} = useIsPlaying()
-  // by id, not by url — VK's signed urls change on every refresh
-  const isActiveTrack = isSameTrack(useActiveTrack(), track)
+  // by SHOW, not by url — VK's signed urls change on every refresh, and a v2 row
+  // is the whole show, so it stays lit while either Part 1 or Part 2 plays
+  // (the active queue entry is one part, tagged with the show it belongs to).
+  const activeShowKey = showKeyOf(useActiveTrack() as never)
+  const isActiveTrack = activeShowKey !== undefined && activeShowKey === showKeyOf(track as never)
   const isFavorite = useIsFavorite(track)
   const toggleFavorite = useToggleFavorite()
   // a show runs an hour and the list is an archive, so "already heard" is worth

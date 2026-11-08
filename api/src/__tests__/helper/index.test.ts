@@ -6,7 +6,9 @@ import {
   encodeQueryData,
   cleanupData,
   sortLocalPartTracks,
-  cleanupDataAndSortPart
+  cleanupDataAndSortPart,
+  groupLocalPartTracks,
+  formatPlaylistV2
 } from '@/helper';
 import {Tracklist} from "@/__genedated__/openapi/vk";
 
@@ -280,5 +282,59 @@ describe('helpers', () => {
     const result = cleanupDataAndSortPart(data);
     expect(result.items[0].title).toBe('Mix (Part 1)');
     expect(result.items[1].title).toBe('Mix (Part 2)');
+  });
+
+  // --- v2: one row per show, parts carried as an array ---
+
+  test('groupLocalPartTracks returns one group per show, parts ordered', () => {
+    const data = {
+      items: [
+        { artist: 'Melamanos', title: 'Wander - Part 2', date: 100, type: 'hls' },
+        { artist: 'Melamanos', title: 'Wander - Part 1', date: 100, type: 'hls' },
+        { artist: 'Nova', title: 'Solo', date: 90, type: 'hls' },
+      ],
+    } as any;
+    const groups = groupLocalPartTracks(data);
+    // the multipart show is one group of two, the single track its own group
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveLength(2);
+    expect(groups[0].map((p: any) => p.title)).toEqual(['Wander - Part 1', 'Wander - Part 2']);
+    expect(groups[1]).toHaveLength(1);
+    expect(groups[1][0].title).toBe('Solo');
+  });
+
+  test('formatPlaylistV2 merges parts into one row with a full part_list', () => {
+    const groups = [
+      [
+        { id: 11, owner_id: -42311167, url: 'u1', title: 'Wander Part 1', artist: 'Melamanos', duration: 3600, date: 100 },
+        { id: 12, owner_id: -42311167, url: 'u2', title: 'Wander Part 2', artist: 'Melamanos', duration: 1800, date: 100 },
+      ],
+    ] as any;
+    const list = formatPlaylistV2(groups, 0, 1);
+
+    expect(list.items).toHaveLength(1);
+    const row = list.items[0];
+    // the row is the show: Part 1's identity, the base title, the whole length
+    expect(row.id).toBe(11);
+    expect(row.owner_id).toBe(-42311167);
+    expect(row.title).toBe('Wander');
+    expect(row.multipart).toBe(true);
+    expect(row.duration).toBe(5400);
+    // every part keeps its own VK ids, url, number and length
+    expect(row.part_list).toEqual([
+      { owner_id: -42311167, id: 11, url: 'u1', part: 1, duration: 3600 },
+      { owner_id: -42311167, id: 12, url: 'u2', part: 2, duration: 1800 },
+    ]);
+  });
+
+  test('formatPlaylistV2 leaves a single-part track as a one-element row', () => {
+    const groups = [
+      [{ id: 5, owner_id: -42311167, url: 'u', title: 'Solo', artist: 'Nova', duration: 3000, date: 90 }],
+    ] as any;
+    const list = formatPlaylistV2(groups, 0, 1);
+    expect(list.items[0].title).toBe('Solo');
+    expect(list.items[0].multipart).toBe(false);
+    expect(list.items[0].part_list).toHaveLength(1);
+    expect(list.items[0].duration).toBe(3000);
   });
 });

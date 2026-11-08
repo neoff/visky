@@ -10,6 +10,7 @@ import {useQueue} from "@/store/queue";
 import {fetchTrackById} from "@/helpers/network";
 import {runLocalAction} from "@/services/playbackReconciler";
 import {beginTrackSwitch, endTrackSwitch} from "@/store/trackSwitch";
+import {expandTracks} from "@/helpers/parts";
 import {FlashList, FlashListProps} from "@shopify/flash-list";
 import unknownTrackImage from '@/assets/unknown_track.png'
 
@@ -104,7 +105,10 @@ export const TrackList = ({
         // starting at the selected track
         const beforeTracks = playableTracks.slice(0, trackIndex)
         const afterTracks = playableTracks.slice(trackIndex + 1)
-        const queue = [selectedTrack, ...afterTracks, ...beforeTracks].map((track) => ({
+        // Expand every v2 multipart row into its parts (consecutive entries the
+        // prefetch warms, so the Part 1 -> Part 2 hand-over stays gapless). A v1
+        // or single-part row expands to itself, so this is a no-op there.
+        const queue = expandTracks([selectedTrack, ...afterTracks, ...beforeTracks]).map((track) => ({
           ...track,
           type: TrackType.HLS,
         }))

@@ -11,9 +11,11 @@ import {useIsSwitchingTrack} from "@/store/trackSwitch";
 import {MaterialCommunityIcons} from "@expo/vector-icons";
 import {useRouter} from "expo-router";
 import {useEffect, useState} from "react";
-import {ActivityIndicator, StyleSheet, Text, TouchableOpacity, View, ViewProps} from "react-native";
+import {ActivityIndicator, GestureResponderEvent, Pressable, StyleSheet, Text, TouchableOpacity, View, ViewProps} from "react-native";
 import FastImage from "react-native-fast-image";
-import {useActiveTrack, useProgress} from "react-native-track-player";
+import TrackPlayer, {useActiveTrack, useProgress} from "react-native-track-player";
+import {showProgress, seekWithinShow, type PartedTrack} from "@/helpers/parts";
+import {runLocalAction} from "@/services/playbackReconciler";
 
 /** One tick a second: the bar is two points tall, nothing finer would show. */
 const PROGRESS_TICK_MS = 1000
@@ -49,20 +51,54 @@ const useMiniProgress = (remote: boolean): number => {
 
 export const FloatingPlayer = ({style}: ViewProps) => {
   const router = useRouter()
-  const activeTrack = useActiveTrack()
+  const activeTrack = useActiveTrack() as PartedTrack | undefined
   const lastActiveTrack = useLastActiveTrack()
   const displayedTrack = activeTrack ?? lastActiveTrack
   // the device that owns the sound, when it is not this one
   const remoteDevice = useRemoteDevice()
+  const remote = Boolean(remoteDevice)
   const [pickerOpen, setPickerOpen] = useState(false)
   // collapsed, the plate shows no times and no slider — the divider it is
   // docked on IS the progress
-  const progress = useMiniProgress(Boolean(remoteDevice))
+  const progress = useMiniProgress(remote)
   // a track the user asked for that has not started yet
   const switching = useIsSwitchingTrack()
 
+  // the whole show, when a v2 multipart track is playing HERE: the divider then
+  // spans every part and carries a seam where one part hands over to the next
+  const {position} = useProgress(1000)
+  const sp = showProgress(activeTrack, position)
+  const multipart = !remote && sp.boundaries.length > 0
+  const barFraction = multipart
+    ? (sp.total > 0 ? Math.min(sp.showPosition / sp.total, 1) : 0)
+    : progress
+
+  const [dividerWidth, setDividerWidth] = useState(0)
+
   const handlePress = () => {
     router.navigate('/player')
+  }
+
+  // Tap the bar to seek across the show. Only when it IS the show (multipart,
+  // playing here) and we have measured its width — otherwise the bar stays the
+  // read-only hairline it has always been.
+  const handleSeek = async (event: GestureResponderEvent) => {
+    if (!multipart || dividerWidth <= 0 || !activeTrack) return
+    const fraction = event.nativeEvent.locationX / dividerWidth
+    const dest = seekWithinShow(fraction, activeTrack)
+    if (!dest) return
+    try {
+      const activeIndex = (await TrackPlayer.getActiveTrackIndex()) ?? 0
+      const base = activeIndex - (activeTrack.partIndex ?? 0)
+      await runLocalAction(async () => {
+        if (dest.partIndex !== (activeTrack.partIndex ?? 0)) {
+          await TrackPlayer.skip(base + dest.partIndex)
+        }
+        await TrackPlayer.seekTo(dest.offset)
+      })
+    } catch (error) {
+      console.warn('==miniplayer: could not seek within the show', error)
+    }
   }
 
   if (!displayedTrack) return null
@@ -99,6 +135,13 @@ export const FloatingPlayer = ({style}: ViewProps) => {
               Playing on {remoteDevice.name ?? 'another device'}
             </Text>
           )}
+          {/* which part of the show is playing — the seam below says the same
+              thing at a glance, this spells it out */}
+          {multipart && (
+            <Text style={styles.partLabel} numberOfLines={1}>
+              Part {sp.partIndex + 1} of {sp.partCount}
+            </Text>
+          )}
         </View>
 
         <View style={styles.trackControlsContainer}>
@@ -125,11 +168,29 @@ export const FloatingPlayer = ({style}: ViewProps) => {
 
         {/* The seam doubles as the playback position: collapsed, this plate is
             the only thing on screen that can say how far into the hour we are.
-            Read-only on purpose — scrubbing lives in the full player, and a
-            2pt target would be a coin toss for a thumb. */}
-        <View style={styles.divider} pointerEvents="none">
-          <View style={[styles.dividerFill, {width: `${Math.round(progress * 1000) / 10}%`}]}/>
-        </View>
+            Read-only for a single track (scrubbing lives in the full player).
+            For a multipart show it spans every part, carries a seam at each
+            hand-over, AND takes a tap to jump across the show — the one place
+            the gap between parts is visible, so it is the one place worth
+            scrubbing from the glance. A generous top hitSlop makes the 2pt
+            band a real target without changing how it looks. */}
+        <Pressable
+          style={styles.divider}
+          onLayout={(event) => setDividerWidth(event.nativeEvent.layout.width)}
+          onPress={multipart ? handleSeek : undefined}
+          disabled={!multipart}
+          hitSlop={multipart ? {top: 16, bottom: 0, left: 0, right: 0} : undefined}
+          pointerEvents={multipart ? 'auto' : 'none'}
+        >
+          <View style={[styles.dividerFill, {width: `${Math.round(barFraction * 1000) / 10}%`}]}/>
+          {multipart && sp.boundaries.map((fraction, index) => (
+            <View
+              key={index}
+              style={[styles.dividerTick, {left: `${fraction * 100}%`}]}
+              pointerEvents="none"
+            />
+          ))}
+        </Pressable>
       </>
     </TouchableOpacity>
   )
@@ -168,6 +229,15 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: colors.primary,
   },
+  // where one part hands over to the next, cut into the seam in the plate colour
+  dividerTick: {
+    position: 'absolute',
+    top: 0,
+    width: 2,
+    height: '100%',
+    marginLeft: -1,
+    backgroundColor: colors.surface,
+  },
   trackArtworkImage: {
     width: 40,
     height: 40,
@@ -200,6 +270,12 @@ const styles = StyleSheet.create({
   // second line, only while another device is making the sound
   remoteLabel: {
     color: colors.primary,
+    fontSize: fonts.xs,
+    paddingLeft: 10,
+  },
+  // second line for a multipart show: which part is playing
+  partLabel: {
+    color: colors.textMuted,
     fontSize: fonts.xs,
     paddingLeft: 10,
   },

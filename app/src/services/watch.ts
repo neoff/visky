@@ -1,5 +1,6 @@
 import TrackPlayer, {Event, State, Track} from 'react-native-track-player'
 import {trackKey} from '@/helpers/miscellaneous'
+import {expandTracks} from '@/helpers/parts'
 import {runLocalAction} from '@/services/playbackReconciler'
 import {SONGS_CACHE_KEY, cachedTracks} from '@/store/library'
 import {WatchBridge, WatchCommand, WatchQueueItem, WatchSnapshot} from '../../modules/watch-bridge'
@@ -178,7 +179,9 @@ const handleCommand = async (command: WatchCommand): Promise<void> => {
           // load that playlist and start there — a tap on the wrist means
           // "play my list from here", not "play this one track and fall
           // silent".
-          const list = await playlist(queue)
+          // expand v2 multipart rows first: the watch lists one row per show,
+          // but the player queue is one entry per part (no-op on v1)
+          const list = expandTracks(await playlist(queue))
           const index = list.findIndex((track) => trackKey(track as never) === command.trackId)
           if (index < 0) {
             // The watch is showing a list that has since been replaced. Say

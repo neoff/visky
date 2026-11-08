@@ -232,9 +232,9 @@ describe('picking playback back up after a track would not load', () => {
  * bar was tapped.
  */
 describe('a track that had already finished', () => {
-  it('is restarted from the top, not from its own ending', async () => {
+  it('is not restarted at all — the show moves on', async () => {
     const show = {...track(1), duration: 3_545}
-    __load([show], 0, true)
+    __load([show, track(2)], 0, true)
     // the last tick before it ran out
     __player.position = 3_543
     notePosition(3_543, 3_545)
@@ -243,7 +243,29 @@ describe('a track that had already finished', () => {
     const recovered = await recoverFromPlaybackError('current')
 
     expect(recovered).toBe(true)
+    // the failure at the end of a track belongs to the hand-over, so the
+    // finished track is neither re-signed nor played a second time
+    expect(fetchTrackById).not.toHaveBeenCalled()
     expect(TrackPlayer.seekTo).not.toHaveBeenCalled()
+    expect(TrackPlayer.skipToNext).toHaveBeenCalled()
+    expect(__player.index).toBe(1)
+  })
+
+  it('does not replay it when the same failure keeps coming back', async () => {
+    const show = {...track(1), duration: 3_545}
+    __load([show, track(2)], 0, true)
+    __player.position = 3_543
+    notePosition(3_543, 3_545)
+    fetchTrackById.mockResolvedValue({...show, url: 'https://cdn.vk.com/1/fresh.m3u8'})
+
+    // the hand-over fails, is reported, fails again — three endings of the same
+    // track in a row is what the listener heard
+    await recoverFromPlaybackError('current')
+    __player.index = 0
+    await recoverFromPlaybackError('current')
+
+    expect(TrackPlayer.load).not.toHaveBeenCalled()
+    expect(fetchTrackById).not.toHaveBeenCalled()
   })
 
   it('still resumes a track that broke in the middle', async () => {

@@ -673,3 +673,57 @@ describe('the artist directory', () => {
     expect(res.body.items).toEqual([]);
   });
 });
+
+describe('GET /api/playlist/frisky?v=2', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __resetFavoritesIndexCache();
+    __resetFriskyCatalog();
+  });
+
+  const single = {
+    id: 1, owner_id: -42311167, artist: 'FRISKY | Solo DJ',
+    title: 'March 2024 - Solo Mix [vk.com/feelin_frisky]',
+    duration: 3000, url: 'https://example.com/solo', date: 1700000000,
+  };
+  const part1 = {
+    id: 2, owner_id: -42311167, artist: 'FRISKY | Duo DJ',
+    title: 'March 2024 - Long Show (Part 1) [vk.com/feelin_frisky]',
+    duration: 3600, url: 'https://example.com/p1', date: 1700000100,
+  };
+  const part2 = {
+    id: 3, owner_id: -42311167, artist: 'FRISKY | Duo DJ',
+    title: 'March 2024 - Long Show (Part 2) [vk.com/feelin_frisky]',
+    duration: 1800, url: 'https://example.com/p2', date: 1700000100,
+  };
+
+  it('merges a multipart show into one row carrying both parts', async () => {
+    // audio.get is called for the list and (empty) for the favourites index
+    vkMethod.mockImplementation((_req: any, method: string, params: any) => {
+      if (method === 'audio.getPlaylists') return Promise.resolve({response: {items: []}});
+      return Promise.resolve({response: {count: 10000, items: [single, part2, part1]}});
+    });
+
+    const res = await request(app).get('/api/playlist/frisky?count=100&offset=0&v=2');
+
+    expect(res.status).toBe(200);
+    // three raw tracks, two rows: the two parts collapsed into one
+    expect(res.body.items.length).toEqual(2);
+
+    const solo = res.body.items[0];
+    expect(solo.title).toEqual('Solo Mix');
+    expect(solo.multipart).toEqual(false);
+    expect(solo.part_list.length).toEqual(1);
+
+    const show = res.body.items[1];
+    expect(show.title).toEqual('Long Show');
+    expect(show.multipart).toEqual(true);
+    expect(show.duration).toEqual(5400);
+    expect(show.part_list.map((p: any) => p.id)).toEqual([2, 3]);
+    expect(show.part_list.map((p: any) => p.part)).toEqual([1, 2]);
+    expect(show.part_list.map((p: any) => p.url)).toEqual([
+      'https://example.com/p1',
+      'https://example.com/p2',
+    ]);
+  });
+});

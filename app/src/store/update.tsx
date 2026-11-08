@@ -2,15 +2,16 @@ import {create} from 'zustand'
 import {Linking, Platform} from 'react-native'
 import {MMKVLoader} from 'react-native-mmkv-storage'
 import Constants from 'expo-constants'
-import {fetchLatestVersion} from '@/helpers/network'
+import {fetchStoreVersion} from '@/helpers/network'
 
 /**
  * "There is a newer visky than this one."
  *
- * The api owns the release number — `scripts/sync-version.sh` writes it into
- * every frontend, so the build knows which api it was made against and the api
- * knows which build everyone should be on. Asking it is the whole mechanism;
- * none of this talks to a store, and nothing here downloads anything.
+ * Said only when the STORE has a newer one: the number comes from Apple's
+ * public lookup (helpers/network `fetchStoreVersion`), never from the api. It
+ * used to come from the api, and a server deploy then announced a release no
+ * store had — the api went to 1.6.0 while the App Store held 1.5.59. Nothing
+ * here downloads anything.
  *
  * WHY A NOTICE AND NOT AN UPDATE. The three builds are updated in three
  * different places — TestFlight, the Play internal track, a signed .dmg — and
@@ -159,7 +160,7 @@ const readDismissed = (): string | null => {
 }
 
 interface UpdateState {
-  /** the release the server says is current, once it has answered */
+  /** the version the App Store offers, once it has answered */
   latest: string | null
   /** the newest version the listener has already waved away */
   dismissed: string | null
@@ -172,7 +173,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
   dismissed: readDismissed(),
 
   check: async () => {
-    const latest = await fetchLatestVersion()
+    const latest = await fetchStoreVersion()
     if (!latest || latest === get().latest) return
     set({latest})
   },
@@ -192,7 +193,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
 /**
  * The version to tell the listener about, or null when there is nothing to say.
  *
- * Null covers three different silences: the server has not answered, this build
+ * Null covers three different silences: the store has not answered, this build
  * is current, and this particular release has already been waved away. A newer
  * one than the dismissed one speaks up again.
  */

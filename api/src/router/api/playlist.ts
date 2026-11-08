@@ -2,7 +2,7 @@
 import express from "express";
 import {Request, Response} from "@/types";
 import {checkAuthAndroid, vkMethod} from "@/helper/vk";
-import {cleanupData, cleanupDataAndSortPart, formatPlaylist} from "@/helper";
+import {cleanupData, cleanupDataAndSortPart, formatPlaylist, formatPlaylistV2, groupLocalPartTracks} from "@/helper";
 import {artistKey} from "@/helper/friskyMatch";
 import {Tracklist, type VkPlaylistResponse, VkResponse, TrackItem} from "@/__genedated__/openapi/vk";
 import {artistCards, enrich, friskyShowKeys, FRISKY_OWNER_ID, kick, remember, showKey} from "@/services/friskyCache";
@@ -12,7 +12,20 @@ export const api = express.Router();
 
 const FRISKY_FAVORITES_PLAYLIST_TITLE = "Frisky-favorites";
 
-const getPlaylistData =  async (req: Request, owner: number, count: number, offset: number): Promise<Tracklist> => {
+/** The list format the caller asked for: `?v=2` merges a show's parts into one row. */
+const wantsV2 = (req: Request): boolean => String(req.query.v ?? "") === "2";
+
+/**
+ * A favourite key with the "Part N" tail removed, so a merged v2 row (which
+ * reads "Wander", not "Wander Part 1") can still be recognised in a favourites
+ * index that was built from the user's per-part copies. Anchored at the end, so
+ * a non-multipart title is left untouched and v2 matches exactly as v1 did.
+ */
+const partSuffixRegex = /\s*(?:[-–—]\s*)?\(?\s*part\s+\d+\s*\)?$/i;
+const baseKeySet = (byKey: Map<string, FavoriteEntry>): Set<string> =>
+  new Set([...byKey.keys()].map((key) => key.replace(partSuffixRegex, "")));
+
+const getPlaylistData =  async (req: Request, owner: number, count: number, offset: number, v2: boolean = false): Promise<Tracklist> => {
   return await vkMethod(req, "audio.get", {
     "count": count,
     "offset": offset,
@@ -24,6 +37,14 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
       // BEFORE the cleanup: it rewrites artist and title in place, and the
       // "August 2026" it strips is half of what identifies the mix on frisky
       remember(response?.items);
+      if (v2) {
+        // one row per show; the parts of a multipart upload collapse into its
+        // part_list. Paging stays in RAW VK units (the app asks by offset), so a
+        // show split exactly across a page edge is the one case that stays two
+        // rows — each a playable single part.
+        const groups = groupLocalPartTracks(cleanupData(response));
+        return formatPlaylistV2(groups, offset, response?.count ?? 0);
+      }
       const clean = cleanupDataAndSortPart(response);
       //console.log("===>>frisky data:", clean);
       return formatPlaylist(clean, offset);
@@ -259,6 +280,7 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
   const count: number = parseInt(req.query?.count as string) || 1;
   const offset: number = parseInt(req.query.offset as string) || 0;
   const words = queryWords((req.query.q as string) ?? "");
+  const v2 = wantsV2(req);
   try {
     let response: Tracklist;
 
@@ -266,23 +288,32 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
       // searching the GROUP, not the page the app is holding
       const catalog = await loadFriskyCatalog(req);
       const matches = catalog.filter((item) => matchesQuery(item, words));
-      const clean = cleanupDataAndSortPart({count: matches.length, items: matches});
-      const page = clean.items.slice(offset, offset + count);
-      response = {
-        ...formatPlaylist({count: matches.length, items: page}, offset),
-        total: matches.length
-      };
+      if (v2) {
+        // merge the WHOLE match set, then page the merged rows — the catalogue
+        // is in hand, so parts never straddle a page edge here
+        const groups = groupLocalPartTracks(cleanupData({count: matches.length, items: matches}));
+        response = formatPlaylistV2(groups.slice(offset, offset + count), offset, groups.length);
+      } else {
+        const clean = cleanupDataAndSortPart({count: matches.length, items: matches});
+        const page = clean.items.slice(offset, offset + count);
+        response = {
+          ...formatPlaylist({count: matches.length, items: page}, offset),
+          total: matches.length
+        };
+      }
     } else {
-      response = await getPlaylistData(req, owner, count, offset);
+      response = await getPlaylistData(req, owner, count, offset, v2);
     }
 
     // the heart in the list comes straight from here: a track is a favourite
-    // when a copy of it sits in the user's Frisky-favorites playlist
+    // when a copy of it sits in the user's Frisky-favorites playlist. In v2 the
+    // row is a whole show, so the match ignores the "Part N" tail.
     const {byKey} = await loadFavoritesIndex(req);
     if (byKey.size > 0) {
+      const keys = v2 ? baseKeySet(byKey) : byKey;
       response.items = response.items.map((item) => ({
         ...item,
-        favorite: byKey.has(favoriteKey(item))
+        favorite: keys.has(favoriteKey(item))
       }));
     }
 
@@ -359,23 +390,31 @@ api.get("/frisky/artists/:key", checkAuthAndroid, async (req: Request, res: Resp
   const count: number = parseInt(req.query?.count as string) || 100;
   const offset: number = parseInt(req.query.offset as string) || 0;
 
+  const v2 = wantsV2(req);
   try {
     const catalog = await loadFriskyCatalog(req);
     const mine = catalog.filter((item) => artistKey(item.artist) === key);
-    const clean = cleanupDataAndSortPart({count: mine.length, items: mine});
-    const page = clean.items.slice(offset, offset + count);
 
-    const response: Tracklist = {
-      ...formatPlaylist({count: page.length, items: page}, offset),
-      total: mine.length
-    };
+    let response: Tracklist;
+    if (v2) {
+      const groups = groupLocalPartTracks(cleanupData({count: mine.length, items: mine}));
+      response = formatPlaylistV2(groups.slice(offset, offset + count), offset, groups.length);
+    } else {
+      const clean = cleanupDataAndSortPart({count: mine.length, items: mine});
+      const page = clean.items.slice(offset, offset + count);
+      response = {
+        ...formatPlaylist({count: page.length, items: page}, offset),
+        total: mine.length
+      };
+    }
 
     // the same heart the Songs tab draws, resolved against the same playlist
     const {byKey} = await loadFavoritesIndex(req);
     if (byKey.size > 0) {
+      const keys = v2 ? baseKeySet(byKey) : byKey;
       response.items = response.items.map((item) => ({
         ...item,
-        favorite: byKey.has(favoriteKey(item))
+        favorite: keys.has(favoriteKey(item))
       }));
     }
 

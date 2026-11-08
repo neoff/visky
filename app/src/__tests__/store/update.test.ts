@@ -5,14 +5,14 @@ import {
   useUpdateStore,
 } from '@/store/update'
 
-jest.mock('@/helpers/network', () => ({fetchLatestVersion: jest.fn()}))
-const {fetchLatestVersion} = jest.requireMock('@/helpers/network')
+jest.mock('@/helpers/network', () => ({fetchStoreVersion: jest.fn()}))
+const {fetchStoreVersion} = jest.requireMock('@/helpers/network')
 
 /** The selector is where the decision lives; the hook is only its wrapper. */
 const available = () => availableUpdate(useUpdateStore.getState())
 
 beforeEach(() => {
-  fetchLatestVersion.mockReset()
+  fetchStoreVersion.mockReset()
   useUpdateStore.setState({latest: null, dismissed: null})
 })
 
@@ -43,7 +43,7 @@ describe('what the app has to say about its own version', () => {
   })
 
   it('says nothing when this build IS the release', async () => {
-    fetchLatestVersion.mockResolvedValue(currentVersion)
+    fetchStoreVersion.mockResolvedValue(currentVersion)
 
     await useUpdateStore.getState().check()
 
@@ -51,7 +51,7 @@ describe('what the app has to say about its own version', () => {
   })
 
   it('names the release when this build is behind one', async () => {
-    fetchLatestVersion.mockResolvedValue('9.9.9')
+    fetchStoreVersion.mockResolvedValue('9.9.9')
 
     await useUpdateStore.getState().check()
 
@@ -59,7 +59,7 @@ describe('what the app has to say about its own version', () => {
   })
 
   it('stays quiet about a release that was waved away', async () => {
-    fetchLatestVersion.mockResolvedValue('9.9.9')
+    fetchStoreVersion.mockResolvedValue('9.9.9')
     await useUpdateStore.getState().check()
 
     useUpdateStore.getState().dismiss()
@@ -68,18 +68,18 @@ describe('what the app has to say about its own version', () => {
   })
 
   it('speaks up again for a release newer than the dismissed one', async () => {
-    fetchLatestVersion.mockResolvedValue('9.9.9')
+    fetchStoreVersion.mockResolvedValue('9.9.9')
     await useUpdateStore.getState().check()
     useUpdateStore.getState().dismiss()
 
-    fetchLatestVersion.mockResolvedValue('9.9.10')
+    fetchStoreVersion.mockResolvedValue('9.9.10')
     await useUpdateStore.getState().check()
 
     expect(available()).toBe('9.9.10')
   })
 
   it('keeps quiet when the server cannot be reached', async () => {
-    fetchLatestVersion.mockResolvedValue(null)
+    fetchStoreVersion.mockResolvedValue(null)
 
     await useUpdateStore.getState().check()
 

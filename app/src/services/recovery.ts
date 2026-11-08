@@ -231,21 +231,28 @@ export const recoverFromPlaybackError = async (failedAt: FailedAt): Promise<bool
         ? Math.max(progress, playing.position)
         : 0
 
-    // A TRACK IS NOT RESUMED INTO ITS OWN ENDING.
+    // A TRACK THAT HAS ALREADY FINISHED IS NOT RESTARTED AT ALL.
     //
     // The remembered position is the last progress tick, and ticks stop when
-    // playback does — so a track that ran out leaves one a breath from the
-    // end. Restarting there put the show back at the finish line it had just
-    // crossed: it ended again at once, which failed again, which restarted it
-    // there again. From the outside the player sat on a minute and a half of
-    // the last track and refused to leave it, however the bar was tapped.
+    // playback does — so a track that ran out leaves one a breath from the end.
+    // Whatever this failure is, it is not that track's: the only thing that
+    // happens at the end of a track is the hand-over to the NEXT one, and a web
+    // player that cannot load the next stream reports shaka's own error, which
+    // arrives here as an ordinary "the current stream died".
     //
-    // Whatever the listener asked for by then, it was not the last two seconds
-    // of a track that had already finished, so this one starts from the top.
+    // Restarting the track then — which is what this did, from its end first
+    // and from the top after that — replayed a show that had just finished, for
+    // as long as the next link kept failing. Three times through "8-Track Mind
+    // Part 1" and never a step forward.
+    //
+    // So the show moves on, which is what the end of a track means.
     const brokenDuration = Number((broken as {duration?: number}).duration ?? 0)
     const atTheEnd =
       brokenDuration > 0 && remembered >= brokenDuration - FINISHED_SLACK_SECONDS
-    const position = atTheEnd ? 0 : remembered
+    if (atTheEnd && failedAt === 'current' && !cutOff) {
+      return await moveOn(key, 'it had already finished — the hand-over is what broke')
+    }
+    const position = remembered
 
     const fixed = await resign(broken)
     if (!fixed) return await moveOn(key, 'VK has no stream for it')

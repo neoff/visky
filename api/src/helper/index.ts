@@ -187,7 +187,15 @@ const findPartGroup = (slot: KeySlot, date: number | undefined): PartGroup | und
  * years. Keyed on the title alone, Selsi's two halves and Boraa's two halves
  * fell into one group and came out interleaved — Part 1, Part 1, Part 2, Part 2.
  */
-export const  sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistResponse =>{
+/**
+ * The same grouping `sortLocalPartTracks` does, but returned as the groups
+ * themselves: one inner array per show, its parts in Part-1..Part-N order, and
+ * a single-element array for every track that is not multipart. The order of
+ * the outer array is the playlist order (a group holds its first member's
+ * place). `sortLocalPartTracks` is this flattened; the v2 list merges each inner
+ * array into one row instead.
+ */
+export const groupLocalPartTracks = (data: VkPlaylistResponse): any[][] => {
     // artist + base title -> the groups opened for it so far
     const slots = new Map<string, KeySlot>();
     // every group, in the order they were opened: `order` indexes into this
@@ -239,8 +247,13 @@ export const  sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistRespon
         })
     }
 
-    data.items = sortedItems.flatMap((entry) => Array.isArray(entry) ? entry : [entry]);
-    return data
+    // A bare item is a single-part track; wrap it so every entry is a group.
+    return sortedItems.map((entry) => Array.isArray(entry) ? entry : [entry]);
+}
+
+export const sortLocalPartTracks = (data: VkPlaylistResponse): VkPlaylistResponse => {
+    data.items = groupLocalPartTracks(data).flat();
+    return data;
 }
 
 export const cleanupDataAndSortPart = (data: VkPlaylistResponse): VkPlaylistResponse => {
@@ -286,6 +299,79 @@ export const formatPlaylist = (data: VkPlaylistResponse, offset?: number): Track
             } as TrackItem;
         })
     } as Tracklist
+}
+
+/**
+ * The part number a cleaned title carries, or `undefined` for a single-part
+ * track. `cleanupData` has already dropped the air date, so "Wander Part 2"
+ * reaches here as "Wander Part 2" and this reads the 2.
+ */
+const partNumber = (title: string | null | undefined): number | undefined => {
+    const match = title?.match(partRegex);
+    return match ? Number(match[2]) : undefined;
+}
+
+/**
+ * The show's name without the "Part N" tail, so a merged row reads "Wander",
+ * not "Wander Part 1". Falls back to the whole title when there is no tail.
+ */
+const baseTitle = (title: string | null | undefined): string => {
+    const match = title?.match(partRegex);
+    return (match ? match[1] : title ?? "").trim();
+}
+
+/**
+ * v2 of the list shape: one row per SHOW, with the parts carried as an array.
+ *
+ * The input is the grouping from `groupLocalPartTracks` — each inner array is a
+ * show's parts in order. A multipart show collapses to a single `TrackItem`
+ * whose `part_list` holds every part (its own VK ids, url and duration) and
+ * whose `duration` is the whole show; the app expands that back into the same
+ * per-part queue entries v1 served, so nothing about playback changes. A
+ * single-part track is the same row v1 produced, with a one-element part_list.
+ */
+export const formatPlaylistV2 = (groups: any[][], offset?: number, total?: number): Tracklist => {
+    const items = groups.map((parts): TrackItem => {
+        // the representative is Part 1 (groups arrive Part-1-first)
+        const head = parts[0];
+        const multipart = parts.length > 1;
+        const part_list = parts.map((part, index) => ({
+            owner_id: part.owner_id,
+            id: part.id,
+            url: part.url,
+            part: partNumber(part.title) ?? index + 1,
+            duration: part.duration,
+        }));
+        // the show's length is the sum of its parts; a single part keeps its own
+        const duration = part_list.reduce((sum, part) => sum + (Number(part.duration) || 0), 0)
+            || head.duration;
+
+        return {
+            id: head.id,
+            owner_id: head.owner_id,
+            url: head.url,
+            // the base name for a merged show, the plain title for a single track
+            title: multipart ? baseTitle(head.title) : head.title,
+            artist: head.artist,
+            duration,
+            date: head.date,
+            artwork: head.album?.thumb?.photo_300 ?? undefined,
+            type: TrackItem.type.HLS,
+            favorite: head.like ?? false,
+            hidden: false,
+            multipart,
+            genre_list: [],
+            track_list: [],
+            part_list,
+        } as TrackItem;
+    });
+
+    return {
+        count: items.length,
+        offset: offset || 0,
+        total: total ?? items.length,
+        items,
+    } as Tracklist;
 }
 
 export const md5 = (contents: string) => crypto.createHash('md5').update(contents).digest("hex");

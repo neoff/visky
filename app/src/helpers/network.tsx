@@ -6,6 +6,17 @@ import {TrackType} from "react-native-track-player";
 import {AuthFragments} from "@/types/auth";
 import {PlaybackDeviceInfo, PlaybackState} from "@/types/playback";
 import {isRevokedResponse, sessionRevoked} from "@/services/revocation";
+import {useSettingsStore} from "@/store/settings";
+import {Platform} from "react-native";
+
+/**
+ * The `&v=2` the Frisky and artist lists carry when the merged-parts shape is
+ * on. Read from the store outside React — these are plain fetch helpers — and
+ * empty for v1, so the url is unchanged. Favourites never send it: that tab is
+ * ordered by when a track was added, and merging would move an old part up.
+ */
+const apiVersionParam = (): string =>
+  useSettingsStore.getState().apiVersion === 'v2' ? '&v=2' : '';
 
 /**
  * RN axios does not persist the server session cookie, so authenticated calls
@@ -199,7 +210,7 @@ export const refreshToken = ({onLoad, onError}: {onLoad?: (res: any) => void, on
 export const loadFriskyListData = async (owner: string | null, onLoad?: (res: any) => any, onError?: (error: any) => void, offset: number = 0) : Promise<any> => {
   console.info(`GET ${apiUrls.friskyListUrl}?count=100&offset=0`);
   try {
-    const data = await apiRequest(`${apiUrls.friskyListUrl}?count=100&offset=${offset}`, 'GET', {});
+    const data = await apiRequest(`${apiUrls.friskyListUrl}?count=100&offset=${offset}${apiVersionParam()}`, 'GET', {});
     console.log("--->loadPlaylistData-response:", data);
     const items = data?.items?.map((item: TrackWithPlaylist) => ({
       ...item,
@@ -361,7 +372,7 @@ const mapApiTracks = (items: any[] | undefined) =>
  * catalogue and filters it there.
  */
 export const searchFriskyList = async (query: string, count: number = 100) => {
-  const url = `${apiUrls.friskyListUrl}?count=${count}&offset=0&q=${encodeURIComponent(query)}`;
+  const url = `${apiUrls.friskyListUrl}?count=${count}&offset=0&q=${encodeURIComponent(query)}${apiVersionParam()}`;
   console.info(`GET ${url}`);
   const data = await apiRequest(url, 'GET', {});
   return mapApiTracks(data?.items);
@@ -417,7 +428,7 @@ export const loadArtists = async (): Promise<Artist[]> => {
 
 /** One page of one DJ's shows, in the same shape every list uses. */
 export const fetchArtistPage = async (key: string, offset: number, count: number) => {
-  const url = `${apiUrls.artistsUrl}/${encodeURIComponent(key)}?count=${count}&offset=${offset}`;
+  const url = `${apiUrls.artistsUrl}/${encodeURIComponent(key)}?count=${count}&offset=${offset}${apiVersionParam()}`;
   console.info(`GET ${url}`);
   const data = await apiRequest(url, 'GET', {});
   return mapApiTracks(data?.items);
@@ -438,7 +449,7 @@ export const loadProfile = async (): Promise<VkProfile> => {
 
 /** One page of the Frisky group, for the windowed list on the Songs tab. */
 export const fetchFriskyPage = async (offset: number, count: number) => {
-  const url = `${apiUrls.friskyListUrl}?count=${count}&offset=${offset}`;
+  const url = `${apiUrls.friskyListUrl}?count=${count}&offset=${offset}${apiVersionParam()}`;
   console.info(`GET ${url}`);
   const data = await apiRequest(url, 'GET', {});
   return mapApiTracks(data?.items);
@@ -626,22 +637,36 @@ export const collectPairing = async (
 };
 
 /**
- * Which release the server belongs to.
+ * The version the App Store is offering right now, asked of Apple directly.
  *
- * Plain `fetch`, not `apiRequest`: the route takes no credentials and this must
- * answer on a screen that has none — and a 401 from the interceptor would
- * otherwise sign the device out over a version check.
+ * NOT the api. This used to ask `GET /api/version`, which answered with the
+ * api's own build number — so deploying the api put "a new version is in the
+ * App Store" on every installed client while the store still held the old one.
+ * Whether there is an update is a fact about the store, and only the store can
+ * state it; nothing the server does may change what this returns.
+ *
+ * Apple's lookup is public, needs no key and sends `Access-Control-Allow-Origin:
+ * *`, so the desktop webview can ask it as well as the phone. The Mac listing
+ * is a separate entity of the same app (`desktopSoftware`).
+ *
+ * Android returns null: Google Play has no public lookup, and naming a version
+ * the Play listing may not carry is the same false notice in another store.
  */
-export const fetchLatestVersion = async (): Promise<string | null> => {
+const APP_STORE_LOOKUP = 'https://itunes.apple.com/lookup?bundleId=com.envarg.visky&country=us'
+
+export const fetchStoreVersion = async (): Promise<string | null> => {
+  if (Platform.OS === 'android') return null
+  const url = Platform.OS === 'ios' ? APP_STORE_LOOKUP : `${APP_STORE_LOOKUP}&entity=desktopSoftware`
   try {
-    const response = await fetch(apiUrls.versionUrl)
+    const response = await fetch(url)
     if (!response.ok) return null
-    const body = (await response.json()) as {version?: string}
-    return typeof body?.version === 'string' && body.version ? body.version : null
+    const body = (await response.json()) as {results?: Array<{version?: unknown}>}
+    const version = body?.results?.[0]?.version
+    return typeof version === 'string' && /^\d+(\.\d+)*$/.test(version) ? version : null
   } catch (error) {
     // A version check is the least important request the app makes; an offline
     // launch must not spend a warning on it.
-    console.debug('==update: could not ask for the current version', error)
+    console.debug('==update: could not ask the App Store for its version', error)
     return null
   }
 }

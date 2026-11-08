@@ -4,6 +4,7 @@ import { StyleSheet, Text, View, ViewProps } from 'react-native'
 import { TouchableOpacity } from 'react-native-gesture-handler'
 import TrackPlayer, { Track } from 'react-native-track-player'
 import {colors} from "@/constants";
+import {expandTracks} from "@/helpers/parts";
 
 type QueueControlsProps = {
 	tracks: Track[]
@@ -11,14 +12,16 @@ type QueueControlsProps = {
 
 export const QueueControls = ({ tracks, style, ...viewProps }: QueueControlsProps) => {
 	const handlePlay = async () => {
-		await TrackPlayer.setQueue(tracks)
+		// expand v2 multipart rows into their per-part queue entries (no-op on v1)
+		await TrackPlayer.setQueue(expandTracks(tracks))
 		await TrackPlayer.play()
 	}
 
 	const handleShufflePlay = async () => {
+		// shuffle the ROWS, then expand — a show's parts stay together and in order
 		const shuffledTracks = [...tracks].sort(() => Math.random() - 0.5)
 
-		await TrackPlayer.setQueue(shuffledTracks)
+		await TrackPlayer.setQueue(expandTracks(shuffledTracks))
 		await TrackPlayer.play()
 	}
 

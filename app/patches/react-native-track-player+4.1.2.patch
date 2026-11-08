@@ -502,7 +502,7 @@ index afa6b0f..c417e7b 100644
              ?.emit(event, payload)
      }
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
-index 5953276..451ac58 100644
+index 5953276..9b6485e 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
 +++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
 @@ -1,5 +1,17 @@
@@ -523,7 +523,7 @@ index 5953276..451ac58 100644
  export class Player {
      hasInitialized = false;
      element;
-@@ -7,6 +19,10 @@ export class Player {
+@@ -7,6 +19,18 @@ export class Player {
      _current = undefined;
      _playWhenReady = false;
      _state = { state: State.None };
@@ -531,10 +531,18 @@ index 5953276..451ac58 100644
 +    preloaded;
 +    /** PATCHED. Set by TrackPlayerModule; reports a stream that died. */
 +    onFatalError;
++    /**
++     * PATCHED. How many loads are in flight.
++     *
++     * A load that goes wrong reports itself twice: shaka fires its `error`
++     * event AND the load promise rejects. Only the caller of the load knows
++     * whose track it was, so while this is non-zero the event is left alone.
++     */
++    loading = 0;
      // current getter/setter
      get current() {
          return this._current;
-@@ -70,11 +86,37 @@ export class Player {
+@@ -70,11 +94,37 @@ export class Player {
          this.player.addEventListener('buffering', ({ buffering }) => {
              if (buffering === true) {
                  this.onStateUpdate(State.Buffering);
@@ -572,7 +580,7 @@ index 5953276..451ac58 100644
          this.hasInitialized = true;
      }
      /**
-@@ -86,6 +128,15 @@ export class Player {
+@@ -86,6 +136,28 @@ export class Player {
      onError(error) {
          // unload the current track to allow for clean playback on other
          this.player?.unload();
@@ -584,11 +592,24 @@ index 5953276..451ac58 100644
 +        // listens to in order to re-sign the url and pick the track back up
 +        // (services/recovery). Without this the desktop simply went quiet and
 +        // never tried again, which is exactly what issue #5 describes.
-+        this.onFatalError?.(error);
++        //
++        // NOT while a load is in flight, though. An error raised by a load is
++        // reported by that load rejecting, and the app reads this event as
++        // "the stream the CURRENT track is playing from has died". At a
++        // hand-over the load belongs to the NEXT track, so announcing it here
++        // told the app the track that had just FINISHED was broken: it was
++        // re-signed and played again, and again, while the queue never moved.
++        // Whose failure a load is depends on who asked for it — see `load`.
++        if (this.loading === 0) {
++            this.onFatalError?.(error);
++        }
++        else {
++            console.debug('==rntp-web: an error inside a load is the caller\'s', error?.code);
++        }
          this.state = {
              state: State.Error,
              error: {
-@@ -99,10 +150,121 @@ export class Player {
+@@ -99,10 +171,144 @@ export class Player {
      /**
       * player control
       */
@@ -611,6 +632,10 @@ index 5953276..451ac58 100644
 +        if (this.preloaded?.url === url)
 +            return;
 +        this.destroyPreload();
++        // Counted like a load: a warm-up for the NEXT track that goes wrong
++        // raises shaka's `error` event too, and announcing that as a fatal error
++        // made the app re-sign and reload the track that was happily playing.
++        this.loading += 1;
 +        try {
 +            const manager = await this.player.preload(url);
 +            if (!manager)
@@ -624,6 +649,9 @@ index 5953276..451ac58 100644
 +        }
 +        catch (error) {
 +            console.debug('==rntp-web: could not preload', error);
++        }
++        finally {
++            this.loading -= 1;
 +        }
 +    }
 +    /** PATCHED. Drop a parked preload; it holds buffers. */
@@ -642,9 +670,25 @@ index 5953276..451ac58 100644
 +     */
 +    async loadWithin(start) {
 +        let timer;
++        this.loading += 1;
++        // A timed-out load is not cancelled — there is no way to cancel one from
++        // here — so it stays COUNTED until it really settles. Otherwise shaka
++        // reports its error a second later, with nothing in flight any more, and
++        // the app hears it as the current track dying.
++        let running;
++        try {
++            running = Promise.resolve(start());
++        }
++        catch (error) {
++            this.loading -= 1;
++            throw error;
++        }
++        running.then(() => undefined, () => undefined).then(() => {
++            this.loading -= 1;
++        });
 +        try {
 +            await Promise.race([
-+                start(),
++                running,
 +                new Promise((_, reject) => {
 +                    timer = setTimeout(() => {
 +                        reject(new Error(`the stream did not start within ${LOAD_DEADLINE_MS}ms`));
@@ -711,7 +755,7 @@ index 5953276..451ac58 100644
          this.current = track;
      }
      async retry() {
-@@ -113,6 +275,7 @@ export class Player {
+@@ -113,6 +319,7 @@ export class Player {
      async stop() {
          if (!this.player)
              throw new SetupNotCalledError();

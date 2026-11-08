@@ -14,6 +14,8 @@ import {useDebouncedValue} from "@/hooks/useDebouncedValue";
 import {useFocusEffect} from "expo-router";
 import {useWindowedTracks} from "@/hooks/useWindowedTracks";
 import {PullToRefresh} from "@/components/PullToRefresh";
+import {useSettingsStore} from "@/store/settings";
+import {useRef} from "react";
 
 import {SONGS_CACHE_KEY} from "@/store/library";
 
@@ -33,6 +35,20 @@ const SongsScreen = () => {
       true,
       SONGS_CACHE_KEY,
     )
+
+  // The Songs tab stays mounted for the life of the app, so flipping v1/v2 on
+  // the Settings tab would otherwise leave this list in the old shape until a
+  // pull-to-refresh. Reset it when the version changes (not on first mount —
+  // the hook already loads page 0 there).
+  const apiVersion = useSettingsStore((state) => state.apiVersion)
+  const firstVersion = useRef(true)
+  useEffect(() => {
+    if (firstVersion.current) {
+      firstVersion.current = false
+      return
+    }
+    void reset()
+  }, [apiVersion, reset])
 
   // Search runs on the SERVER, over the whole Frisky group: VK has no
   // "search inside this owner", so the API keeps the group's catalogue and

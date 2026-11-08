@@ -50,6 +50,9 @@ const SettingsScreen = () => {
   // is turned off, and where it is run by hand once it is.
   const autoSync = useSettingsStore((state) => state.autoSyncFavorites);
   const setAutoSync = useSettingsStore((state) => state.setAutoSyncFavorites);
+  // v1/v2 list shape — see store/settings. Default v2 (combined parts).
+  const apiVersion = useSettingsStore((state) => state.apiVersion);
+  const setApiVersion = useSettingsStore((state) => state.setApiVersion);
   const [syncing, setSyncing] = useState(false);
   const [syncReport, setSyncReport] = useState<string | null>(null);
 
@@ -156,6 +159,24 @@ const SettingsScreen = () => {
           <Switch
             value={autoSync}
             onValueChange={setAutoSync}
+            trackColor={{false: colors.surfaceDivider, true: colors.primary}}
+            thumbColor={colors.text}
+          />
+        </View>
+
+        {/* v2 collapses a show's parts (Part 1, Part 2, …) into one row that
+            plays straight through; off is the old one-row-per-part list. */}
+        <View style={styles.menuRow}>
+          <Icon name="object-group" size={20} color={colors.icon} style={styles.menuIcon}/>
+          <View style={styles.menuText}>
+            <Text style={styles.menuLabel}>Combine show parts</Text>
+            <Text style={styles.menuHint}>
+              One entry per show, parts play back to back
+            </Text>
+          </View>
+          <Switch
+            value={apiVersion === 'v2'}
+            onValueChange={(on) => setApiVersion(on ? 'v2' : 'v1')}
             trackColor={{false: colors.surfaceDivider, true: colors.primary}}
             thumbColor={colors.text}
           />
