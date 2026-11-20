@@ -62,6 +62,12 @@ export EXPO_PUBLIC_API_URL="${API_URL:-https://frisky.envarg.com}"
 #
 # The twin of the JDK pin on the Android side (scripts/build-app-local.sh):
 # the toolchain drifts under us, and the scripts are where that is absorbed.
+# CocoaPods refuses to run without a UTF-8 locale, and it is not inherited
+# everywhere: a build started by a daemon (an executor agent, launchd) has no
+# LANG at all, and `pod install` dies in its own error reporter with
+# Encoding::CompatibilityError instead of saying so.
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
 export RCT_USE_PREBUILT_RNCORE=0
 export EXPO_USE_PRECOMPILED_MODULES=0
 

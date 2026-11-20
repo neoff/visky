@@ -31,6 +31,21 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$ROOT/app"
 
+# JDK 17, pinned HERE rather than hoped for. Homebrew's `openjdk` moves to
+# whatever is newest (27 in November 2026) and becomes the default java; Gradle
+# then dies parsing its own build script with "Unsupported class file major
+# version 71", and older newer-JDKs break CMake instead. A JAVA_HOME already
+# pointing at a 17 is respected.
+if ! "${JAVA_HOME:-/nonexistent}/bin/java" -version 2>&1 | grep -q '"17\.'; then
+  JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null)" || {
+    echo "!! no JDK 17 installed — brew install openjdk@17" >&2
+    exit 1
+  }
+  export JAVA_HOME
+fi
+export PATH="$JAVA_HOME/bin:$PATH"
+echo "==> JDK: $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
+
 # The API origin the SHIPPED bundle talks to.
 #
 # app/.env holds whatever server the developer is pointing at today — often
