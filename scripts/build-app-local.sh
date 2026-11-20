@@ -46,6 +46,14 @@ fi
 export PATH="$JAVA_HOME/bin:$PATH"
 echo "==> JDK: $("$JAVA_HOME/bin/java" -version 2>&1 | head -1)"
 
+# The SDK the same way: a shell profile sets ANDROID_HOME, a daemon does not,
+# and Gradle then stops at "SDK location not found".
+if [ -z "${ANDROID_HOME:-}" ] && [ -d "$HOME/Library/Android/sdk" ]; then
+  export ANDROID_HOME="$HOME/Library/Android/sdk"
+fi
+[ -n "${ANDROID_HOME:-}" ] || { echo "!! no Android SDK — set ANDROID_HOME" >&2; exit 1; }
+export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+
 # The API origin the SHIPPED bundle talks to.
 #
 # app/.env holds whatever server the developer is pointing at today — often
