@@ -1,0 +1,38 @@
+# Where visky-api's image comes from (ns frisky).
+#
+# Since 2026-11-19 every image of the cluster lives in the PRIVATE GitLab
+# registry, `registry.gitlab.com/en.varg/visky-api` — build-api.sh pushes there
+# and deploy-api.sh rolls that out. A private registry is only half the move:
+# the pod has to be allowed to pull from it, and that is this file.
+#
+# The Deployment is not templated anywhere — it is edited in place — so this is
+# the record of its pull half, the same way deployment.vault.patch.yaml is the
+# record of its Vault half. Apply with:
+#
+#   kubectl --context oracle -n frisky patch deployment visky-api \
+#     --patch-file api/k8s/deployment.registry.patch.yaml
+#
+# deploy-api.sh checks this is in place on every deploy and refuses to roll out
+# without it, because the failure it prevents is silent in the only place anyone
+# looks: `set image` succeeds, the rollout starts, and the new pod sits in
+# ImagePullBackOff while the old one keeps serving. The deploy looks stuck for
+# no reason.
+#
+# PREREQUISITE — the pull secret itself, which holds a read_registry deploy
+# token and is NOT in git. Copy it from a namespace that already has one:
+#
+#   kubectl --context oracle -n wirellm get secret gitlab-registry -o json \
+#     | python3 -c "import json,sys; s=json.load(sys.stdin); \
+#         json.dump({'apiVersion':'v1','kind':'Secret','type':s['type'], \
+#           'metadata':{'name':'gitlab-registry','namespace':'frisky'}, \
+#           'data':s['data']}, sys.stdout)" \
+#     | kubectl --context oracle -n frisky apply -f -
+#
+# `regcred` stays second: it carries Docker Hub, where the public sidecar and
+# base images still come from, and anonymous pulls there are rate-limited.
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: gitlab-registry
+        - name: regcred

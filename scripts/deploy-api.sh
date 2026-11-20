@@ -25,6 +25,37 @@ if [ -z "$TAG" ]; then
 fi
 
 echo "==> deploy $IMAGE:$TAG  (ctx=$KCTX ns=$NS deploy=$DEPLOY)"
+
+# A PRIVATE REGISTRY NEEDS THE PULL HALF, AND ITS ABSENCE IS SILENT HERE.
+#
+# The image lives in the private GitLab registry, so the pod pulls it with the
+# `gitlab-registry` secret. Without it `set image` below still succeeds and the
+# rollout still starts — the new pod just sits in ImagePullBackOff while the old
+# one keeps serving, which reads as a deploy hanging for no reason. Checked
+# before anything is changed, so a missing secret costs nothing.
+#
+# api/k8s/deployment.registry.patch.yaml is the record of both, and has the
+# command that copies the secret from a namespace that already holds one.
+case "$IMAGE" in
+  registry.gitlab.com/*)
+    if ! kubectl --context "$KCTX" -n "$NS" get secret gitlab-registry >/dev/null 2>&1; then
+      echo "!! no secret/gitlab-registry in ns $NS — the pod cannot pull $IMAGE." >&2
+      echo "   Create it first; see api/k8s/deployment.registry.patch.yaml." >&2
+      exit 1
+    fi
+    pull="$(kubectl --context "$KCTX" -n "$NS" get "deployment/$DEPLOY" \
+      -o jsonpath='{.spec.template.spec.imagePullSecrets[*].name}')"
+    case " $pull " in
+      *" gitlab-registry "*) ;;
+      *)
+        echo "    deployment/$DEPLOY does not name gitlab-registry (has: ${pull:-none}) — patching it"
+        kubectl --context "$KCTX" -n "$NS" patch "deployment/$DEPLOY" \
+          --patch-file "$ROOT/api/k8s/deployment.registry.patch.yaml"
+        ;;
+    esac
+    ;;
+esac
+
 # THE IMAGE ALONE IS NOT ALWAYS A CHANGE.
 #
 # `set image` to the tag the deployment already carries is a no-op, and
