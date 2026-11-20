@@ -727,3 +727,47 @@ describe('GET /api/playlist/frisky?v=2', () => {
     ]);
   });
 });
+
+/**
+ * The heart in the Songs list used to match on artist + title AFTER the air
+ * month had been cut out of the title, so every edition of a monthly show was
+ * the same track: October's "Gedonizm" in Frisky-favorites lit the heart on
+ * November's upload, which the listener had never added.
+ */
+describe('the heart tells one edition of a show from the next', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __resetFavoritesIndexCache();
+    __resetFriskyCatalog();
+  });
+
+  const edition = (id: number, month: string) => ({
+    id, owner_id: -42311167, artist: 'FRISKY | Jackie Mayden',
+    title: `${month} 2026 - Gedonizm [vk.com/feelin_frisky]`,
+    duration: 3600, url: `https://example.com/${id}`, date: 1700000000 + id,
+  });
+  // the user's own copy of October's edition, in Frisky-favorites
+  const octoberCopy = {...edition(10, 'October'), id: 900, owner_id: 111};
+
+  const serve = (list: any[]) =>
+    vkMethod.mockImplementation((_req: any, method: string, params: any) => {
+      if (method === 'audio.getPlaylists') {
+        return Promise.resolve({response: {count: 1, items: [{id: 12345, owner_id: 111, title: 'Frisky-favorites'}]}});
+      }
+      if (method === 'audio.get' && params?.playlist_id === 12345) {
+        return Promise.resolve({response: {count: 1, items: [{...octoberCopy}]}});
+      }
+      return Promise.resolve({response: {count: list.length, items: list.map((item) => ({...item}))}});
+    });
+
+  it.each(['', '&v=2'])('lights October and leaves November alone%s', async (v) => {
+    serve([edition(11, 'November'), edition(10, 'October')]);
+
+    const res = await request(app).get(`/api/playlist/frisky?count=10${v}`);
+
+    expect(res.status).toBe(200);
+    const byId = new Map(res.body.items.map((item: any) => [item.id, item.favorite]));
+    expect(byId.get(10)).toBe(true);
+    expect(byId.get(11)).toBe(false);
+  });
+});

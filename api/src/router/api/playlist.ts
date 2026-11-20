@@ -6,6 +6,7 @@ import {cleanupData, cleanupDataAndSortPart, formatPlaylist, formatPlaylistV2, g
 import {artistKey} from "@/helper/friskyMatch";
 import {Tracklist, type VkPlaylistResponse, VkResponse, TrackItem} from "@/__genedated__/openapi/vk";
 import {artistCards, enrich, friskyShowKeys, FRISKY_OWNER_ID, kick, remember, showKey} from "@/services/friskyCache";
+import {linkFavorite, originalsOf} from "@/services/favoriteLinks";
 
 
 export const api = express.Router();
@@ -71,8 +72,17 @@ const getPlaylistData =  async (req: Request, owner: number, count: number, offs
 const displayArtist = (artist: string | null | undefined): string =>
   String(artist ?? "").replace(/\s*FRISKY\s*\|\s*/gi, " ").replace(/\s+/g, " ").trim();
 
-const favoriteKey = (item: { artist?: string; title?: string }): string =>
-  `${(item.artist ?? "").trim().toLowerCase()}|${(item.title ?? "").trim().toLowerCase()}`;
+/**
+ * Artist, EDITION, title — in that order, so the title stays last and the v2
+ * "Part N" match (`baseKeySet`) can still trim it off the end.
+ *
+ * The edition is the air month `cleanupData` cut out of the title. Without it
+ * the key was "jackie mayden|gedonizm" for every month of the show: a favourite
+ * from October lit the heart on November's upload, and un-hearting November
+ * would have deleted October's copy.
+ */
+const favoriteKey = (item: { artist?: string; title?: string; air?: string }): string =>
+  `${(item.artist ?? "").trim().toLowerCase()}|${(item.air ?? "").trim().toLowerCase()}|${(item.title ?? "").trim().toLowerCase()}`;
 
 /**
  * Find the user's own Frisky-favorites playlist.
@@ -152,7 +162,42 @@ const ensureFriskyFavoritesPlaylistId = async (req: Request): Promise<number> =>
 
 type FavoriteEntry = { id: number; owner_id: number };
 
-type FavoritesIndex = { playlistId: number | null; byKey: Map<string, FavoriteEntry> };
+/**
+ * `originals` is the set of GROUP track ids the user has a copy of in the
+ * playlist — the heart's real answer, by id (services/favoriteLinks). `null`
+ * when there is no DB to hold the links; only then does the heart fall back to
+ * `byKey`, the artist|edition|title match.
+ */
+type FavoritesIndex = {
+  playlistId: number | null;
+  byKey: Map<string, FavoriteEntry>;
+  originals: Set<string> | null;
+  /** artist|edition|title of the copies no link could be found for */
+  unlinked: Set<string>;
+};
+
+/** Light the hearts on a page of the GROUP's rows. */
+const markFavorites = (items: TrackItem[], index: FavoritesIndex, v2: boolean): TrackItem[] => {
+  if (index.originals) {
+    const originals = index.originals;
+    // a copy with no link yet still counts — but only for the SAME edition
+    const unlinked = v2
+      ? new Set([...index.unlinked].map((key) => key.replace(partSuffixRegex, "")))
+      : index.unlinked;
+    return items.map((item) => {
+      // a v2 row is a whole show: it is a favourite when any of its parts is
+      const parts = v2 && Array.isArray((item as any).part_list) && (item as any).part_list.length
+        ? (item as any).part_list as Array<{owner_id?: number; id?: number}>
+        : [{owner_id: item.owner_id as number, id: item.id as number}];
+      const favorite = parts.some((part) => originals.has(`${part.owner_id}_${part.id}`))
+        || unlinked.has(favoriteKey(item));
+      return {...item, favorite};
+    });
+  }
+  if (index.byKey.size === 0) return items;
+  const keys = v2 ? baseKeySet(index.byKey) : index.byKey;
+  return items.map((item) => ({...item, favorite: keys.has(favoriteKey(item))}));
+};
 
 /**
  * Per-user cache of the favourites index.
@@ -187,7 +232,7 @@ const loadFavoritesIndex = async (req: Request, useCache: boolean = true): Promi
   const byKey = new Map<string, FavoriteEntry>();
   try {
     const playlistId = await getFriskyFavoritesPlaylistId(req);
-    if (!playlistId) return {playlistId: null, byKey};
+    if (!playlistId) return {playlistId: null, byKey, originals: new Set(), unlinked: new Set()};
 
     const response = await vkMethod(req, "audio.get", {
       owner_id: req.session.user_id,
@@ -197,17 +242,24 @@ const loadFavoritesIndex = async (req: Request, useCache: boolean = true): Promi
     }, false);
 
     const playlist = response.response as VkPlaylistResponse;
+    // copies taken BEFORE the cleanup: the backfill matches the raw words
+    const raw = (playlist?.items ?? []).map((item) => ({...item}));
+    const links = await originalsOf(raw as any);
+    const originals = links ? new Set(links.values()) : null;
     // key on the CLEANED artist/title, because that is what /frisky serves
     const clean = cleanupData({count: playlist?.count ?? 0, items: playlist?.items ?? []});
+    const unlinked = new Set<string>();
     for (const item of clean.items) {
-      byKey.set(favoriteKey(item), {id: item.id, owner_id: item.owner_id});
+      const key = favoriteKey(item);
+      byKey.set(key, {id: item.id, owner_id: item.owner_id});
+      if (links && !links.has(`${item.owner_id}_${item.id}`)) unlinked.add(key);
     }
-    const index: FavoritesIndex = {playlistId, byKey};
+    const index: FavoritesIndex = {playlistId, byKey, originals, unlinked};
     favoritesIndexCache.set(cacheKey, {at: Date.now(), index});
     return index;
   } catch (error) {
     console.error("Error loading the Frisky-favorites index:", error);
-    return {playlistId: null, byKey};
+    return {playlistId: null, byKey, originals: null, unlinked: new Set()};
   }
 }
 
@@ -308,14 +360,7 @@ api.get("/frisky", checkAuthAndroid, async (req: Request, res: Response) => {
     // the heart in the list comes straight from here: a track is a favourite
     // when a copy of it sits in the user's Frisky-favorites playlist. In v2 the
     // row is a whole show, so the match ignores the "Part N" tail.
-    const {byKey} = await loadFavoritesIndex(req);
-    if (byKey.size > 0) {
-      const keys = v2 ? baseKeySet(byKey) : byKey;
-      response.items = response.items.map((item) => ({
-        ...item,
-        favorite: keys.has(favoriteKey(item))
-      }));
-    }
+    response.items = markFavorites(response.items, await loadFavoritesIndex(req), v2);
 
     // Whatever frisky.fm already told us about these shows — tracklist, genres,
     // artist photo. Tracks nothing is known about are served as VK sent them and
@@ -409,14 +454,7 @@ api.get("/frisky/artists/:key", checkAuthAndroid, async (req: Request, res: Resp
     }
 
     // the same heart the Songs tab draws, resolved against the same playlist
-    const {byKey} = await loadFavoritesIndex(req);
-    if (byKey.size > 0) {
-      const keys = v2 ? baseKeySet(byKey) : byKey;
-      response.items = response.items.map((item) => ({
-        ...item,
-        favorite: keys.has(favoriteKey(item))
-      }));
-    }
+    response.items = markFavorites(response.items, await loadFavoritesIndex(req), v2);
 
     response.items = await enrich(response.items);
     kick();
@@ -601,6 +639,44 @@ api.get("/frisky/playlists", checkAuthAndroid, async (req: Request, res: Respons
 });
 
 
+
+/**
+ * The user's copies in a list, two ways: by the group track each one is a copy
+ * of (`byOriginal`, by id — null without a DB), and by artist|edition|title.
+ * Never cached — a delete must see the list as it is now.
+ */
+const loadCopiesIndex = async (
+  req: Request,
+  playlistId: number | null,
+): Promise<{byKey: Map<string, FavoriteEntry>; byOriginal: Map<string, FavoriteEntry> | null}> => {
+  const byKey = new Map<string, FavoriteEntry>();
+  try {
+    const response = await vkMethod(req, "audio.get", {
+      owner_id: req.session.user_id,
+      ...(playlistId !== null ? {playlist_id: playlistId} : {}),
+      count: 6000,
+      offset: 0
+    }, false);
+    const list = response.response as VkPlaylistResponse;
+    const raw = (list?.items ?? []).map((item) => ({...item}));
+    const links = await originalsOf(raw as any);
+    let byOriginal: Map<string, FavoriteEntry> | null = null;
+    if (links) {
+      byOriginal = new Map();
+      for (const item of raw) {
+        const original = links.get(`${item.owner_id}_${item.id}`);
+        if (original) byOriginal.set(original, {id: item.id, owner_id: item.owner_id});
+      }
+    }
+    for (const item of cleanupData({count: list?.count ?? 0, items: list?.items ?? []}).items) {
+      byKey.set(favoriteKey(item), {id: item.id, owner_id: item.owner_id});
+    }
+    return {byKey, byOriginal};
+  } catch (error) {
+    console.error("Error loading a playlist index:", error);
+    return {byKey, byOriginal: null};
+  }
+};
 
 /**
  * The same index over an ARBITRARY list: a playlist of the user's, or their
@@ -974,6 +1050,11 @@ api.put("/frisky/favorites", checkAuthAndroid, async (req: Request, res: Respons
     }, false);
 
     const copyId = (added.response as any)?.id ?? (added.response as any) ?? null;
+    // The id VK gave the copy, tied to the track that was hearted — this is
+    // what the Songs list reads its heart from (services/favoriteLinks).
+    if (copyId !== null && typeof copyId !== "object" && req.session.user_id) {
+      await linkFavorite({owner_id: req.session.user_id, id: copyId}, {owner_id: ownerId, id: audioId});
+    }
     invalidateFavoritesIndex(req);
 
     res.status(200).send({
@@ -1021,7 +1102,7 @@ api.delete("/frisky/favorites/:id", checkAuthAndroid, async (req: Request, res: 
       return;
     }
 
-    const byKey = await loadPlaylistIndex(req, target.playlistId);
+    const {byKey, byOriginal} = await loadCopiesIndex(req, target.playlistId);
 
     // artist/title of the track the app is pointing at
     const ownerId = (req.query.owner_id as string) || String(FRISKY_OWNER_ID);
@@ -1035,8 +1116,10 @@ api.delete("/frisky/favorites/:id", checkAuthAndroid, async (req: Request, res: 
       return;
     }
 
+    // by id first — the copy that is linked to exactly this track — and by
+    // artist|edition|title only for a list the links cannot answer
     const cleanSource = cleanupData({count: 1, items: [sourceItem]}).items[0];
-    const copy = byKey.get(favoriteKey(cleanSource));
+    const copy = byOriginal?.get(`${ownerId}_${audioId}`) ?? byKey.get(favoriteKey(cleanSource));
 
     if (!copy) {
       // already gone — report success so the app can clear the heart

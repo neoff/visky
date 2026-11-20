@@ -502,7 +502,7 @@ index afa6b0f..c417e7b 100644
              ?.emit(event, payload)
      }
 diff --git a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
-index 5953276..9b6485e 100644
+index 5953276..1e10b09 100644
 --- a/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
 +++ b/node_modules/react-native-track-player/lib/web/TrackPlayer/Player.js
 @@ -1,5 +1,17 @@
@@ -542,7 +542,28 @@ index 5953276..9b6485e 100644
      // current getter/setter
      get current() {
          return this._current;
-@@ -70,11 +94,37 @@ export class Player {
+@@ -57,6 +81,20 @@ export class Player {
+         this.element.setAttribute('id', 'react-native-track-player');
+         this.player = new shaka.Player();
+         this.player?.attach(this.element);
++        // PATCHED. Let the media element play HLS itself wherever it can.
++        //
++        // In MediaSource mode shaka fetches the playlist and every segment with
++        // fetch(), and the browser hands it nothing without an
++        // Access-Control-Allow-Origin header. VK's old CDN (vkuseraudio) sends
++        // `*`; the one it moved most tracks to in November 2026 (okcdn.ru)
++        // sends none — so a tap on such a row loaded for ever and never made a
++        // sound, while the very same link played on the phones, whose native
++        // players do not do CORS. An <audio> element given the url directly
++        // does not do CORS either. WebKit (the Tauri desktop) and current
++        // Chrome both play HLS natively; anything that cannot keeps MSE.
++        if (this.element.canPlayType('application/vnd.apple.mpegurl')) {
++            this.player.configure({ streaming: { preferNativeHls: true } });
++        }
+         // Listen for relevant events events.
+         this.player.addEventListener('error', (error) => {
+             // Extract the shaka.util.Error object from the event.
+@@ -70,11 +108,37 @@ export class Player {
          this.player.addEventListener('buffering', ({ buffering }) => {
              if (buffering === true) {
                  this.onStateUpdate(State.Buffering);
@@ -580,7 +601,7 @@ index 5953276..9b6485e 100644
          this.hasInitialized = true;
      }
      /**
-@@ -86,6 +136,28 @@ export class Player {
+@@ -86,6 +150,28 @@ export class Player {
      onError(error) {
          // unload the current track to allow for clean playback on other
          this.player?.unload();
@@ -609,7 +630,7 @@ index 5953276..9b6485e 100644
          this.state = {
              state: State.Error,
              error: {
-@@ -99,10 +171,144 @@ export class Player {
+@@ -99,10 +185,156 @@ export class Player {
      /**
       * player control
       */
@@ -675,22 +696,34 @@ index 5953276..9b6485e 100644
 +        // here — so it stays COUNTED until it really settles. Otherwise shaka
 +        // reports its error a second later, with nothing in flight any more, and
 +        // the app hears it as the current track dying.
++        // Released exactly once: when the load settles, or — for a load that
++        // never does — a grace period after the deadline. A count held for ever
++        // by one stalled load silenced every stream error after it, and the
++        // recovery never heard of another dead track.
++        let released = false;
++        const release = () => {
++            if (released)
++                return;
++            released = true;
++            this.loading -= 1;
++        };
 +        let running;
 +        try {
 +            running = Promise.resolve(start());
 +        }
 +        catch (error) {
-+            this.loading -= 1;
++            release();
 +            throw error;
 +        }
-+        running.then(() => undefined, () => undefined).then(() => {
-+            this.loading -= 1;
-+        });
++        running.then(release, release);
 +        try {
 +            await Promise.race([
 +                running,
 +                new Promise((_, reject) => {
 +                    timer = setTimeout(() => {
++                        // a late error from this load is still its own for a
++                        // little while; after that the count must come back
++                        setTimeout(release, LOAD_DEADLINE_MS);
 +                        reject(new Error(`the stream did not start within ${LOAD_DEADLINE_MS}ms`));
 +                    }, LOAD_DEADLINE_MS);
 +                }),
@@ -755,7 +788,7 @@ index 5953276..9b6485e 100644
          this.current = track;
      }
      async retry() {
-@@ -113,6 +319,7 @@ export class Player {
+@@ -113,6 +345,7 @@ export class Player {
      async stop() {
          if (!this.player)
              throw new SetupNotCalledError();

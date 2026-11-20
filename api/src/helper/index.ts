@@ -103,6 +103,21 @@ const airDateRegex = new RegExp(
     "i",
 )
 
+/**
+ * The air month a raw title carries ("November 2026"), lower-cased, or "" when
+ * it carries none.
+ *
+ * `cleanupData` takes it out of the title — a list row reads "Gedonizm", not
+ * "Gedonizm November 2026" — but it is half of what tells one edition of a
+ * monthly show from the next. Without it every edition had the same identity,
+ * so a favourite from October lit the heart on November's upload.
+ */
+export const airMonthOf = (title: string | null | undefined): string => {
+    const match = title?.match(airDateRegex);
+    if (!match) return "";
+    return match[0].replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
 export const cleanupData = (data: VkPlaylistResponse): VkPlaylistResponse => {
     data.items = data?.items?.map((item) => {
         item.artist = item.artist?.replace(friskyPrefixRegex, "");
@@ -110,6 +125,10 @@ export const cleanupData = (data: VkPlaylistResponse): VkPlaylistResponse => {
         // The group's advert goes first: in the new shape the date is the LAST
         // thing in the title, and it is only last once this is gone.
         item.title = item.title?.replace(vkSuffixRegex, "");
+        // Kept before it is cut, and only the first time: a second cleanup of
+        // the same item finds no date left and must not erase the one it had.
+        const raw = item as {air?: string};
+        if (raw.air === undefined) raw.air = airMonthOf(item.title);
         // A space, not nothing: the date can sit between two halves of the
         // title ("Wander December 2024 - Part 2"), and joining them would read
         // "WanderPart 2".
@@ -277,6 +296,8 @@ export const formatPlaylist = (data: VkPlaylistResponse, offset?: number): Track
                 artist: item.artist,
                 duration: item.duration,
                 date: item.date,
+                // the edition, for telling a favourite apart from next month's upload
+                air: (item as {air?: string}).air ?? "",
                 artwork: item.album?.thumb?.photo_300 ?? undefined,
                 type: TrackItem.type.HLS,
                 favorite:  item.like?? false, //TODO: hardcoded
@@ -355,6 +376,7 @@ export const formatPlaylistV2 = (groups: any[][], offset?: number, total?: numbe
             artist: head.artist,
             duration,
             date: head.date,
+            air: head.air ?? "",
             artwork: head.album?.thumb?.photo_300 ?? undefined,
             type: TrackItem.type.HLS,
             favorite: head.like ?? false,

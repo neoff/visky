@@ -87,6 +87,16 @@ export class VkTrack {
   @Column({name: "matched_at", type: "timestamptz", nullable: true})
   matchedAt?: Date | null;
 
+  /**
+   * On a user's COPY (owner = the user): the `track_id` of the group's original
+   * it was copied from. `audio.add` gives a copy a new id, so this is the only
+   * thing that ties a favourite to the row the Songs list shows. Written when
+   * the heart is pressed; for older copies, once, from an exact raw-title match.
+   */
+  @Index("idx_vk_tracks_favorite_of")
+  @Column({name: "favorite_of", type: "text", nullable: true})
+  favoriteOf?: string | null;
+
   @Column({name: "last_seen", type: "timestamptz", nullable: true})
   lastSeen?: Date | null;
 

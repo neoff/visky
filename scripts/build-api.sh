@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the api Docker image (linux/amd64) and push it to Docker Hub. Bumps the
+# Build the api Docker image (amd64 + arm64) and push it to GitLab. Bumps the
 # patch version in api/package.json first. With --deploy it also rolls the new
 # image out to Kubernetes (via deploy-api.sh) after the push.
 #
@@ -14,7 +14,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 API_DIR="$ROOT/api"
-IMAGE="${IMAGE:-varg/visky-api}"
+# GitLab's private registry, not Docker Hub (since 2026-11-19): every image of
+# the cluster lives there, and the deployment pulls with the `gitlab-registry`
+# secret.
+IMAGE="${IMAGE:-registry.gitlab.com/en.varg/visky-api}"
+# The cluster mixes amd64 and arm64 nodes; the pod may land on either.
+PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 BUMP="${BUMP:-patch}"
 DO_DEPLOY=0
 DO_BUMP=1
@@ -47,8 +52,8 @@ fi
 # the api is the source.
 "$ROOT/scripts/sync-version.sh"
 
-echo "==> docker buildx build + push $IMAGE:$VER (+ :latest), linux/amd64"
-docker buildx build --platform linux/amd64 \
+echo "==> docker buildx build + push $IMAGE:$VER (+ :latest), $PLATFORMS"
+docker buildx build --platform "$PLATFORMS" \
   -t "$IMAGE:$VER" \
   -t "$IMAGE:latest" \
   --push .

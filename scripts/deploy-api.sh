@@ -9,11 +9,11 @@
 #   scripts/deploy-api.sh latest     # deploy :latest
 #
 # Env (defaults match this project):
-#   KCTX=oracle  NS=frisky  DEPLOY=visky-api  CONTAINER=visky-api  IMAGE=varg/visky-api
+#   KCTX=oracle  NS=frisky  DEPLOY=visky-api  CONTAINER=visky-api  IMAGE=registry.gitlab.com/en.varg/visky-api
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IMAGE="${IMAGE:-varg/visky-api}"
+IMAGE="${IMAGE:-registry.gitlab.com/en.varg/visky-api}"
 KCTX="${KCTX:-oracle}"
 NS="${NS:-frisky}"
 DEPLOY="${DEPLOY:-visky-api}"

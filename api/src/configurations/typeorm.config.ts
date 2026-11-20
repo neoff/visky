@@ -15,6 +15,7 @@ import {FriskyShows1756800000000} from '@/db/migrations/1756800000000-FriskyShow
 import {VkTrackMixIndex1756900000000} from '@/db/migrations/1756900000000-VkTrackMixIndex';
 import {DeviceRevocation1757000000000} from '@/db/migrations/1757000000000-DeviceRevocation';
 import {Reports1757100000000} from '@/db/migrations/1757100000000-Reports';
+import {VkTrackFavoriteOf1757200000000} from '@/db/migrations/1757200000000-VkTrackFavoriteOf';
 
 /**
  * Entities and migrations are listed explicitly rather than globbed: the API
@@ -38,6 +39,7 @@ export const AppDataSource = new DataSource({
     VkTrackMixIndex1756900000000,
     DeviceRevocation1757000000000,
     Reports1757100000000,
+    VkTrackFavoriteOf1757200000000,
   ],
   subscribers: [],
 });

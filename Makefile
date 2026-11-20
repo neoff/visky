@@ -45,7 +45,7 @@ guard    = test "$(PRIMARY)" = "$@" || exit 0
 # --- values ----------------------------------------------------------------
 ARCH      ?= $(if $(call on,universal),universal,$(if $(call on,x64),x64,arm64))
 TRACK     ?= internal
-API_IMAGE ?= varg/visky-api
+API_IMAGE ?= registry.gitlab.com/en.varg/visky-api
 
 # Release notes reach the shell through the ENVIRONMENT, not through the
 # command line make builds. Quoting them into a recipe breaks on the first
@@ -136,14 +136,14 @@ APP_CMD = $(if $(call on,ios),$(IOS_CMD),\
 
 # Default is the whole api release: bump the patch version, build, push, roll
 # out. `redeploy` is the other half — the same version again, with the image
-# built on the spot when Docker Hub has no such tag (a version bumped by a build
+# built on the spot when the registry has no such tag (a version bumped by a build
 # that failed before the push, or one that only ever existed on this machine).
 API_REDEPLOY_CMD = ver="$$(node -p "require('$(ROOT)/api/package.json').version")"; \
 	echo "==> redeploy $(API_IMAGE):$$ver"; \
 	if docker manifest inspect "$(API_IMAGE):$$ver" >/dev/null 2>&1; then \
-	  echo "    that tag is on Docker Hub — rolling it out as it is"; \
+	  echo "    that tag is in the registry — rolling it out as it is"; \
 	else \
-	  echo "    no $(API_IMAGE):$$ver on Docker Hub — building it from this tree first"; \
+	  echo "    no $(API_IMAGE):$$ver in the registry — building it from this tree first"; \
 	  "$(S)/build-api.sh" --no-bump; \
 	fi; \
 	"$(S)/deploy-api.sh" "$$ver"
@@ -275,7 +275,7 @@ help:
 	echo "      -- --no-bump              reuse the version in api/package.json"; \
 	echo "      -- --bump-minor|--bump-major"; \
 	echo "      redeploy                  roll the CURRENT version out again; builds and"; \
-	echo "                                pushes it first if that tag is not on Docker Hub"; \
+	echo "                                pushes it first if that tag is not in the registry"; \
 	echo "  make deploy-api TAG=1.5.52    deploy one tag, nothing else"; \
 	echo; \
 	echo "  make app <desktop|web|ios|android> [flags]   — or the platform directly:"; \

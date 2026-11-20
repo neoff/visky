@@ -1,10 +1,4 @@
-Each show is one row now, and playback moves on when a show ends.
+Shows play again on the desktop, and the heart marks only the show you saved.
 
-Shows
-• A show uploaded in parts appears as one row; its parts play back to back without a gap.
-• The progress bar covers the whole show, with the part boundaries marked, and seeks across parts.
-• Settings can switch back to the old one-row-per-part list.
-
-Playing
-• When a show ends and the next one will not load, the app moves on instead of playing the same show again.
-• The update notice appears only when a newer version is actually in the App Store.
+• On the Mac, tapping a show that would not start now plays it. Most shows had moved to a new server that the desktop player could not read.
+• The heart in the list now marks only the edition of a show you added — not every later edition with the same name.
